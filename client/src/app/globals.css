@@ -1,0 +1,215 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Custom Properties ─────────────────────────────────────────────────────── */
+:root {
+  --color-bg: #0a0f1e;
+  --color-cyan: #00f5ff;
+  --color-violet: #7c3aed;
+  --color-violet-light: #a78bfa;
+  --color-green: #22c55e;
+  --color-amber: #f59e0b;
+  --font-inter: "Inter", sans-serif;
+}
+
+/* ─── Base Reset ─────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-inter);
+  background: var(--color-bg);
+  color: white;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ─── Selection ──────────────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(0, 245, 255, 0.2);
+  color: #00f5ff;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0f1e;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.4);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 245, 255, 0.5);
+}
+
+/* ─── Neo-Glass Component Classes ────────────────────────────────────────────── */
+@layer components {
+  .neo-card {
+    @apply relative overflow-hidden rounded-2xl;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .neo-card:hover {
+    box-shadow: 0 0 28px rgba(124, 58, 237, 0.18);
+    border-color: rgba(124, 58, 237, 0.3);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .neo-card-cyan:hover {
+    box-shadow: 0 0 28px rgba(0, 245, 255, 0.18);
+    border-color: rgba(0, 245, 255, 0.3);
+  }
+
+  .neo-input {
+    @apply w-full rounded-xl px-4 py-3 text-white outline-none;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s;
+  }
+
+  .neo-input:focus {
+    border-color: rgba(124, 58, 237, 0.5);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 20px rgba(124, 58, 237, 0.12);
+  }
+
+  .neo-btn-primary {
+    @apply inline-flex items-center gap-2 px-8 py-4 rounded-2xl font-bold text-black cursor-pointer;
+    background: linear-gradient(135deg, #00f5ff 0%, #7c3aed 100%);
+    transition: all 0.2s;
+  }
+
+  .neo-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 245, 255, 0.35);
+  }
+
+  .neo-btn-secondary {
+    @apply inline-flex items-center gap-2 px-8 py-4 rounded-2xl font-semibold text-white/70 cursor-pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    transition: all 0.2s;
+  }
+
+  .neo-btn-secondary:hover {
+    border-color: rgba(0, 245, 255, 0.5);
+    color: #00f5ff;
+    box-shadow: 0 0 24px rgba(0, 245, 255, 0.12);
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, #00f5ff 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Neon badge */
+  .neon-badge {
+    @apply inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wider uppercase;
+    background: rgba(0, 245, 255, 0.08);
+    border: 1px solid rgba(0, 245, 255, 0.2);
+    color: #00f5ff;
+  }
+
+  /* Glass surface */
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ─── Keyframe Animations ────────────────────────────────────────────────────── */
+@keyframes glow-pulse-cyan {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(0, 245, 255, 0.7), 0 0 60px rgba(0, 245, 255, 0.3);
+  }
+}
+
+@keyframes glow-pulse-violet {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(124, 58, 237, 0.7), 0 0 60px rgba(124, 58, 237, 0.3);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes scan-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── Utility Animation Classes ──────────────────────────────────────────────── */
+.animate-glow-cyan {
+  animation: glow-pulse-cyan 2s ease-in-out infinite;
+}
+
+.animate-glow-violet {
+  animation: glow-pulse-violet 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-scan {
+  animation: scan-rotate 4s linear infinite;
+}
+
+/* ─── Three.js / Canvas ──────────────────────────────────────────────────────── */
+canvas {
+  display: block;
+  outline: none;
+}
+
+/* ─── Mobile Responsiveness Overrides ─── */
+@media (max-width: 767px) {
+  main {
+    margin-left: 0px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  header {
+    left: 0px !important;
+  }
+}
+
