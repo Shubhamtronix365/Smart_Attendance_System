@@ -1,0 +1,27 @@
+﻿services:
+  - type: web
+    name: smart-attendance-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt && alembic upgrade head"
+    startCommand: "uvicorn server.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false # Paste your Neon DB connection string in Render Dashboard
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: DEVICE_API_KEY
+        value: esp32_device_secret_key
+      - key: STANDARD_WORK_HOURS
+        value: "8"
+      - key: LATE_THRESHOLD_MINUTES
+        value: "30"
+      - key: OT_MULTIPLIER
+        value: "1.5"
+      - key: FRONTEND_URL
+        sync: false # Paste your Cloudflare Pages URL (e.g. https://smart-attendance.pages.dev)
