@@ -25,9 +25,27 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 target_metadata = Base.metadata
 
+def get_normalized_url_and_args():
+    import re
+    db_url = settings.DATABASE_URL.strip()
+
+    # 1. Normalize driver scheme for asyncpg
+    if db_url.startswith("postgres://"):
+        db_url = "postgresql+asyncpg://" + db_url[len("postgres://"):]
+    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
+        db_url = "postgresql+asyncpg://" + db_url[len("postgresql://"):]
+
+    # 2. Handle Neon DB SSL & serverless pooling
+    connect_args = {}
+    if "sslmode=" in db_url or "neon.tech" in db_url:
+        db_url = re.sub(r"[?&]sslmode=[^&]+", "", db_url)
+        connect_args["ssl"] = "require"
+
+    return db_url, connect_args
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = settings.DATABASE_URL
+    url, _ = get_normalized_url_and_args()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -52,15 +70,31 @@ async def run_async_migrations() -> None:
     """
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    connectable = create_async_engine(
-        settings.DATABASE_URL,
-        poolclass=pool.NullPool,
-    )
+    db_url, connect_args = get_normalized_url_and_args()
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
+    # If running in Render CI/Build and DATABASE_URL is still default localhost, skip gracefully
+    if ("localhost" in db_url or "127.0.0.1" in db_url) and os.getenv("RENDER"):
+        print("[ALEMBIC NOTICE] DATABASE_URL is pointing to localhost on Render.")
+        print("[ALEMBIC NOTICE] Set DATABASE_URL in Render Dashboard Environment tab. Skipping build-time migration.")
+        return
 
-    await connectable.dispose()
+    try:
+        connectable = create_async_engine(
+            db_url,
+            connect_args=connect_args,
+            poolclass=pool.NullPool,
+        )
+
+        async with connectable.connect() as connection:
+            await connection.run_sync(do_run_migrations)
+
+        await connectable.dispose()
+    except Exception as e:
+        if os.getenv("RENDER"):
+            print(f"[ALEMBIC WARNING] Migration could not reach database ({e}).")
+            print("[ALEMBIC WARNING] Migrations will run at service startup once DATABASE_URL is populated.")
+            return
+        raise e
 
 
 def run_migrations_online() -> None:

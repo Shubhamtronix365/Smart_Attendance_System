@@ -300,8 +300,8 @@ This application is built for high-performance production hosting across:
    - If using **Blueprint**, select `render.yaml` in this repository for 1-click provisioning!
    - If setting up manually:
      - **Environment:** Python 3
-     - **Build Command:** `pip install -r requirements.txt && alembic upgrade head`
-     - **Start Command:** `uvicorn server.main:app --host 0.0.0.0 --port $PORT`
+     - **Build Command:** `pip install -r requirements.txt`
+     - **Start Command:** `sh -c "alembic upgrade head && uvicorn server.main:app --host 0.0.0.0 --port $PORT"`
 3. Add the following **Environment Variables** in Render:
    - `DATABASE_URL`: *(Your Neon DB connection string)*
    - `JWT_SECRET`: *(A random 64-character secret string)*
