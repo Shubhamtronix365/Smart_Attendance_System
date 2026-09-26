@@ -155,6 +155,16 @@ Smart_Attendance_System/
 - `openpyxl` — Excel spreadsheet creation (reports)
 - `httpx` — Asynchronous HTTP clients
 
+### Frontend (NPM)
+- `next` (v14.2.35) — React framework with App Router
+- `react` & `react-dom` (v18) — Core UI framework
+- `framer-motion` (v11.18.2) — Fluid animations and toast transitions
+- `three` & `@react-three/fiber` & `@react-three/drei` — 3D interactive hardware canvas
+- `lucide-react` — Icon system
+- `axios` — HTTP client with interceptors
+- `recharts` — Dashboard analytics charts
+- `tailwindcss` — Utility-first styling
+
 ---
 
 ## Environment Variables
@@ -193,9 +203,44 @@ Smart_Attendance_System/
 - `PUT /api/attendance/{id}` — Override existing check-in/out entry (Admin only).
 - `GET /api/attendance/stats/today` — Metrics summary counts for today's logs (Admin only).
 
-### Biometric ESP32 Device
-- `POST /api/device/checkin` — biometrics scanner check-in/checkout event receiver (Device key required).
-- `POST /api/device/register_fingerprint` — Map fingerprint scanner slots to employee IDs.
+### Biometric & RFID ESP32 Tronix Device (WebSocket + REST)
+- `ws://<HOST>:8000/ws/device` — Persistent outbound WebSocket connection for ESP32 hardware client. Enables real-time bidirectional messaging from ANY Wi-Fi network, mobile hotspot, or remote office.
+- `ws://<HOST>:8000/ws/client` — Real-time WebSocket feed for web browser clients (live LCD mirror, sensor step animations, online status).
+- `POST /api/device/checkin` — Dual punch receiver via `fingerprint_id` (1–127) OR `rfid_uid` (X-Device-Key required).
+- `POST /api/device/enroll/start` — Initiate interactive hardware enrollment session and reserve next free fingerprint slot.
+- `GET /api/device/enroll/poll` — Polled periodically by ESP32 over local Wi-Fi to receive pending enrollment tasks (REST mode).
+- `POST /api/device/enroll/step` — State event reporter invoked by ESP32 (scan 1, lift finger, scan 2, store template, scan RFID).
+- `GET /api/device/enroll/status` — Live status poll endpoint for the web frontend to render virtual 16x2 LCD and telemetry.
+- `POST /api/device/enroll/finalize` — Finalize employee creation with synced hardware fields and custom company details.
+- `POST /api/device/enroll/cancel` — Abort active enrollment session and reset device.
+
+### ESP32 Firmware Options & Remote Network Setup
+- **Firmware Files:**
+  - `firmware/attendace_device_tronix_ws.ino` — **WebSocket Version (Recommended)**: Works across different Wi-Fi networks, mobile hotspots, and remote branch locations with zero-latency full duplex streaming.
+  - `firmware/attendace_device_tronix_wifi.ino` — **HTTP REST Version**: Operates via local LAN HTTP polling.
+- **Hardware Pinouts:**
+  - R307S Fingerprint: `HardwareSerial(2)` on GPIO 16 (RX), GPIO 17 (TX), 57600 baud.
+  - RC522 RFID: SPI on SCK 18, MISO 19, MOSI 23, SS 5, RST 4.
+  - 16x2 I2C LCD: Address `0x27` on SDA 21, SCL 22.
+  - DS3231 RTC: I2C on SDA 21, SCL 22.
+  - Buzzer: GPIO 27.
+- **How It Works Across Different Wi-Fi Networks:**
+  - **Local LAN Mode:** Set `WS_HOST = "172.20.176.83"`, `WS_PORT = 8000`, `USE_SSL = false`.
+  - **Remote WAN / Anywhere in the World Mode:**
+    1. Start a free public tunnel on your PC:
+       ```bash
+       # Using ngrok:
+       ngrok http 8000
+       # Or using Cloudflare Tunnel:
+       cloudflared tunnel --url http://localhost:8000
+       ```
+    2. In `attendace_device_tronix_ws.ino`, set:
+       ```cpp
+       const char* WS_HOST = "your-subdomain.ngrok-free.app"; // public domain
+       const int   WS_PORT = 443;
+       const bool  USE_SSL = true;
+       ```
+    3. The ESP32 can now be connected to mobile hotspot, mobile 4G dongle, or a friend's Wi-Fi miles away, and it will stay connected and push real-time biometric enrollment and punches to your dashboard!
 
 ### Leaves
 - `GET /api/leave` — List leaves.
@@ -219,6 +264,81 @@ Smart_Attendance_System/
 ### System Settings (Admin only)
 - `GET /api/settings` — Retrieve standard shift window hours, late grace threshold, overtime pay multiplier, and ESP32 authorization key.
 - `PUT /api/settings` — Dynamically update active settings in-memory and write changes to the `.env` configuration file.
+
+---
+
+## Production Cloud Deployment (Cloudflare + Render + Neon DB)
+
+This application is built for high-performance production hosting across:
+- **Database:** [Neon DB](https://neon.tech) (Serverless PostgreSQL with auto-scaling & pooling)
+- **Backend:** [Render](https://render.com) (FastAPI web service with native WebSocket support)
+- **Frontend:** [Cloudflare Pages](https://pages.cloudflare.com) (Global edge CDN for Next.js 14)
+- **IoT Device:** ESP32 Tronix connecting over secure `wss://` from any location
+
+```
++--------------------------+       WSS (Port 443)      +---------------------------------+
+|   ESP32 Tronix Device    | ------------------------> |         Render Backend          |
+| (Mobile Hotspot/Any WiFi)|                           |     (FastAPI + WebSockets)      |
++--------------------------+                           +---------------------------------+
+                                                                  |                ^
+                                                   SSL Connection |                | HTTPS & WSS
+                                                                  v                |
+                                                      +----------------+   +----------------------+
+                                                      |    Neon DB     |   |   Cloudflare Pages   |
+                                                      | (PostgreSQL)   |   |   (Next.js Frontend) |
+                                                      +----------------+   +----------------------+
+```
+
+### 1. Database Setup on Neon DB
+1. Create a free account at [neon.tech](https://neon.tech) and create a new project.
+2. Under **Connection Details**, copy your connection string (e.g., `postgresql://username:password@ep-xyz-pooler.region.neon.tech/neondb?sslmode=require`).
+3. *(The backend automatically converts `postgresql://` to `postgresql+asyncpg://` and handles SSL arguments with connection pre-pinging).*
+
+### 2. Backend Deployment on Render
+1. Push your repository to GitHub.
+2. In [Render Dashboard](https://dashboard.render.com), click **New +** $\rightarrow$ **Blueprint** (or **Web Service**).
+   - If using **Blueprint**, select `render.yaml` in this repository for 1-click provisioning!
+   - If setting up manually:
+     - **Environment:** Python 3
+     - **Build Command:** `pip install -r requirements.txt && alembic upgrade head`
+     - **Start Command:** `uvicorn server.main:app --host 0.0.0.0 --port $PORT`
+3. Add the following **Environment Variables** in Render:
+   - `DATABASE_URL`: *(Your Neon DB connection string)*
+   - `JWT_SECRET`: *(A random 64-character secret string)*
+   - `DEVICE_API_KEY`: `esp32_device_secret_key`
+   - `FRONTEND_URL`: `https://your-project.pages.dev` *(Your Cloudflare Pages domain)*
+4. Once deployed, Render will provide your public URL: `https://your-backend.onrender.com`.
+
+> [!TIP]
+> **24/7 Keepalive:** Render's free tier usually spins down after 15 minutes of inactivity. However, because the ESP32 maintains an open WebSocket connection with a 25-second keepalive ping, **your Render instance stays awake 24/7 automatically!**
+
+### 3. Frontend Deployment on Cloudflare Pages
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) $\rightarrow$ **Compute (Workers & Pages)** $\rightarrow$ **Create Application** $\rightarrow$ **Pages** $\rightarrow$ **Connect to Git**.
+2. Select your repository and configure build settings:
+   - **Framework Preset:** Next.js
+   - **Root directory:** `client`
+   - **Build command:** `npm run build`
+   - **Build output directory:** `.next`
+3. Under **Environment variables**, add:
+   - `NEXT_PUBLIC_API_URL`: `https://your-backend.onrender.com`
+   - `NEXT_PUBLIC_WS_URL`: `wss://your-backend.onrender.com/ws/client`
+4. Deploy! Your web application will be live across Cloudflare's global edge network.
+
+### 4. ESP32 Tronix Firmware Configuration
+Open [`firmware/attendace_device_tronix_ws.ino`](file:///c:/Users/Hi/Desktop/Smart_Attendance_System/firmware/attendace_device_tronix_ws.ino) in Arduino IDE:
+1. Set your Wi-Fi credentials (can be home Wi-Fi, office Wi-Fi, or mobile 4G hotspot):
+   ```cpp
+   const char* WIFI_SSID     = "Your_WiFi_Name";
+   const char* WIFI_PASSWORD = "Your_WiFi_Password";
+   ```
+2. Set the Render host under Option 2:
+   ```cpp
+   const char* WS_HOST       = "your-backend.onrender.com"; // Your Render domain (no https://)
+   const int   WS_PORT       = 443;                         // Render SSL port
+   const char* WS_PATH       = "/ws/device?device_id=ESP32_TRONIX_01&api_key=esp32_device_secret_key";
+   const bool  USE_SSL       = true;                        // Enables wss:// secure encryption
+   ```
+3. Flash the code to your ESP32 board. The device will connect to your Render cloud server from any location in the world!
 
 ---
 
