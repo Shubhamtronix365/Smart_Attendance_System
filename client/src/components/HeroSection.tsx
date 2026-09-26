@@ -2,6 +2,8 @@
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, useAnimationFrame, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { Fingerprint, Activity, DollarSign, Clock, ArrowRight, Play, Shield, Zap } from "lucide-react";
 
@@ -289,6 +291,7 @@ function PropChip({
 
 // ─── Hero Section ─────────────────────────────────────────────────────────────
 export default function HeroSection() {
+  const router = useRouter();
   const sectionRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({ target: sectionRef });
   const rightY = useTransform(scrollYProgress, [0, 1], [0, -60]);
@@ -333,8 +336,53 @@ export default function HeroSection() {
         }}
       />
 
+      {/* ── Top Navigation Bar ── */}
+      <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-12 py-5 max-w-7xl mx-auto border-b border-white/5 backdrop-blur-md">
+        <Link href="/" className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{
+              background: "linear-gradient(135deg, rgba(0,245,255,0.2), rgba(124,58,237,0.2))",
+              border: "1px solid rgba(0,245,255,0.4)",
+            }}
+          >
+            <Fingerprint size={22} className="text-cyan-400" />
+          </div>
+          <span className="font-extrabold text-xl text-white tracking-tight">
+            Smart<span className="text-cyan-400">Attend</span>
+          </span>
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push("/employee/dashboard")}
+            className="hidden sm:inline-flex px-4 py-2 rounded-xl text-xs font-semibold text-white/70 hover:text-white border border-white/10 hover:border-white/20 transition-colors cursor-pointer"
+          >
+            Employee Portal
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/admin/dashboard")}
+            className="hidden sm:inline-flex px-4 py-2 rounded-xl text-xs font-semibold text-cyan-400 hover:text-cyan-300 border border-cyan-400/30 hover:border-cyan-400/50 bg-cyan-400/10 transition-colors cursor-pointer"
+          >
+            Admin Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/login")}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-black shadow-lg transition-transform hover:scale-105 cursor-pointer"
+            style={{
+              background: "linear-gradient(135deg, #00f5ff, #7c3aed)",
+            }}
+          >
+            Sign In
+          </button>
+        </div>
+      </header>
+
       {/* ── Main Content ── */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-12 flex flex-col lg:flex-row items-center gap-12 lg:gap-0 pt-24 pb-16">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-12 flex flex-col lg:flex-row items-center gap-12 lg:gap-0 pt-32 pb-16">
 
         {/* ── LEFT SIDE (60%) ── */}
         <motion.div
@@ -435,13 +483,14 @@ export default function HeroSection() {
           <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-4">
             {/* Primary CTA */}
             <MagneticButton
-              className="group flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-bold text-black relative overflow-hidden cursor-pointer"
+              onClick={() => router.push("/login")}
+              className="group flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-bold text-black relative overflow-hidden cursor-pointer shadow-xl transition-all"
               style={{
                 background: "linear-gradient(135deg, #00f5ff, #7c3aed)",
               } as React.CSSProperties}
             >
               <Shield size={18} />
-              Get Started
+              Get Started / Sign In
               <ArrowRight
                 size={16}
                 className="transition-transform group-hover:translate-x-1"
@@ -450,12 +499,14 @@ export default function HeroSection() {
 
             {/* Secondary CTA */}
             <motion.button
+              type="button"
+              onClick={() => router.push("/admin/dashboard")}
               whileHover={{
                 borderColor: "rgba(0,245,255,0.6)",
                 boxShadow: "0 0 24px rgba(0,245,255,0.15)",
                 color: "#00f5ff",
               }}
-              className="flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-semibold text-white/70 border border-white/15 backdrop-blur-md transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-semibold text-white/80 border border-white/15 backdrop-blur-md transition-colors cursor-pointer"
               style={{ background: "rgba(255,255,255,0.03)" }}
             >
               <div
@@ -467,8 +518,35 @@ export default function HeroSection() {
               >
                 <Play size={12} fill="currentColor" className="text-cyan-400 ml-0.5" />
               </div>
-              Watch Demo
+              Admin Portal
             </motion.button>
+          </motion.div>
+
+          {/* Quick Route Launchers Grid */}
+          <motion.div variants={itemVariants} className="pt-2">
+            <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">
+              ⚡ Instant Route Access:
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {[
+                { label: "Sign In", path: "/login", desc: "Access accounts", color: "hover:border-cyan-400/50 hover:bg-cyan-500/10 text-cyan-400" },
+                { label: "Admin Dashboard", path: "/admin/dashboard", desc: "Live analytics & metrics", color: "hover:border-violet-400/50 hover:bg-violet-500/10 text-violet-400" },
+                { label: "Attendance Logs", path: "/admin/attendance", desc: "Biometric daily registry", color: "hover:border-emerald-400/50 hover:bg-emerald-500/10 text-emerald-400" },
+                { label: "Employee List", path: "/admin/employees", desc: "Add staff & fingers", color: "hover:border-amber-400/50 hover:bg-amber-500/10 text-amber-400" },
+                { label: "Payroll", path: "/admin/payroll", desc: "Generate payslips & PDF", color: "hover:border-rose-400/50 hover:bg-rose-500/10 text-rose-400" },
+                { label: "Employee Portal", path: "/employee/dashboard", desc: "Punch status & leave", color: "hover:border-sky-400/50 hover:bg-sky-500/10 text-sky-400" },
+              ].map((btn) => (
+                <button
+                  key={btn.path}
+                  type="button"
+                  onClick={() => router.push(btn.path)}
+                  className={`flex flex-col text-left p-3 rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md transition-all cursor-pointer ${btn.color}`}
+                >
+                  <span className="text-white text-xs font-bold">{btn.label}</span>
+                  <span className="text-white/40 text-[10px]">{btn.desc}</span>
+                </button>
+              ))}
+            </div>
           </motion.div>
 
           {/* Stats row */}
