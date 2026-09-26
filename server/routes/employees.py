@@ -77,6 +77,7 @@ async def create_employee(
     plain_pwd = emp_data.password if emp_data.password else None
     
     db_employee = Employee(
+        employee_code=emp_data.employee_code,
         name=emp_data.name,
         email=emp_data.email,
         phone=emp_data.phone,
@@ -84,6 +85,7 @@ async def create_employee(
         designation=emp_data.designation,
         salary=emp_data.salary,
         fingerprint_id=emp_data.fingerprint_id,
+        rfid_uid=emp_data.rfid_uid.strip().upper() if emp_data.rfid_uid else None,
         role=emp_data.role,
         hashed_password=hashed_pwd,
         plain_password=plain_pwd
