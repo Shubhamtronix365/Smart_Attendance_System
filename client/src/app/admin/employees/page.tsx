@@ -6,10 +6,11 @@ import {
   Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight,
   Filter, Fingerprint, User, Mail, Phone, Building2, Briefcase,
   DollarSign, Calendar, CheckCircle2, XCircle, AlertTriangle,
-  MoreVertical, Lock, Eye, EyeOff,
+  MoreVertical, Lock, Eye, EyeOff, Cpu, Radio,
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
+import HardwareEnrollmentModal from "@/components/HardwareEnrollmentModal";
 import { employeesApi } from "@/services/api";
 import { useToast } from "@/components/ToastProvider";
 
@@ -17,6 +18,7 @@ import { useToast } from "@/components/ToastProvider";
 interface Employee {
   id: string;
   empId: string;
+  employeeCode?: string;
   name: string;
   email: string;
   phone: string;
@@ -24,6 +26,7 @@ interface Employee {
   designation: string;
   basicSalary: number;
   fingerprintId: string;
+  rfidUid?: string;
   joiningDate: string;
   status: "active" | "inactive";
   avatar: string;
@@ -385,7 +388,19 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
           </div>
           <div>
             <p className="text-white text-sm font-semibold">{emp.name}</p>
-            <p className="text-white/30 text-xs">{emp.empId}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+              <span className="text-white/40 text-xs font-mono">{emp.employeeCode || emp.empId}</span>
+              {emp.fingerprintId && (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1.5 py-0.5 rounded font-mono">
+                  <Fingerprint size={10} /> FP #{emp.fingerprintId}
+                </span>
+              )}
+              {emp.rfidUid && (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-mono">
+                  <Radio size={10} /> {emp.rfidUid}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </td>
@@ -451,6 +466,7 @@ export default function EmployeesPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
+  const [showHardwareModal, setShowHardwareModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [deleteEmployee, setDeleteEmployee] = useState<Employee | null>(null);
 
@@ -462,6 +478,7 @@ export default function EmployeesPage() {
       const mapped = res.data.map((emp: any) => ({
         id: String(emp.employee_id),
         empId: `EMP${String(emp.employee_id).padStart(3, "0")}`,
+        employeeCode: emp.employee_code || `EMP${String(emp.employee_id).padStart(3, "0")}`,
         name: emp.name,
         email: emp.email,
         phone: emp.phone || "",
@@ -469,6 +486,7 @@ export default function EmployeesPage() {
         designation: emp.designation || "",
         basicSalary: Number(emp.salary) || 0,
         fingerprintId: emp.fingerprint_id ? String(emp.fingerprint_id) : "",
+        rfidUid: emp.rfid_uid || "",
         joiningDate: emp.joining_date || "",
         status: emp.is_active ? "active" : "inactive",
         avatar: (emp.name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
@@ -635,18 +653,31 @@ export default function EmployeesPage() {
               <ChevronRight size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none rotate-90" />
             </div>
 
-            {/* Add button */}
-            <motion.button
-              id="add-employee-btn"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black ml-auto"
-              style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
-            >
-              <Plus size={15} />
-              Add Employee
-            </motion.button>
+            {/* Buttons */}
+            <div className="flex items-center gap-2.5 ml-auto">
+              <motion.button
+                id="smart-enroll-btn"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowHardwareModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/10 transition-all shadow-[0_0_15px_rgba(0,245,255,0.15)]"
+              >
+                <Cpu size={15} className="text-cyan-400 animate-pulse" />
+                <span>⚡ Smart Enroll (ESP32 Tronix)</span>
+              </motion.button>
+
+              <motion.button
+                id="add-employee-btn"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black"
+                style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+              >
+                <Plus size={15} />
+                Add Employee
+              </motion.button>
+            </div>
           </motion.div>
 
           {/* Table */}
@@ -774,6 +805,15 @@ export default function EmployeesPage() {
           <DeleteDialog employee={deleteEmployee} onClose={() => setDeleteEmployee(null)} onConfirm={handleDelete} />
         )}
       </AnimatePresence>
+
+      {/* ESP32 Tronix Hardware Enrollment Modal */}
+      <HardwareEnrollmentModal
+        isOpen={showHardwareModal}
+        onClose={() => setShowHardwareModal(false)}
+        onSuccess={() => {
+          fetchEmployees();
+        }}
+      />
     </div>
   );
 }
