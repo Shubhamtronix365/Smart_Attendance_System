@@ -16,18 +16,17 @@ const char* WIFI_SSID     = "YOUR_WIFI_SSID";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
 // Server WebSocket Connection Settings:
-// [Option 1: Local Testing] (When on same LAN)
-const char* WS_HOST       = "172.20.176.83";
-const int   WS_PORT       = 8000;
+// [Production on Render Cloud] (Connects from ANY Wi-Fi, Office, or Mobile Hotspot!)
+const char* WS_HOST       = "smart-attendance-backend-tzp4.onrender.com"; // Render backend domain (without https://)
+const int   WS_PORT       = 443;                                          // Secure SSL WSS port
 const char* WS_PATH       = "/ws/device?device_id=ESP32_TRONIX_01&api_key=esp32_device_secret_key";
-const bool  USE_SSL       = false;
+const bool  USE_SSL       = true;                                         // true enables wss:// encryption
 
-// [Option 2: Production on Render Cloud] (Connects from ANY Wi-Fi, Office, or Mobile Hotspot!)
-// To deploy, comment Option 1 above and uncomment Option 2 with your Render hostname:
-// const char* WS_HOST    = "smart-attendance-backend.onrender.com"; // Your Render domain (no https://)
-// const int   WS_PORT    = 443;                                     // Render secure SSL port
+// [Option 2: Local LAN Testing] (Only when testing with localhost on same Wi-Fi)
+// const char* WS_HOST    = "192.168.1.100"; // Your PC's LAN IP
+// const int   WS_PORT    = 8000;
 // const char* WS_PATH    = "/ws/device?device_id=ESP32_TRONIX_01&api_key=esp32_device_secret_key";
-// const bool  USE_SSL    = true;                                    // true enables wss:// encryption
+// const bool  USE_SSL    = false;
 
 // =====================================================
 //                 R307S FINGERPRINT SENSOR
