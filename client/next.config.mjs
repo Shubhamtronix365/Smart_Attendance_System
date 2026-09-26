@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
+  transpilePackages: ["three", "@react-three/fiber", "@react-three/drei", "framer-motion"],
   webpack: (config) => {
     // Handle Three.js / R3F modules
     config.externals = config.externals || [];
