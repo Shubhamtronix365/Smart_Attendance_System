@@ -7,13 +7,15 @@ class Employee(Base):
     __tablename__ = "employees"
 
     employee_id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_code = Column(String(50), nullable=True)  # Hardware Employee ID (e.g. EMP001)
     name = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, nullable=False)
     phone = Column(String(20), nullable=True)
     department = Column(String(100), nullable=True)
     designation = Column(String(100), nullable=True)
     salary = Column(Numeric(12, 2), nullable=False)
-    fingerprint_id = Column(Integer, unique=True, nullable=True)  # ID stored in sensor
+    fingerprint_id = Column(Integer, unique=True, nullable=True)  # ID stored in sensor (1-127)
+    rfid_uid = Column(String(50), unique=True, nullable=True)  # RC522 RFID Card UID (e.g. 'A1 B2 C3 D4')
     joining_date = Column(Date, default=date.today)
     is_active = Column(Boolean, default=True)
     hashed_password = Column(String, nullable=True)  # for web login
