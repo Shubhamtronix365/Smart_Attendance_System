@@ -1,0 +1,357 @@
+﻿import json
+import logging
+from datetime import date, datetime
+from typing import Dict, Set, Optional
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from sqlalchemy import select, and_
+
+from server.config import settings
+from server.database.connection import async_session_maker
+from server.models import Employee, Attendance, AttendanceStatus
+from server.services.attendance_service import determine_status, calculate_hours
+from server.routes.device import enrollment_session, get_next_free_fingerprint_id
+
+logger = logging.getLogger("smart_attendance.websocket")
+router = APIRouter(tags=["WebSockets"])
+
+# ─── WebSocket Connection Manager ─────────────────────────────────────────────
+class ConnectionManager:
+    def __init__(self):
+        # Web clients (browsers / admin dashboard / enrollment modal)
+        self.active_clients: Set[WebSocket] = set()
+        # ESP32 hardware devices mapped by device_id (e.g. "ESP32_TRONIX_01")
+        self.active_devices: Dict[str, WebSocket] = {}
+
+    # ── Client Handlers ────────────────────────
+    async def connect_client(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_clients.add(websocket)
+        logger.info(f"Web client connected. Total active clients: {len(self.active_clients)}")
+        # Send initial status snapshot to client
+        is_hardware_online = len(self.active_devices) > 0
+        device_ids = list(self.active_devices.keys())
+        await websocket.send_json({
+            "event": "system_status",
+            "hardware_online": is_hardware_online,
+            "connected_devices": device_ids,
+            "enrollment_state": enrollment_session.to_dict()
+        })
+
+    def disconnect_client(self, websocket: WebSocket):
+        self.active_clients.discard(websocket)
+        logger.info(f"Web client disconnected. Total active clients: {len(self.active_clients)}")
+
+    async def broadcast_to_clients(self, message: dict):
+        dead_clients = set()
+        for client in self.active_clients:
+            try:
+                await client.send_json(message)
+            except Exception as e:
+                logger.warning(f"Error broadcasting to client: {e}")
+                dead_clients.add(client)
+        for dead in dead_clients:
+            self.active_clients.discard(dead)
+
+    # ── Device Handlers ────────────────────────
+    async def connect_device(self, device_id: str, websocket: WebSocket):
+        await websocket.accept()
+        self.active_devices[device_id] = websocket
+        logger.info(f"Hardware device '{device_id}' connected via WebSocket. Total devices: {len(self.active_devices)}")
+        # Notify web clients that hardware is now online
+        await self.broadcast_to_clients({
+            "event": "device_online",
+            "device_id": device_id,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+
+    def disconnect_device(self, device_id: str):
+        if device_id in self.active_devices:
+            del self.active_devices[device_id]
+            logger.info(f"Hardware device '{device_id}' disconnected. Remaining devices: {len(self.active_devices)}")
+        # Notify web clients
+        import asyncio
+        asyncio.create_task(self.broadcast_to_clients({
+            "event": "device_offline",
+            "device_id": device_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }))
+
+    async def send_to_device(self, device_id: str, message: dict) -> bool:
+        ws = self.active_devices.get(device_id)
+        if not ws and len(self.active_devices) > 0:
+            # Fall back to first connected device if specific id not found
+            ws = next(iter(self.active_devices.values()))
+        if ws:
+            try:
+                await ws.send_json(message)
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send to device '{device_id}': {e}")
+                return False
+        return False
+
+    async def broadcast_to_devices(self, message: dict):
+        for dev_id, ws in list(self.active_devices.items()):
+            try:
+                await ws.send_json(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to device '{dev_id}': {e}")
+
+ws_manager = ConnectionManager()
+
+# ─── Database Attendance Helper for WS Check-in ──────────────────────────────
+async def process_attendance_punch(fingerprint_id: Optional[int], rfid_uid: Optional[str]) -> dict:
+    async with async_session_maker() as db:
+        employee = None
+        scan_source = "biometric"
+
+        if fingerprint_id is not None and fingerprint_id > 0:
+            stmt = select(Employee).where(
+                and_(
+                    Employee.fingerprint_id == fingerprint_id,
+                    Employee.is_active.is_(True)
+                )
+            )
+            res = await db.execute(stmt)
+            employee = res.scalar_one_or_none()
+            scan_source = "biometric"
+        elif rfid_uid:
+            clean_rfid = rfid_uid.strip().upper()
+            stmt = select(Employee).where(
+                and_(
+                    Employee.rfid_uid == clean_rfid,
+                    Employee.is_active.is_(True)
+                )
+            )
+            res = await db.execute(stmt)
+            employee = res.scalar_one_or_none()
+            scan_source = "rfid"
+
+        if not employee:
+            return {
+                "success": False,
+                "status": "not_found",
+                "message": "User not found or inactive",
+                "employee_name": "Unknown",
+                "method": scan_source
+            }
+
+        today = date.today()
+        now = datetime.utcnow()
+
+        att_stmt = select(Attendance).where(
+            and_(
+                Attendance.employee_id == employee.employee_id,
+                Attendance.date == today
+            )
+        )
+        att_res = await db.execute(att_stmt)
+        attendance = att_res.scalar_one_or_none()
+
+        if not attendance:
+            check_in_time = now.time()
+            attendance_status = determine_status(check_in_time)
+
+            attendance = Attendance(
+                employee_id=employee.employee_id,
+                date=today,
+                check_in=now,
+                check_out=None,
+                status=attendance_status,
+                source=scan_source,
+                created_at=now
+            )
+            db.add(attendance)
+            await db.commit()
+            status_msg = "check_in"
+            msg = f"Welcome {employee.name}!"
+        else:
+            if attendance.check_out is not None:
+                return {
+                    "success": True,
+                    "status": "already_done",
+                    "message": f"Already checked out today, {employee.name}.",
+                    "employee_name": employee.name,
+                    "method": scan_source
+                }
+
+            attendance.check_out = now
+            working_hours, overtime_hours = calculate_hours(attendance.check_in, now)
+            attendance.working_hours = working_hours
+            attendance.overtime_hours = overtime_hours
+            if attendance.status == AttendanceStatus.ABSENT:
+                attendance.status = AttendanceStatus.PRESENT
+            await db.commit()
+            status_msg = "check_out"
+            msg = f"Goodbye {employee.name}! ({working_hours:.1f}h)"
+
+        return {
+            "success": True,
+            "status": status_msg,
+            "message": msg,
+            "employee_name": employee.name,
+            "method": scan_source,
+            "time": now.strftime("%H:%M:%S")
+        }
+
+# ─── Endpoint: Web Client WebSocket (/ws/client) ─────────────────────────────
+@router.websocket("/ws/client")
+async def websocket_client_endpoint(websocket: WebSocket):
+    """
+    Subscribed to by the web browser frontend (e.g. HardwareEnrollmentModal and Admin Dashboard).
+    Receives instantaneous hardware telemetry, LCD frame updates, and live attendance feeds.
+    """
+    await ws_manager.connect_client(websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            action = data.get("action")
+            logger.info(f"Received action from web client: {action}")
+
+            # Client initiates enrollment via WebSocket
+            if action == "start_enroll":
+                emp_code = data.get("employee_code", "EMP001")
+                emp_name = data.get("name", "New Employee")
+
+                async with async_session_maker() as db:
+                    free_fid = await get_next_free_fingerprint_id(db)
+
+                enrollment_session.reset()
+                enrollment_session.active = True
+                enrollment_session.status = "initiated"
+                enrollment_session.employee_code = emp_code
+                enrollment_session.name = emp_name
+                enrollment_session.fingerprint_id = free_fid
+                enrollment_session.lcd_line1 = "Register Emp"
+                enrollment_session.lcd_line2 = emp_name[:16]
+                enrollment_session.message = f"Starting enrollment for {emp_name}. Assigned slot #{free_fid}."
+
+                # Send command directly to ESP32 device
+                command_payload = {
+                    "command": "start_enroll",
+                    "session_id": "ws_session",
+                    "employee_code": emp_code,
+                    "name": emp_name,
+                    "fingerprint_id": free_fid
+                }
+                sent = await ws_manager.send_to_device("ESP32_TRONIX_01", command_payload)
+                if not sent:
+                    await ws_manager.broadcast_to_devices(command_payload)
+
+                # Broadcast state update to all web clients
+                await ws_manager.broadcast_to_clients({
+                    "event": "enrollment_update",
+                    "data": enrollment_session.to_dict()
+                })
+
+            elif action == "cancel_enroll":
+                enrollment_session.reset()
+                enrollment_session.status = "cancelled"
+                enrollment_session.message = "Registration cancelled."
+
+                await ws_manager.broadcast_to_devices({
+                    "command": "cancel_enroll"
+                })
+                await ws_manager.broadcast_to_clients({
+                    "event": "enrollment_update",
+                    "data": enrollment_session.to_dict()
+                })
+
+    except WebSocketDisconnect:
+        ws_manager.disconnect_client(websocket)
+    except Exception as e:
+        logger.error(f"Error on web client websocket: {e}")
+        ws_manager.disconnect_client(websocket)
+
+# ─── Endpoint: ESP32 Hardware Device WebSocket (/ws/device) ───────────────────
+@router.websocket("/ws/device")
+async def websocket_device_endpoint(
+    websocket: WebSocket,
+    device_id: str = Query("ESP32_TRONIX_01"),
+    api_key: Optional[str] = Query(None)
+):
+    """
+    Subscribed to by the ESP32 Tronix hardware client over persistent WebSocket.
+    Can connect from any network (local Wi-Fi, remote branch, or mobile hotspot).
+    """
+    # Verify API key
+    if api_key and api_key != settings.DEVICE_API_KEY:
+        await websocket.close(code=1008, reason="Unauthorized device key")
+        return
+
+    await ws_manager.connect_device(device_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            event = data.get("event")
+
+            # 1. Hardware enrollment step update
+            if event == "step":
+                step = data.get("step", "unknown")
+                fid = data.get("fingerprint_id")
+                rfid = data.get("rfid_uid")
+                l1 = data.get("lcd_line1", "")
+                l2 = data.get("lcd_line2", "")
+                err = data.get("error_message")
+
+                enrollment_session.status = step
+                if fid:
+                    enrollment_session.fingerprint_id = int(fid)
+                if rfid:
+                    enrollment_session.rfid_uid = rfid
+                if l1:
+                    enrollment_session.lcd_line1 = l1
+                if l2:
+                    enrollment_session.lcd_line2 = l2
+                if err:
+                    enrollment_session.error = err
+                enrollment_session.updated_at = datetime.utcnow()
+
+                # Broadcast live virtual LCD & sensor state to web client
+                await ws_manager.broadcast_to_clients({
+                    "event": "enrollment_step",
+                    "step": step,
+                    "lcd_line1": enrollment_session.lcd_line1,
+                    "lcd_line2": enrollment_session.lcd_line2,
+                    "fingerprint_id": enrollment_session.fingerprint_id,
+                    "rfid_uid": enrollment_session.rfid_uid,
+                    "error": enrollment_session.error,
+                    "state": enrollment_session.to_dict()
+                })
+
+            # 2. Hardware attendance punch (Fingerprint or RFID)
+            elif event == "checkin":
+                fid = data.get("fingerprint_id")
+                rfid = data.get("rfid_uid")
+                result = await process_attendance_punch(fid, rfid)
+
+                # Send response back to ESP32 device
+                await websocket.send_json({
+                    "event": "checkin_result",
+                    "success": result["success"],
+                    "status": result["status"],
+                    "message": result["message"],
+                    "employee_name": result.get("employee_name", "Unknown"),
+                    "punch_type": result.get("status", "PUNCH").upper()
+                })
+
+                # Broadcast live checkin feed to all connected web clients
+                if result["success"]:
+                    await ws_manager.broadcast_to_clients({
+                        "event": "live_attendance",
+                        "employee_name": result["employee_name"],
+                        "punch_type": result["status"],
+                        "method": result["method"],
+                        "time": result["time"]
+                    })
+
+            # 3. Heartbeat ping-pong
+            elif event == "ping":
+                await websocket.send_json({"event": "pong", "time": datetime.utcnow().isoformat()})
+
+    except WebSocketDisconnect:
+        ws_manager.disconnect_device(device_id)
+    except Exception as e:
+        logger.error(f"Error on device websocket '{device_id}': {e}")
+        ws_manager.disconnect_device(device_id)
