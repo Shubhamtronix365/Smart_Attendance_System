@@ -18,6 +18,7 @@ from server.routes.leave import router as leave_router
 from server.routes.payroll import router as payroll_router
 from server.routes.reports import router as reports_router
 from server.routes.settings import router as settings_router
+from server.routes.websocket import router as websocket_router
 
 # Setup logger
 logging.basicConfig(level=logging.INFO)
@@ -34,11 +35,14 @@ origins = [
     settings.FRONTEND_URL,
     "http://localhost:3000",  # Next.js dev server default
     "http://127.0.0.1:3000",
+    "http://172.20.176.83:3000",
+    "http://172.20.176.83:8000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https:\/\/.*\.pages\.dev$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,6 +86,7 @@ app.include_router(leave_router, prefix="/api")
 app.include_router(payroll_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(websocket_router)
 
 @app.get("/")
 async def root():
