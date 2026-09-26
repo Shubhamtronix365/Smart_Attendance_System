@@ -114,5 +114,17 @@ export const settingsApi = {
   }) => api.put("/api/settings", data).then((res) => res.data),
 };
 
+// ─── Hardware Enrollment (ESP32) ───────────────────────────────────────────
+export const deviceApi = {
+  startEnrollment: (data: { employee_code: string; name: string }) =>
+    api.post("/api/device/enroll/start", data).then((res) => res.data),
+  getEnrollmentStatus: () =>
+    api.get("/api/device/enroll/status").then((res) => res.data),
+  cancelEnrollment: () =>
+    api.post("/api/device/enroll/cancel").then((res) => res.data),
+  finalizeEnrollment: (data: unknown) =>
+    api.post("/api/device/enroll/finalize", data).then((res) => res.data),
+};
+
 export default api;
 
