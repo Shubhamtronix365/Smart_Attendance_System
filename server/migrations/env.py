@@ -26,23 +26,18 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 def get_normalized_url_and_args():
-    import re
-    db_url = settings.DATABASE_URL.strip()
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(settings.DATABASE_URL.strip())
+    scheme = parsed.scheme
+    if scheme in ("postgres", "postgresql"):
+        scheme = "postgresql+asyncpg"
 
-    # 1. Normalize driver scheme for asyncpg
-    if db_url.startswith("postgres://"):
-        db_url = "postgresql+asyncpg://" + db_url[len("postgres://"):]
-    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
-        db_url = "postgresql+asyncpg://" + db_url[len("postgresql://"):]
-
-    # 2. Handle Neon DB SSL & serverless pooling
     connect_args = {}
-    if "sslmode=" in db_url or "neon.tech" in db_url or "channel_binding=" in db_url:
-        db_url = re.sub(r"[?&](sslmode|channel_binding)=[^&]+", "", db_url)
-        db_url = db_url.replace("?&", "?").rstrip("?")
+    if "neon.tech" in parsed.netloc or "sslmode" in parsed.query or "ssl" in parsed.query or "channel_binding" in parsed.query:
         connect_args["ssl"] = "require"
 
-    return db_url, connect_args
+    clean_url = urlunparse((scheme, parsed.netloc, parsed.path, "", "", ""))
+    return clean_url, connect_args
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""

@@ -1,23 +1,23 @@
-import re
+from urllib.parse import urlparse, urlunparse
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from server.config import settings
 
-db_url = settings.DATABASE_URL.strip()
+def get_normalized_db_config(raw_url: str):
+    parsed = urlparse(raw_url.strip())
+    scheme = parsed.scheme
+    if scheme in ("postgres", "postgresql"):
+        scheme = "postgresql+asyncpg"
+    
+    connect_args = {}
+    if "neon.tech" in parsed.netloc or "sslmode" in parsed.query or "ssl" in parsed.query or "channel_binding" in parsed.query:
+        connect_args["ssl"] = "require"
+    
+    # Strip all query parameters for asyncpg
+    clean_url = urlunparse((scheme, parsed.netloc, parsed.path, "", "", ""))
+    return clean_url, connect_args
 
-# 1. Normalize driver scheme for asyncpg
-if db_url.startswith("postgres://"):
-    db_url = "postgresql+asyncpg://" + db_url[len("postgres://"):]
-elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+asyncpg://"):
-    db_url = "postgresql+asyncpg://" + db_url[len("postgresql://"):]
-
-# 2. Handle Neon DB SSL & serverless pooling
-connect_args = {}
-if "sslmode=" in db_url or "neon.tech" in db_url or "channel_binding=" in db_url:
-    # asyncpg expects ssl in connect_args and rejects query params like sslmode/channel_binding
-    db_url = re.sub(r"[?&](sslmode|channel_binding)=[^&]+", "", db_url)
-    db_url = db_url.replace("?&", "?").rstrip("?")
-    connect_args["ssl"] = "require"
+db_url, connect_args = get_normalized_db_config(settings.DATABASE_URL)
 
 # Create async engine for PostgreSQL via asyncpg
 engine = create_async_engine(
