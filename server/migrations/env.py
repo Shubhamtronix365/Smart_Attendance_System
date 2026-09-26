@@ -37,8 +37,9 @@ def get_normalized_url_and_args():
 
     # 2. Handle Neon DB SSL & serverless pooling
     connect_args = {}
-    if "sslmode=" in db_url or "neon.tech" in db_url:
-        db_url = re.sub(r"[?&]sslmode=[^&]+", "", db_url)
+    if "sslmode=" in db_url or "neon.tech" in db_url or "channel_binding=" in db_url:
+        db_url = re.sub(r"[?&](sslmode|channel_binding)=[^&]+", "", db_url)
+        db_url = db_url.replace("?&", "?").rstrip("?")
         connect_args["ssl"] = "require"
 
     return db_url, connect_args

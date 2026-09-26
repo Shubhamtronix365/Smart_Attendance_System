@@ -33,6 +33,7 @@ app = FastAPI(
 # CORS Configuration
 origins = [
     settings.FRONTEND_URL,
+    "https://smart-attendance-system.shubham-tronix365.workers.dev",
     "http://localhost:3000",  # Next.js dev server default
     "http://127.0.0.1:3000",
     "http://172.20.176.83:3000",
@@ -42,7 +43,7 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https:\/\/.*\.pages\.dev$",
+    allow_origin_regex=r"^https:\/\/.*(\.pages\.dev|\.workers\.dev)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

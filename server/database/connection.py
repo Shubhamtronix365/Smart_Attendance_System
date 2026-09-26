@@ -13,9 +13,10 @@ elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+as
 
 # 2. Handle Neon DB SSL & serverless pooling
 connect_args = {}
-if "sslmode=" in db_url or "neon.tech" in db_url:
-    # asyncpg expects ssl config in connect_args, not as sslmode query parameter
-    db_url = re.sub(r"[?&]sslmode=[^&]+", "", db_url)
+if "sslmode=" in db_url or "neon.tech" in db_url or "channel_binding=" in db_url:
+    # asyncpg expects ssl in connect_args and rejects query params like sslmode/channel_binding
+    db_url = re.sub(r"[?&](sslmode|channel_binding)=[^&]+", "", db_url)
+    db_url = db_url.replace("?&", "?").rstrip("?")
     connect_args["ssl"] = "require"
 
 # Create async engine for PostgreSQL via asyncpg
