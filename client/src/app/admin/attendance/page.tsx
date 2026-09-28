@@ -13,6 +13,7 @@ import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { attendanceApi, employeesApi } from "@/services/api";
+import { formatTime } from "@/utils/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AttendanceStatus = "present" | "absent" | "late" | "halfday" | "leave" | "wfh";
@@ -29,20 +30,6 @@ interface AttendanceRecord {
   status: AttendanceStatus;
   otHours: string;
 }
-
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-const MOCK: AttendanceRecord[] = [
-  { id:"1", empId:"EMP001", name:"Arjun Sharma",   department:"Engineering", avatar:"AS", checkIn:"09:02",checkOut:"18:05",workingHours:"9h 3m", status:"present", otHours:"—"},
-  { id:"2", empId:"EMP002", name:"Priya Mehta",    department:"HR",          avatar:"PM", checkIn:"08:55",checkOut:"17:58",workingHours:"9h 3m", status:"present", otHours:"—"},
-  { id:"3", empId:"EMP003", name:"Raj Kumar",      department:"Finance",     avatar:"RK", checkIn:"09:24",checkOut:"18:15",workingHours:"8h 51m",status:"late",    otHours:"—"},
-  { id:"4", empId:"EMP004", name:"Neha Patel",     department:"Engineering", avatar:"NP", checkIn:"—",    checkOut:"—",    workingHours:"—",     status:"absent",  otHours:"—"},
-  { id:"5", empId:"EMP005", name:"Vikram Singh",   department:"Operations",  avatar:"VS", checkIn:"09:00",checkOut:"13:05",workingHours:"4h 5m", status:"halfday", otHours:"—"},
-  { id:"6", empId:"EMP006", name:"Divya Gupta",    department:"Marketing",   avatar:"DG", checkIn:"—",    checkOut:"—",    workingHours:"—",     status:"leave",   otHours:"—"},
-  { id:"7", empId:"EMP007", name:"Amit Joshi",     department:"Engineering", avatar:"AJ", checkIn:"09:00",checkOut:"21:00",workingHours:"12h",   status:"present", otHours:"3h"},
-  { id:"8", empId:"EMP008", name:"Sunita Kaur",    department:"HR",          avatar:"SK", checkIn:"09:05",checkOut:"17:45",workingHours:"8h 40m",status:"wfh",     otHours:"—"},
-  { id:"9", empId:"EMP009", name:"Manish Rao",     department:"Finance",     avatar:"MR", checkIn:"—",    checkOut:"—",    workingHours:"—",     status:"absent",  otHours:"—"},
-  { id:"10",empId:"EMP010", name:"Pooja Trivedi",  department:"Design",      avatar:"PT", checkIn:"08:50",checkOut:"18:10",workingHours:"9h 20m",status:"present", otHours:"—"},
-];
 
 // ─── Manual Entry Modal ───────────────────────────────────────────────────────
 function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d: any) => void }) {
@@ -212,19 +199,25 @@ export default function AttendancePage() {
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const [liveStats, setLiveStats] = useState({ total: 0, present: 0, absent: 0, late: 0, leave: 0 });
+
   const fetchAttendance = useCallback(async () => {
     setIsLoading(true);
     try {
       let res;
       if (viewMode === "live") {
         const todayStr = new Date().toISOString().split("T")[0];
-        res = await attendanceApi.list(todayStr);
+        const [attRes, statsRes] = await Promise.all([
+          attendanceApi.list(todayStr, { size: "100" }),
+          attendanceApi.stats().catch(() => ({ data: { total: 0, present: 0, absent: 0, late: 0, leave: 0 } }))
+        ]);
+        res = attRes;
+        setLiveStats(statsRes.data);
       } else {
-        res = await attendanceApi.list(selectedDate);
+        res = await attendanceApi.list(selectedDate, { size: "100" });
       }
       
       const mapped = res.data.map((r: any) => {
-        const hasCheckOut = !!r.check_out;
         const mappedStatus = r.status === "half_day" ? "halfday" : r.status;
         
         return {
@@ -233,8 +226,8 @@ export default function AttendancePage() {
           name: r.employee_name || "Unknown",
           department: r.employee_dept || "N/A",
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
-          checkIn: r.check_in ? new Date(r.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "—",
-          checkOut: r.check_out ? new Date(r.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "—",
+          checkIn: formatTime(r.check_in, true),
+          checkOut: formatTime(r.check_out, true),
           workingHours: r.working_hours ? `${r.working_hours}h` : "—",
           status: mappedStatus as AttendanceStatus,
           otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
@@ -313,13 +306,15 @@ export default function AttendancePage() {
     }
   }, [selectedDate, fetchAttendance, success, error]);
 
-  // Summary counters from fetched records
-  const summary = {
-    present: records.filter(r => ["present", "late", "halfday", "wfh"].includes(r.status)).length,
-    absent:  records.filter(r => r.status === "absent").length,
-    late:    records.filter(r => r.status === "late").length,
-    leave:   records.filter(r => r.status === "leave").length,
-  };
+  // Summary counters from liveStats (when live) or records (historical)
+  const summary = viewMode === "live" && liveStats.total > 0
+    ? liveStats
+    : {
+        present: records.filter(r => ["present", "late", "halfday", "wfh"].includes(r.status)).length,
+        absent:  records.filter(r => r.status === "absent").length,
+        late:    records.filter(r => r.status === "late").length,
+        leave:   records.filter(r => r.status === "leave").length,
+      };
 
   return (
     <div className="min-h-screen" style={{ background:"#0a0f1e" }}>
@@ -442,7 +437,16 @@ export default function AttendancePage() {
                 <tbody>
                   {isLoading ? (
                     <LoadingSkeleton rows={8} cols={7} />
-                  ) : filtered.map((r, i) => (
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-16 text-white/40 text-sm">
+                        No attendance records found for {viewMode === "live" ? "today" : selectedDate}.
+                        <br />
+                        <span className="text-xs text-white/20 mt-1 block">Live biometric punches and manual logs will display here automatically.</span>
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((r, i) => (
                     <motion.tr key={r.id}
                       initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}
                       transition={{ delay: i * 0.04 }}
@@ -471,7 +475,7 @@ export default function AttendancePage() {
                         <EditCell record={r} onSave={handleEditSave} />
                       </td>
                     </motion.tr>
-                  ))}
+                  )))}
                 </tbody>
               </table>
             </div>

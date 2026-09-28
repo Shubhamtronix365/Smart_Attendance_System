@@ -72,6 +72,7 @@ export const attendanceApi = {
     api.get("/api/attendance", { params: { date, ...params } }),
   live: () => api.get("/api/attendance/live"),
   stats: () => api.get("/api/attendance/stats/today"),
+  analytics: () => api.get("/api/attendance/analytics"),
   create: (data: unknown) => api.post("/api/attendance", data),
   update: (id: string, data: unknown) => api.put(`/api/attendance/${id}`, data),
   export: (date: string, format: "excel" | "pdf") =>
@@ -128,7 +129,7 @@ export const settingsApi = {
 
 // ─── Hardware Enrollment (ESP32) ───────────────────────────────────────────
 export const deviceApi = {
-  startEnrollment: (data: { employee_code: string; name: string }) =>
+  startEnrollment: (data: { employee_code: string; name: string; fingerprint_id?: number | null }) =>
     api.post("/api/device/enroll/start", data).then((res) => res.data),
   getEnrollmentStatus: () =>
     api.get("/api/device/enroll/status").then((res) => res.data),

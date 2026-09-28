@@ -33,23 +33,7 @@ interface Employee {
   password?: string;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
 const DEPARTMENTS = ["Engineering", "HR", "Finance", "Operations", "Design", "Marketing"];
-
-const MOCK_EMPLOYEES: Employee[] = [
-  { id: "1", empId: "EMP001", name: "Arjun Sharma",   email: "arjun@smartattend.io",  phone: "+91 98765 43210", department: "Engineering", designation: "Sr. Engineer",   basicSalary: 95000, fingerprintId: "FP-001", joiningDate: "2022-03-15", status: "active",   avatar: "AS" },
-  { id: "2", empId: "EMP002", name: "Priya Mehta",    email: "priya@smartattend.io",   phone: "+91 97654 32109", department: "HR",          designation: "HR Manager",     basicSalary: 75000, fingerprintId: "FP-002", joiningDate: "2021-07-01", status: "active",   avatar: "PM" },
-  { id: "3", empId: "EMP003", name: "Raj Kumar",      email: "raj@smartattend.io",     phone: "+91 96543 21098", department: "Finance",     designation: "Accountant",     basicSalary: 65000, fingerprintId: "FP-003", joiningDate: "2023-01-10", status: "active",   avatar: "RK" },
-  { id: "4", empId: "EMP004", name: "Neha Patel",     email: "neha@smartattend.io",    phone: "+91 95432 10987", department: "Engineering", designation: "UI Developer",   basicSalary: 80000, fingerprintId: "FP-004", joiningDate: "2022-08-22", status: "active",   avatar: "NP" },
-  { id: "5", empId: "EMP005", name: "Vikram Singh",   email: "vikram@smartattend.io",  phone: "+91 94321 09876", department: "Operations",  designation: "Ops Lead",       basicSalary: 70000, fingerprintId: "FP-005", joiningDate: "2020-11-05", status: "inactive", avatar: "VS" },
-  { id: "6", empId: "EMP006", name: "Divya Gupta",    email: "divya@smartattend.io",   phone: "+91 93210 98765", department: "Marketing",   designation: "Mktg Manager",   basicSalary: 72000, fingerprintId: "FP-006", joiningDate: "2021-04-18", status: "active",   avatar: "DG" },
-  { id: "7", empId: "EMP007", name: "Amit Joshi",     email: "amit@smartattend.io",    phone: "+91 92109 87654", department: "Engineering", designation: "DevOps",         basicSalary: 90000, fingerprintId: "FP-007", joiningDate: "2022-06-30", status: "active",   avatar: "AJ" },
-  { id: "8", empId: "EMP008", name: "Sunita Kaur",    email: "sunita@smartattend.io",  phone: "+91 91098 76543", department: "HR",          designation: "Recruiter",      basicSalary: 55000, fingerprintId: "FP-008", joiningDate: "2023-03-01", status: "active",   avatar: "SK" },
-  { id: "9", empId: "EMP009", name: "Manish Rao",     email: "manish@smartattend.io",  phone: "+91 90987 65432", department: "Finance",     designation: "Finance Analyst",basicSalary: 68000, fingerprintId: "FP-009", joiningDate: "2021-09-14", status: "inactive", avatar: "MR" },
-  { id: "10",empId: "EMP010", name: "Pooja Trivedi",  email: "pooja@smartattend.io",   phone: "+91 89876 54321", department: "Design",      designation: "UX Designer",    basicSalary: 78000, fingerprintId: "FP-010", joiningDate: "2022-12-01", status: "active",   avatar: "PT" },
-  { id: "11",empId: "EMP011", name: "Karan Malhotra", email: "karan@smartattend.io",   phone: "+91 88765 43210", department: "Engineering", designation: "Backend Dev",    basicSalary: 88000, fingerprintId: "FP-011", joiningDate: "2023-05-15", status: "active",   avatar: "KM" },
-  { id: "12",empId: "EMP012", name: "Ritu Agarwal",   email: "ritu@smartattend.io",    phone: "+91 87654 32109", department: "Marketing",   designation: "Content Writer", basicSalary: 50000, fingerprintId: "FP-012", joiningDate: "2022-02-28", status: "active",   avatar: "RA" },
-];
 
 const PAGE_SIZE = 10;
 

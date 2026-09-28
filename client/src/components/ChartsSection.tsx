@@ -1,11 +1,13 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis,
-  PolarRadiusAxis, Radar, BarChart, Bar, Cell, Legend,
+  PolarRadiusAxis, Radar, BarChart, Bar, Cell,
 } from "recharts";
+import { attendanceApi } from "@/services/api";
 
 // ─── Shared Custom Tooltip ─────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: {
@@ -35,17 +37,14 @@ function CustomTooltip({ active, payload, label }: {
 }
 
 // ─── 1. Weekly Attendance AreaChart ───────────────────────────────────────────
-const weeklyData = [
-  { day: "Mon", attendance: 218, target: 248 },
-  { day: "Tue", attendance: 232, target: 248 },
-  { day: "Wed", attendance: 225, target: 248 },
-  { day: "Thu", attendance: 241, target: 248 },
-  { day: "Fri", attendance: 213, target: 248 },
-  { day: "Sat", attendance: 145, target: 248 },
-  { day: "Sun", attendance: 52,  target: 248 },
-];
+interface WeeklyItem {
+  day: string;
+  date: string;
+  attendance: number;
+  target: number;
+}
 
-function WeeklyAttendanceChart() {
+function WeeklyAttendanceChart({ data }: { data: WeeklyItem[] }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -53,51 +52,60 @@ function WeeklyAttendanceChart() {
       transition={{ delay: 0.3, type: "spring", stiffness: 90 }}
       className="neo-card p-6"
     >
-      <div className="mb-5">
-        <p className="text-white font-bold text-base">Weekly Attendance</p>
-        <p className="text-white/40 text-xs">Daily headcount — Mon to Sun</p>
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <p className="text-white font-bold text-base">Weekly Attendance</p>
+          <p className="text-white/40 text-xs">Real daily headcount — Last 7 Days</p>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="flex items-center gap-1.5 text-cyan-400">
+            <span className="w-2 h-2 rounded-full bg-cyan-400" /> Present
+          </span>
+          <span className="flex items-center gap-1.5 text-violet-400">
+            <span className="w-2 h-2 rounded-full bg-violet-400" /> Target
+          </span>
+        </div>
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={weeklyData} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="cyanGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor="#00f5ff" stopOpacity={0.35} />
+              <stop offset="5%" stopColor="#00f5ff" stopOpacity={0.35} />
               <stop offset="95%" stopColor="#00f5ff" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="violetGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor="#7c3aed" stopOpacity={0.2} />
+              <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.2} />
               <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
           <XAxis
             dataKey="day"
-            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 11 }}
+            tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 11 }}
+            tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
+            allowDecimals={false}
           />
           <Tooltip content={<CustomTooltip />} />
-          {/* Target area */}
           <Area
             type="monotone"
             dataKey="target"
-            name="Target"
+            name="Target Workforce"
             stroke="rgba(124,58,237,0.4)"
             strokeWidth={1}
             strokeDasharray="4 4"
             fill="url(#violetGrad)"
             dot={false}
           />
-          {/* Actual area */}
           <Area
             type="monotone"
             dataKey="attendance"
-            name="Present"
+            name="Present Headcount"
             stroke="#00f5ff"
             strokeWidth={2.5}
             fill="url(#cyanGrad)"
@@ -111,16 +119,13 @@ function WeeklyAttendanceChart() {
 }
 
 // ─── 2. Department-wise Radar Chart ──────────────────────────────────────────
-const radarData = [
-  { dept: "Eng",     present: 88 },
-  { dept: "HR",      present: 95 },
-  { dept: "Finance", present: 91 },
-  { dept: "Ops",     present: 78 },
-  { dept: "Design",  present: 84 },
-  { dept: "Mktg",    present: 72 },
-];
+interface DeptItem {
+  dept: string;
+  total: number;
+  present: number; // percentage
+}
 
-function DepartmentRadarChart() {
+function DepartmentRadarChart({ data }: { data: DeptItem[] }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -130,13 +135,13 @@ function DepartmentRadarChart() {
     >
       <div className="mb-2">
         <p className="text-white font-bold text-base">Dept. Attendance</p>
-        <p className="text-white/40 text-xs">Present % per department</p>
+        <p className="text-white/40 text-xs">Present % across active teams today</p>
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <RadarChart data={radarData} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+        <RadarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
           <defs>
             <linearGradient id="radarGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%"   stopColor="#00f5ff" stopOpacity={0.4} />
+              <stop offset="0%" stopColor="#00f5ff" stopOpacity={0.4} />
               <stop offset="100%" stopColor="#7c3aed" stopOpacity={0.4} />
             </linearGradient>
           </defs>
@@ -166,18 +171,15 @@ function DepartmentRadarChart() {
 }
 
 // ─── 3. Monthly Payroll Trend BarChart ────────────────────────────────────────
-const payrollData = [
-  { month: "Jan", payroll: 1620000 },
-  { month: "Feb", payroll: 1710000 },
-  { month: "Mar", payroll: 1680000 },
-  { month: "Apr", payroll: 1750000 },
-  { month: "May", payroll: 1800000 },
-  { month: "Jun", payroll: 1842500 },
-];
+interface PayrollTrendItem {
+  month: string;
+  year: number;
+  payroll: number;
+}
 
 const BAR_COLORS = ["#5b21b6", "#6d28d9", "#7c3aed", "#8b5cf6", "#a78bfa", "#00f5ff"];
 
-function MonthlyPayrollChart() {
+function MonthlyPayrollChart({ data }: { data: PayrollTrendItem[] }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -185,16 +187,18 @@ function MonthlyPayrollChart() {
       transition={{ delay: 0.6, type: "spring", stiffness: 90 }}
       className="neo-card p-6"
     >
-      <div className="mb-5">
-        <p className="text-white font-bold text-base">Monthly Payroll Trend</p>
-        <p className="text-white/40 text-xs">Last 6 months (₹)</p>
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <p className="text-white font-bold text-base">Monthly Payroll Trend</p>
+          <p className="text-white/40 text-xs">Last 6 months company disbursements (₹)</p>
+        </div>
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={payrollData} margin={{ top: 5, right: 8, left: -10, bottom: 0 }} barCategoryGap="30%">
+        <BarChart data={data} margin={{ top: 5, right: 8, left: -10, bottom: 0 }} barCategoryGap="30%">
           <defs>
             {BAR_COLORS.map((color, i) => (
               <linearGradient key={i} id={`bar-${i}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%"   stopColor={color} stopOpacity={1} />
+                <stop offset="0%" stopColor={color} stopOpacity={1} />
                 <stop offset="100%" stopColor={color} stopOpacity={0.4} />
               </linearGradient>
             ))}
@@ -210,7 +214,7 @@ function MonthlyPayrollChart() {
             tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={(v) => `₹${(v / 100000).toFixed(1)}L`}
+            tickFormatter={(v) => (v >= 100000 ? `₹${(v / 100000).toFixed(1)}L` : `₹${v}`)}
           />
           <Tooltip
             content={({ active, payload, label }) => (
@@ -227,8 +231,8 @@ function MonthlyPayrollChart() {
             )}
           />
           <Bar dataKey="payroll" radius={[6, 6, 0, 0]} isAnimationActive animationDuration={800}>
-            {payrollData.map((_, i) => (
-              <Cell key={i} fill={`url(#bar-${i})`} />
+            {data.map((_, i) => (
+              <Cell key={i} fill={`url(#bar-${i % BAR_COLORS.length})`} />
             ))}
           </Bar>
         </BarChart>
@@ -239,14 +243,37 @@ function MonthlyPayrollChart() {
 
 // ─── Exported Section ─────────────────────────────────────────────────────────
 export default function ChartsSection() {
+  const [weekly, setWeekly] = useState<WeeklyItem[]>([]);
+  const [departments, setDepartments] = useState<DeptItem[]>([]);
+  const [payrollTrend, setPayrollTrend] = useState<PayrollTrendItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadAnalytics() {
+      try {
+        const res = await attendanceApi.analytics();
+        if (res.data) {
+          if (res.data.weekly) setWeekly(res.data.weekly);
+          if (res.data.departments) setDepartments(res.data.departments);
+          if (res.data.payroll_trend) setPayrollTrend(res.data.payroll_trend);
+        }
+      } catch (err) {
+        console.error("Failed to fetch live analytics data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadAnalytics();
+  }, []);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2">
-        <WeeklyAttendanceChart />
+        <WeeklyAttendanceChart data={weekly} />
       </div>
-      <DepartmentRadarChart />
+      <DepartmentRadarChart data={departments} />
       <div className="lg:col-span-3">
-        <MonthlyPayrollChart />
+        <MonthlyPayrollChart data={payrollTrend} />
       </div>
     </div>
   );

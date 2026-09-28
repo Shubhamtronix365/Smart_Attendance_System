@@ -8,39 +8,15 @@ import AdminTopBar from "@/components/AdminTopBar";
 import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import { reportsApi } from "@/services/api";
+import { formatTime } from "@/utils/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ReportType = "daily" | "monthly" | "payroll";
 
 const DEPARTMENTS = ["All Departments", "Engineering", "HR", "Finance", "Operations", "Design", "Marketing"];
 
-// ─── Mock Report Data ─────────────────────────────────────────────────────────
-const DAILY_DATA = [
-  { id:"1", name:"Arjun Sharma",  dept:"Engineering", checkIn:"09:02", checkOut:"18:05", hours:"9h 3m",  status:"present" },
-  { id:"2", name:"Priya Mehta",   dept:"HR",          checkIn:"08:55", checkOut:"17:58", hours:"9h 3m",  status:"present" },
-  { id:"3", name:"Raj Kumar",     dept:"Finance",     checkIn:"09:24", checkOut:"18:15", hours:"8h 51m", status:"late"    },
-  { id:"4", name:"Neha Patel",    dept:"Engineering", checkIn:"—",     checkOut:"—",     hours:"—",      status:"absent"  },
-  { id:"5", name:"Vikram Singh",  dept:"Operations",  checkIn:"09:00", checkOut:"13:05", hours:"4h 5m",  status:"halfday" },
-  { id:"6", name:"Divya Gupta",   dept:"Marketing",   checkIn:"—",     checkOut:"—",     hours:"—",      status:"leave"   },
-];
-
-const MONTHLY_DATA = [
-  { id:"1", name:"Arjun Sharma", dept:"Engineering", present:22, absent:0, late:1, leave:3, avgHours:"8h 52m" },
-  { id:"2", name:"Priya Mehta",  dept:"HR",          present:24, absent:0, late:0, leave:2, avgHours:"9h 01m" },
-  { id:"3", name:"Raj Kumar",    dept:"Finance",     present:21, absent:2, late:3, leave:0, avgHours:"8h 45m" },
-  { id:"4", name:"Neha Patel",   dept:"Engineering", present:20, absent:4, late:0, leave:2, avgHours:"8h 30m" },
-  { id:"5", name:"Vikram Singh", dept:"Operations",  present:19, absent:3, late:2, leave:2, avgHours:"8h 10m" },
-];
-
-const PAYROLL_DATA = [
-  { id:"1", name:"Arjun Sharma", dept:"Engineering", basic:95000, net:89300,  status:"paid"   },
-  { id:"2", name:"Priya Mehta",  dept:"HR",          basic:75000, net:67500,  status:"paid"   },
-  { id:"3", name:"Raj Kumar",    dept:"Finance",     basic:65000, net:59090,  status:"unpaid" },
-  { id:"4", name:"Neha Patel",   dept:"Engineering", basic:80000, net:74000,  status:"unpaid" },
-];
-
 // ─── Daily Report Table ───────────────────────────────────────────────────────
-function DailyTable({ data }: { data: typeof DAILY_DATA }) {
+function DailyTable({ data }: { data: any[] }) {
   return (
     <table className="w-full">
       <thead>
@@ -51,19 +27,27 @@ function DailyTable({ data }: { data: typeof DAILY_DATA }) {
         </tr>
       </thead>
       <tbody>
-        {data.map((r, i) => (
-          <motion.tr key={r.id}
-            initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.05 }}
-            className="hover:bg-white/[0.02] transition-colors"
-            style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
-            <td className="px-4 py-3.5 text-white text-sm font-semibold">{r.name}</td>
-            <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
-            <td className="px-4 py-3.5 text-white/60 text-sm font-mono">{r.checkIn}</td>
-            <td className="px-4 py-3.5 text-white/60 text-sm font-mono">{r.checkOut}</td>
-            <td className="px-4 py-3.5 text-white/60 text-sm">{r.hours}</td>
-            <td className="px-4 py-3.5"><StatusBadge status={r.status as "present"|"absent"|"late"|"halfday"|"leave"} size="sm" /></td>
-          </motion.tr>
-        ))}
+        {data.length === 0 ? (
+          <tr>
+            <td colSpan={6} className="text-center py-12 text-white/40 text-sm">
+              No daily attendance records found for this date.
+            </td>
+          </tr>
+        ) : (
+          data.map((r, i) => (
+            <motion.tr key={r.id}
+              initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.05 }}
+              className="hover:bg-white/[0.02] transition-colors"
+              style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
+              <td className="px-4 py-3.5 text-white text-sm font-semibold">{r.name}</td>
+              <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
+              <td className="px-4 py-3.5 text-white/60 text-sm font-mono">{r.checkIn}</td>
+              <td className="px-4 py-3.5 text-white/60 text-sm font-mono">{r.checkOut}</td>
+              <td className="px-4 py-3.5 text-white/60 text-sm">{r.hours}</td>
+              <td className="px-4 py-3.5"><StatusBadge status={r.status as "present"|"absent"|"late"|"halfday"|"leave"} size="sm" /></td>
+            </motion.tr>
+          ))
+        )}
       </tbody>
     </table>
   );
@@ -81,27 +65,35 @@ function MonthlyTable({ data }: { data: any[] }) {
         </tr>
       </thead>
       <tbody>
-        {data.map((r, i) => (
-          <motion.tr key={r.id || i}
-            initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.05 }}
-            className="hover:bg-white/[0.02] transition-colors"
-            style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
-            <td className="px-4 py-3.5 text-white text-sm font-semibold">{r.name}</td>
-            <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
-            <td className="px-4 py-3.5 text-white/40 text-sm">{r.designation}</td>
-            <td className="px-4 py-3.5"><span className="text-green-400 font-bold text-sm">{r.present}</span></td>
-            <td className="px-4 py-3.5"><span className="text-red-400 font-bold text-sm">{r.absent}</span></td>
-            <td className="px-4 py-3.5"><span className="text-violet-400 font-bold text-sm">{r.leave}</span></td>
-            <td className="px-4 py-3.5"><span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ background:"rgba(167,139,250,0.1)", color:"#a78bfa" }}>{r.otHours}h</span></td>
-          </motion.tr>
-        ))}
+        {data.length === 0 ? (
+          <tr>
+            <td colSpan={7} className="text-center py-12 text-white/40 text-sm">
+              No monthly attendance summaries found for this month.
+            </td>
+          </tr>
+        ) : (
+          data.map((r, i) => (
+            <motion.tr key={r.id || i}
+              initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.05 }}
+              className="hover:bg-white/[0.02] transition-colors"
+              style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
+              <td className="px-4 py-3.5 text-white text-sm font-semibold">{r.name}</td>
+              <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
+              <td className="px-4 py-3.5 text-white/40 text-sm">{r.designation}</td>
+              <td className="px-4 py-3.5"><span className="text-green-400 font-bold text-sm">{r.present}</span></td>
+              <td className="px-4 py-3.5"><span className="text-red-400 font-bold text-sm">{r.absent}</span></td>
+              <td className="px-4 py-3.5"><span className="text-violet-400 font-bold text-sm">{r.leave}</span></td>
+              <td className="px-4 py-3.5"><span className="px-2 py-1 rounded-full text-xs font-semibold" style={{ background:"rgba(167,139,250,0.1)", color:"#a78bfa" }}>{r.otHours}h</span></td>
+            </motion.tr>
+          ))
+        )}
       </tbody>
     </table>
   );
 }
 
 // ─── Payroll Report Table ─────────────────────────────────────────────────────
-function PayrollTable({ data }: { data: typeof PAYROLL_DATA }) {
+function PayrollTable({ data }: { data: any[] }) {
   return (
     <table className="w-full">
       <thead>
@@ -112,18 +104,26 @@ function PayrollTable({ data }: { data: typeof PAYROLL_DATA }) {
         </tr>
       </thead>
       <tbody>
-        {data.map((r, i) => (
-          <motion.tr key={r.id}
-            initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.05 }}
-            className="hover:bg-white/[0.02] transition-colors"
-            style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
-            <td className="px-4 py-3.5 text-white text-sm font-semibold">{r.name}</td>
-            <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
-            <td className="px-4 py-3.5 text-white/60 text-sm">₹{r.basic.toLocaleString("en-IN")}</td>
-            <td className="px-4 py-3.5 text-green-400 font-bold text-sm">₹{r.net.toLocaleString("en-IN")}</td>
-            <td className="px-4 py-3.5"><StatusBadge status={r.status as "paid"|"unpaid"} size="sm" /></td>
-          </motion.tr>
-        ))}
+        {data.length === 0 ? (
+          <tr>
+            <td colSpan={5} className="text-center py-12 text-white/40 text-sm">
+              No payroll reports found for this month.
+            </td>
+          </tr>
+        ) : (
+          data.map((r, i) => (
+            <motion.tr key={r.id}
+              initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.05 }}
+              className="hover:bg-white/[0.02] transition-colors"
+              style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
+              <td className="px-4 py-3.5 text-white text-sm font-semibold">{r.name}</td>
+              <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
+              <td className="px-4 py-3.5 text-white/60 text-sm">₹{Number(r.basic).toLocaleString("en-IN")}</td>
+              <td className="px-4 py-3.5 text-green-400 font-bold text-sm">₹{Number(r.net).toLocaleString("en-IN")}</td>
+              <td className="px-4 py-3.5"><StatusBadge status={r.status as "paid"|"unpaid"} size="sm" /></td>
+            </motion.tr>
+          ))
+        )}
       </tbody>
     </table>
   );
@@ -162,8 +162,8 @@ export default function ReportsPage() {
           id: String(r.employee_id),
           name: r.employee_name || "Unknown",
           dept: r.department || "N/A",
-          checkIn: r.check_in ? new Date(r.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "—",
-          checkOut: r.check_out ? new Date(r.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false }) : "—",
+          checkIn: formatTime(r.check_in, true),
+          checkOut: formatTime(r.check_out, true),
           hours: r.working_hours ? `${r.working_hours}h` : "—",
           status: r.status === "half_day" ? "halfday" : r.status,
         }));

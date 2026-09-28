@@ -30,21 +30,18 @@ interface PayrollRow {
   status: "paid" | "unpaid";
 }
 
-// ─── Mock data ─────────────────────────────────────────────────────────────────
-const MOCK_PAYROLL: PayrollRow[] = [
-  { id:"1", empId:"EMP001", name:"Arjun Sharma",   department:"Engineering", avatar:"AS", basicSalary:95000, presentDays:22, otHours:8,  otPay:3800,  deductions:9500,  netSalary:89300,  status:"paid"   },
-  { id:"2", empId:"EMP002", name:"Priya Mehta",    department:"HR",          avatar:"PM", basicSalary:75000, presentDays:24, otHours:0,  otPay:0,     deductions:7500,  netSalary:67500,  status:"paid"   },
-  { id:"3", empId:"EMP003", name:"Raj Kumar",      department:"Finance",     avatar:"RK", basicSalary:65000, presentDays:21, otHours:2,  otPay:590,   deductions:6500,  netSalary:59090,  status:"unpaid" },
-  { id:"4", empId:"EMP004", name:"Neha Patel",     department:"Engineering", avatar:"NP", basicSalary:80000, presentDays:20, otHours:5,  otPay:2000,  deductions:8000,  netSalary:74000,  status:"unpaid" },
-  { id:"5", empId:"EMP006", name:"Divya Gupta",    department:"Marketing",   avatar:"DG", basicSalary:72000, presentDays:23, otHours:0,  otPay:0,     deductions:7200,  netSalary:64800,  status:"paid"   },
-  { id:"6", empId:"EMP007", name:"Amit Joshi",     department:"Engineering", avatar:"AJ", basicSalary:90000, presentDays:24, otHours:12, otPay:4500,  deductions:9000,  netSalary:85500,  status:"unpaid" },
-  { id:"7", empId:"EMP008", name:"Sunita Kaur",    department:"HR",          avatar:"SK", basicSalary:55000, presentDays:22, otHours:0,  otPay:0,     deductions:5500,  netSalary:49500,  status:"paid"   },
-  { id:"8", empId:"EMP010", name:"Pooja Trivedi",  department:"Design",      avatar:"PT", basicSalary:78000, presentDays:23, otHours:3,  otPay:975,   deductions:7800,  netSalary:71175,  status:"unpaid" },
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
 ];
 
-const MONTHS = [
-  "January 2026","February 2026","March 2026","April 2026","May 2026","June 2026",
-];
+const currentYear = new Date().getFullYear();
+const MONTHS: string[] = [];
+for (let y = currentYear; y >= currentYear - 1; y--) {
+  for (let m = 0; m < 12; m++) {
+    MONTHS.push(`${MONTH_NAMES[m]} ${y}`);
+  }
+}
 
 // ─── Payslip Modal ────────────────────────────────────────────────────────────
 function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string; onClose: () => void }) {
@@ -265,7 +262,8 @@ const MONTH_MAP: Record<string, number> = {
 export default function PayrollPage() {
   const { success, error } = useToast();
   const [rows, setRows] = useState<PayrollRow[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState("June 2026");
+  const currentMonthName = `${MONTH_NAMES[new Date().getMonth()]} ${new Date().getFullYear()}`;
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthName);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [previewRow, setPreviewRow] = useState<PayrollRow | null>(null);
@@ -436,11 +434,28 @@ export default function PayrollPage() {
                 <tbody>
                   {isGenerating ? (
                     <LoadingSkeleton rows={6} cols={9} />
-                  ) : rows.map((row, i) => (
-                    <PayrollRowComponent key={row.id} row={row} index={i}
-                      onPreview={() => setPreviewRow(row)}
-                      onMarkPaid={handleMarkPaid} />
-                  ))}
+                  ) : rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="text-center py-16 text-white/40 text-sm">
+                        No payroll records found for {selectedMonth}.
+                        <br />
+                        <button
+                          type="button"
+                          onClick={handleGenerate}
+                          className="mt-3 px-4 py-2 rounded-xl text-xs font-bold text-black transition-all hover:scale-105"
+                          style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+                        >
+                          Generate Payroll for {selectedMonth} &rarr;
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((row, i) => (
+                      <PayrollRowComponent key={row.id} row={row} index={i}
+                        onPreview={() => setPreviewRow(row)}
+                        onMarkPaid={handleMarkPaid} />
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

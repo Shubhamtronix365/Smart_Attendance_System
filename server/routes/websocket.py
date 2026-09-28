@@ -243,9 +243,13 @@ async def websocket_client_endpoint(websocket: WebSocket):
             if action == "start_enroll":
                 emp_code = data.get("employee_code", "EMP001")
                 emp_name = data.get("name", "New Employee")
+                custom_fid = data.get("fingerprint_id")
 
-                async with async_session_maker() as db:
-                    free_fid = await get_next_free_fingerprint_id(db)
+                if custom_fid and int(custom_fid) > 0:
+                    free_fid = int(custom_fid)
+                else:
+                    async with async_session_maker() as db:
+                        free_fid = await get_next_free_fingerprint_id(db)
 
                 enrollment_session.reset()
                 enrollment_session.active = True

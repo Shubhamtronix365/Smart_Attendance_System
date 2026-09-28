@@ -51,7 +51,8 @@ async def list_leaves(
             approved_by=r.approved_by,
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
-            approver_name=r.approver.name if r.approver else None
+            approver_name=r.approver.name if r.approver else None,
+            employee_dept=r.employee.department if r.employee else "General"
         )
         for r in records
     ]

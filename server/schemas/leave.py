@@ -26,6 +26,7 @@ class LeaveOut(LeaveBase):
     created_at: datetime
     employee_name: Optional[str] = None
     approver_name: Optional[str] = None
+    employee_dept: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

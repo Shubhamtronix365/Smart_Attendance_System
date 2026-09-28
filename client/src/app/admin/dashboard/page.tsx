@@ -6,80 +6,16 @@ import {
   Users, UserCheck, UserX, Clock, FileWarning,
   IndianRupee, CalendarDays, TrendingUp, Activity,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
 import StatCard from "@/components/StatCard";
 import LiveAttendanceFeed from "@/components/LiveAttendanceFeed";
 import ChartsSection from "@/components/ChartsSection";
-import { attendanceApi, leaveApi, payrollApi } from "@/services/api";
+import { attendanceApi, leaveApi, payrollApi, employeesApi } from "@/services/api";
+import { formatTime } from "@/utils/formatters";
 
-// ─── Stat Card Configuration ──────────────────────────────────────────────────
-const STAT_CARDS = [
-  {
-    title: "Total Employees",
-    value: 248,
-    icon: <Users size={20} />,
-    color: "#3b82f6",
-    glowColor: "#3b82f6",
-    trend: "+3 this month",
-    trendUp: true,
-  },
-  {
-    title: "Present Today",
-    value: 213,
-    icon: <UserCheck size={20} />,
-    color: "#22c55e",
-    glowColor: "#22c55e",
-    trend: "+2 from yesterday",
-    trendUp: true,
-  },
-  {
-    title: "Absent Today",
-    value: 27,
-    icon: <UserX size={20} />,
-    color: "#ef4444",
-    glowColor: "#ef4444",
-    trend: "-4 from yesterday",
-    trendUp: false,
-  },
-  {
-    title: "Late Arrivals",
-    value: 8,
-    icon: <Clock size={20} />,
-    color: "#f59e0b",
-    glowColor: "#f59e0b",
-    trend: "+1 from yesterday",
-    trendUp: false,
-  },
-  {
-    title: "Pending Leaves",
-    value: 14,
-    icon: <FileWarning size={20} />,
-    color: "#f97316",
-    glowColor: "#f97316",
-    trend: "3 urgent",
-    trendUp: false,
-  },
-  {
-    title: "Payroll This Month",
-    value: 1842500,
-    prefix: "₹",
-    icon: <IndianRupee size={20} />,
-    color: "#a78bfa",
-    glowColor: "#7c3aed",
-    trend: "+5.2% from last month",
-    trendUp: true,
-  },
-];
-
-// ─── Recent Activity Feed ─────────────────────────────────────────────────────
-const RECENT_ACTIVITY = [
-  { id: 1, name: "Arjun Sharma", action: "Clocked In", time: "09:02 AM", status: "on-time", avatar: "AS" },
-  { id: 2, name: "Priya Mehta", action: "Leave Requested", time: "09:15 AM", status: "pending", avatar: "PM" },
-  { id: 3, name: "Raj Kumar", action: "Clocked In", time: "09:24 AM", status: "late", avatar: "RK" },
-  { id: 4, name: "Neha Patel", action: "Overtime Logged", time: "07:45 PM", status: "overtime", avatar: "NP" },
-  { id: 5, name: "Vikram Singh", action: "Clocked Out", time: "06:00 PM", status: "on-time", avatar: "VS" },
-];
+// ─── Status Configuration ─────────────────────────────────────────────────────
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
   "on-time": { color: "#22c55e", bg: "rgba(34,197,94,0.1)", label: "On Time" },
@@ -90,7 +26,7 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
 
 // ─── Attendance Ring Chart (CSS only) ─────────────────────────────────────────
 function AttendanceRing({ present, total }: { present: number; total: number }) {
-  const percentage = Math.round((present / total) * 100);
+  const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
   const circumference = 2 * Math.PI * 54; // r=54
   const dash = (percentage / 100) * circumference;
 
@@ -127,7 +63,7 @@ function AttendanceRing({ present, total }: { present: number; total: number }) 
       <div className="flex gap-4 mt-3 text-xs">
         <span className="text-green-400">{present} Present</span>
         <span className="text-white/30">|</span>
-        <span className="text-red-400">{total - present} Absent</span>
+        <span className="text-red-400">{Math.max(total - present, 0)} Absent</span>
       </div>
     </div>
   );
@@ -135,6 +71,7 @@ function AttendanceRing({ present, total }: { present: number; total: number }) 
 
 // ─── Main Dashboard Page ───────────────────────────────────────────────────────
 export default function AdminDashboard() {
+  const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarWidth = sidebarCollapsed ? 72 : 240;
 
@@ -163,7 +100,13 @@ export default function AdminDashboard() {
       const pendingCount = leavesRes.data.filter((l: any) => l.approval_status === "pending").length;
       setPendingLeavesCount(pendingCount);
 
-      const payrollTotal = payrollRes.data.reduce((acc: number, p: any) => acc + (Number(p.final_salary) || 0), 0);
+      let payrollTotal = payrollRes.data.reduce((acc: number, p: any) => acc + (Number(p.final_salary) || 0), 0);
+      if (payrollTotal === 0) {
+        try {
+          const empRes = await employeesApi.list({ size: "100" });
+          payrollTotal = empRes.data.reduce((acc: number, e: any) => acc + (Number(e.salary || e.basic_salary) || 0), 0);
+        } catch {}
+      }
       setPayrollThisMonth(payrollTotal);
 
       // Map live feed to RECENT_ACTIVITY format (last 5 records)
@@ -171,12 +114,12 @@ export default function AdminDashboard() {
         const hasCheckOut = !!r.check_out;
         const timeStr = hasCheckOut ? r.check_out : r.check_in;
         const mappedStatus = hasCheckOut ? "overtime" : (r.status === "late" ? "late" : (r.status === "absent" ? "pending" : "on-time"));
-        const t = new Date(timeStr || r.created_at);
+        const rawTime = timeStr || r.created_at;
         return {
           id: r.attendance_id,
           name: r.employee_name || "Unknown",
           action: hasCheckOut ? "Clocked Out" : "Clocked In",
-          time: t.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          time: formatTime(rawTime, true),
           status: mappedStatus,
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
         };
@@ -423,15 +366,16 @@ export default function AdminDashboard() {
             <p className="text-white/50 text-sm font-medium mb-3 uppercase tracking-widest">Quick Actions</p>
             <div className="flex flex-wrap gap-3">
               {[
-                { label: "Mark Attendance", icon: <UserCheck size={16} />, color: "#22c55e" },
-                { label: "Process Payroll", icon: <IndianRupee size={16} />, color: "#a78bfa" },
-                { label: "View Reports", icon: <CalendarDays size={16} />, color: "#3b82f6" },
-                { label: "Add Employee", icon: <Users size={16} />, color: "#f59e0b" },
-              ].map(({ label, icon, color }) => (
+                { label: "Mark Attendance", icon: <UserCheck size={16} />, color: "#22c55e", path: "/admin/attendance" },
+                { label: "Process Payroll", icon: <IndianRupee size={16} />, color: "#a78bfa", path: "/admin/payroll" },
+                { label: "View Reports", icon: <CalendarDays size={16} />, color: "#3b82f6", path: "/admin/reports" },
+                { label: "Add Employee", icon: <Users size={16} />, color: "#f59e0b", path: "/admin/employees" },
+              ].map(({ label, icon, color, path }) => (
                 <motion.button
                   key={label}
                   whileHover={{ scale: 1.04, y: -2 }}
                   whileTap={{ scale: 0.97 }}
+                  onClick={() => router.push(path)}
                   className="flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium text-white/70 transition-colors"
                   style={{
                     background: "rgba(255,255,255,0.04)",

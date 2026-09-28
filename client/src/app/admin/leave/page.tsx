@@ -28,16 +28,6 @@ interface LeaveRequest {
   appliedOn: string;
 }
 
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-const MOCK_LEAVES: LeaveRequest[] = [
-  { id:"1", empId:"EMP002", name:"Priya Mehta",   department:"HR",          avatar:"PM", leaveType:"casual",   fromDate:"2026-06-15", toDate:"2026-06-16", days:2, reason:"Family function",          status:"pending",  appliedOn:"2026-06-13" },
-  { id:"2", empId:"EMP003", name:"Raj Kumar",     department:"Finance",     avatar:"RK", leaveType:"sick",     fromDate:"2026-06-14", toDate:"2026-06-14", days:1, reason:"Fever and cold",           status:"pending",  appliedOn:"2026-06-13" },
-  { id:"3", empId:"EMP005", name:"Vikram Singh",  department:"Operations",  avatar:"VS", leaveType:"paid",     fromDate:"2026-06-20", toDate:"2026-06-25", days:6, reason:"Annual vacation",          status:"approved", appliedOn:"2026-06-10" },
-  { id:"4", empId:"EMP007", name:"Amit Joshi",    department:"Engineering", avatar:"AJ", leaveType:"casual",   fromDate:"2026-06-10", toDate:"2026-06-10", days:1, reason:"Personal work",            status:"approved", appliedOn:"2026-06-09" },
-  { id:"5", empId:"EMP009", name:"Manish Rao",    department:"Finance",     avatar:"MR", leaveType:"unpaid",   fromDate:"2026-06-05", toDate:"2026-06-08", days:4, reason:"Extended personal leave",  status:"rejected", appliedOn:"2026-06-04" },
-  { id:"6", empId:"EMP010", name:"Pooja Trivedi", department:"Design",      avatar:"PT", leaveType:"sick",     fromDate:"2026-06-18", toDate:"2026-06-19", days:2, reason:"Doctor appointment & rest", status:"pending",  appliedOn:"2026-06-13" },
-];
-
 const LEAVE_TYPE_COLOR: Record<LeaveType, { color: string; bg: string }> = {
   casual:    { color:"#3b82f6", bg:"rgba(59,130,246,0.12)" },
   sick:      { color:"#ef4444", bg:"rgba(239,68,68,0.12)"  },
@@ -48,7 +38,7 @@ const LEAVE_TYPE_COLOR: Record<LeaveType, { color: string; bg: string }> = {
 
 // ─── Leave Calendar ───────────────────────────────────────────────────────────
 function LeaveCalendar({ leaves }: { leaves: LeaveRequest[] }) {
-  const today = new Date(2026, 5, 1); // June 2026
+  const today = new Date();
   const [month, setMonth] = useState(today);
 
   const year = month.getFullYear();
@@ -254,7 +244,7 @@ export default function LeavePage() {
           id: String(r.leave_id),
           empId: `EMP${String(r.employee_id).padStart(3, "0")}`,
           name: r.employee_name || "Unknown",
-          department: "Staff",
+          department: r.employee_dept || "General",
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
           leaveType: r.leave_type as LeaveType,
           fromDate: r.start_date,

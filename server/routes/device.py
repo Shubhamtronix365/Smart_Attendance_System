@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime
+from datetime import date, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class DeviceCheckinResponse(BaseModel):
 class EnrollmentStartRequest(BaseModel):
     employee_code: str
     name: str
+    fingerprint_id: Optional[int] = None
 
 class EnrollmentStepRequest(BaseModel):
     step: str
@@ -228,18 +229,39 @@ async def start_enrollment(
             detail=f"Employee ID '{payload.employee_code}' already exists"
         )
 
-    free_fid = await get_next_free_fingerprint_id(db)
+    if payload.fingerprint_id and payload.fingerprint_id > 0:
+        target_fid = payload.fingerprint_id
+    else:
+        target_fid = await get_next_free_fingerprint_id(db)
 
     enrollment_session.reset()
     enrollment_session.active = True
     enrollment_session.status = "initiated"
     enrollment_session.employee_code = payload.employee_code
     enrollment_session.name = payload.name
-    enrollment_session.fingerprint_id = free_fid
+    enrollment_session.fingerprint_id = target_fid
     enrollment_session.lcd_line1 = "Register Emp"
     enrollment_session.lcd_line2 = payload.name[:16]
-    enrollment_session.message = f"Starting enrollment for {payload.name}. Assigned slot #{free_fid}."
+    enrollment_session.message = f"Starting enrollment for {payload.name}. Assigned slot #{target_fid}."
     enrollment_session.updated_at = datetime.utcnow()
+
+    # Broadcast command directly to all connected ESP32 devices via WebSocket
+    try:
+        from server.routes.websocket import ws_manager
+        command_payload = {
+            "command": "start_enroll",
+            "session_id": "ws_session",
+            "employee_code": payload.employee_code,
+            "name": payload.name,
+            "fingerprint_id": target_fid
+        }
+        await ws_manager.broadcast_to_devices(command_payload)
+        await ws_manager.broadcast_to_clients({
+            "event": "enrollment_update",
+            "data": enrollment_session.to_dict()
+        })
+    except Exception as e:
+        pass
 
     return enrollment_session.to_dict()
 
@@ -309,6 +331,17 @@ async def cancel_enrollment():
     enrollment_session.lcd_line1 = "Employee System"
     enrollment_session.lcd_line2 = "Ready"
     enrollment_session.message = "Registration cancelled."
+
+    try:
+        from server.routes.websocket import ws_manager
+        await ws_manager.broadcast_to_devices({"command": "cancel_enroll"})
+        await ws_manager.broadcast_to_clients({
+            "event": "enrollment_update",
+            "data": enrollment_session.to_dict()
+        })
+    except Exception:
+        pass
+
     return {"status": "cancelled"}
 
 @router.post("/enroll/finalize")

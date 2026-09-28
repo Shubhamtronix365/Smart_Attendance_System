@@ -116,6 +116,14 @@ async def live_attendance(
     res = await db.execute(stmt)
     records = res.scalars().all()
     
+    # If no records exist today yet (e.g. before office hours), show recent activity from previous days
+    if not records:
+        stmt_fb = select(Attendance).options(joinedload(Attendance.employee)).order_by(
+            Attendance.created_at.desc()
+        ).limit(20)
+        res_fb = await db.execute(stmt_fb)
+        records = res_fb.scalars().all()
+    
     return [
         AttendanceOut(
             attendance_id=r.attendance_id,
@@ -164,7 +172,6 @@ async def get_today_stats(
     present_total = present + late + wfh_or_half
     
     # Absent count is active employees without check-in who aren't on leave
-    # For simplicity, we can do: active - present_total - leave
     absent = max(total_active - present_total - leave, 0)
     
     return {
@@ -173,6 +180,122 @@ async def get_today_stats(
         "absent": absent,
         "late": late,
         "leave": leave
+    }
+
+@router.get("/analytics")
+async def get_attendance_analytics(
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """Returns real analytics data for dashboard charts (Weekly, Dept-wise, and Payroll)."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin privilege required")
+
+    from datetime import timedelta
+    from server.models import Payroll
+    today = date.today()
+
+    # 1. Total active employees
+    tot_stmt = select(func.count(Employee.employee_id)).where(Employee.is_active == True)
+    tot_res = await db.execute(tot_stmt)
+    total_active = tot_res.scalar() or 0
+
+    # 2. Weekly Attendance (Last 7 days)
+    weekly = []
+    day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    start_date = today - timedelta(days=6)
+    
+    att_stmt = select(Attendance).where(Attendance.date >= start_date, Attendance.date <= today)
+    att_res = await db.execute(att_stmt)
+    week_records = att_res.scalars().all()
+
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        day_records = [r for r in week_records if r.date == d]
+        pres_count = sum(1 for r in day_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH, AttendanceStatus.HALF_DAY))
+        weekly.append({
+            "day": day_abbrs[d.weekday()],
+            "date": d.strftime("%Y-%m-%d"),
+            "attendance": pres_count,
+            "target": total_active
+        })
+
+    # 3. Department-wise Attendance for Today
+    emp_stmt = select(Employee).where(Employee.is_active == True)
+    emp_res = await db.execute(emp_stmt)
+    all_employees = emp_res.scalars().all()
+
+    dept_map = {}
+    for emp in all_employees:
+        dept = emp.department or "General"
+        if dept not in dept_map:
+            dept_map[dept] = {"total": 0, "present": 0}
+        dept_map[dept]["total"] += 1
+
+    today_att_stmt = select(Attendance).where(Attendance.date == today)
+    today_att_res = await db.execute(today_att_stmt)
+    today_records = today_att_res.scalars().all()
+    present_emp_ids = {r.employee_id for r in today_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH, AttendanceStatus.HALF_DAY)}
+
+    for emp in all_employees:
+        if emp.employee_id in present_emp_ids:
+            dept = emp.department or "General"
+            dept_map[dept]["present"] += 1
+
+    departments = []
+    for dept, data in dept_map.items():
+        pct = round((data["present"] / data["total"]) * 100) if data["total"] > 0 else 0
+        departments.append({
+            "dept": dept,
+            "total": data["total"],
+            "present": pct
+        })
+
+    if not departments:
+        departments = [
+            {"dept": "Engineering", "total": 0, "present": 0},
+            {"dept": "HR", "total": 0, "present": 0},
+            {"dept": "Finance", "total": 0, "present": 0},
+            {"dept": "Operations", "total": 0, "present": 0}
+        ]
+
+    # 4. Monthly Payroll Trend (Last 6 Months)
+    payroll_trend = []
+    month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    
+    est_monthly_payroll = sum(float(e.salary or 0) for e in all_employees)
+
+    cur_y, cur_m = today.year, today.month
+    months_to_check = []
+    for offset in range(5, -1, -1):
+        m = cur_m - offset
+        y = cur_y
+        while m <= 0:
+            m += 12
+            y -= 1
+        months_to_check.append((y, m))
+
+    p_stmt = select(Payroll).where(Payroll.year >= months_to_check[0][0])
+    p_res = await db.execute(p_stmt)
+    all_payrolls = p_res.scalars().all()
+
+    for y, m in months_to_check:
+        month_payrolls = [p for p in all_payrolls if p.year == y and p.month == m]
+        if month_payrolls:
+            total_pay = sum(float(p.final_salary or 0) for p in month_payrolls)
+        else:
+            total_pay = est_monthly_payroll if (y == cur_y and m == cur_m) else 0.0
+
+        payroll_trend.append({
+            "month": month_names[m],
+            "year": y,
+            "payroll": round(total_pay, 2)
+        })
+
+    return {
+        "weekly": weekly,
+        "departments": departments,
+        "payroll_trend": payroll_trend
     }
 
 @router.post("/manual", response_model=AttendanceOut)

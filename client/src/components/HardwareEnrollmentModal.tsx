@@ -173,7 +173,7 @@ export default function HardwareEnrollmentModal({
       setStep(1);
       setEmployeeCode(`EMP${Math.floor(100 + Math.random() * 900)}`);
       setEmployeeName("");
-      setFingerprintId(null);
+      setFingerprintId(4); // Default next slot
       setRfidUid("");
       setDepartment("Engineering");
       setDesignation("Software Engineer");
@@ -253,6 +253,8 @@ export default function HardwareEnrollmentModal({
       return;
     }
 
+    const slotNum = fingerprintId ? Number(fingerprintId) : 1;
+
     setIsTransmitting(true);
     try {
       // Send instantaneous command via WebSocket if open
@@ -261,19 +263,21 @@ export default function HardwareEnrollmentModal({
           action: "start_enroll",
           employee_code: employeeCode.trim(),
           name: employeeName.trim(),
+          fingerprint_id: slotNum,
         }));
       }
 
       const res = await deviceApi.startEnrollment({
         employee_code: employeeCode.trim(),
         name: employeeName.trim(),
+        fingerprint_id: slotNum,
       });
-      setFingerprintId(res.fingerprint_id);
+      setFingerprintId(res.fingerprint_id || slotNum);
       setLcdLine1(res.lcd_line1 || "Register Emp");
       setLcdLine2(res.lcd_line2 || employeeName.slice(0, 16));
       setHardwareMessage(res.message || "Awaiting fingerprint scan on sensor");
       setStep(2);
-      success(`Handshake started! Assigned slot #${res.fingerprint_id} to ${employeeName}.`);
+      success(`Handshake started! Assigned slot #${res.fingerprint_id || slotNum} to ${employeeName}.`);
     } catch (err: any) {
       toastError(err.response?.data?.detail || "Could not connect to ESP32 backend.");
     } finally {
@@ -494,7 +498,7 @@ export default function HardwareEnrollmentModal({
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="text-white/60 text-xs font-semibold mb-1 block">
                       Employee ID / Code *
@@ -519,6 +523,22 @@ export default function HardwareEnrollmentModal({
                       onChange={(e) => setEmployeeName(e.target.value)}
                       placeholder="e.g. Bhavesh Burad"
                       className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm outline-none focus:border-cyan-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-white/60 text-xs font-semibold mb-1 flex items-center justify-between">
+                      <span>Fingerprint Slot # *</span>
+                      <span className="text-[10px] text-cyan-400 font-mono">1 - 127</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={127}
+                      value={fingerprintId || ""}
+                      onChange={(e) => setFingerprintId(e.target.value ? Number(e.target.value) : null)}
+                      placeholder="e.g. 4"
+                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-sm outline-none focus:border-cyan-400"
                     />
                   </div>
                 </div>

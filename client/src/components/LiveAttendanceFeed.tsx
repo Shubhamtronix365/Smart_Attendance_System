@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { attendanceApi } from "@/services/api";
+import { formatTime } from "@/utils/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AttendanceEntry {
@@ -23,42 +24,6 @@ const STATUS = {
   absent:   { label: "Absent",   color: "#ef4444", bg: "rgba(239,68,68,0.12)",   dot: "bg-red-400"    },
   checkout: { label: "Checkout", color: "#a78bfa", bg: "rgba(167,139,250,0.12)", dot: "bg-violet-400" },
 };
-
-// ─── Mock data factory ────────────────────────────────────────────────────────
-const NAMES = [
-  ["AS", "Arjun Sharma",   "Engineering"],
-  ["PM", "Priya Mehta",    "HR"],
-  ["RK", "Raj Kumar",      "Finance"],
-  ["NP", "Neha Patel",     "Engineering"],
-  ["VS", "Vikram Singh",   "Operations"],
-  ["DG", "Divya Gupta",    "Marketing"],
-  ["AJ", "Amit Joshi",     "Engineering"],
-  ["SK", "Sunita Kaur",    "HR"],
-  ["MR", "Manish Rao",     "Finance"],
-  ["PT", "Pooja Trivedi",  "Design"],
-];
-
-const STATUSES: AttendanceEntry["status"][] = ["present", "late", "checkout", "present", "present"];
-
-function makeEntry(i: number): AttendanceEntry {
-  const [avatar, name, department] = NAMES[i % NAMES.length];
-  const status = STATUSES[i % STATUSES.length];
-  const now = new Date();
-  now.setMinutes(now.getMinutes() - i * 3 - Math.floor(Math.random() * 5));
-  return {
-    id: `${Date.now()}-${i}`,
-    name: name as string,
-    department: department as string,
-    avatar: avatar as string,
-    status,
-    time: now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-    timestamp: now.getTime(),
-  };
-}
-
-function generateInitialFeed(): AttendanceEntry[] {
-  return Array.from({ length: 12 }, (_, i) => makeEntry(i));
-}
 
 // ─── Avatar Component ─────────────────────────────────────────────────────────
 function Avatar({ initials, status }: { initials: string; status: AttendanceEntry["status"] }) {
@@ -128,7 +93,8 @@ export default function LiveAttendanceFeed() {
         const hasCheckOut = !!r.check_out;
         const timeStr = hasCheckOut ? r.check_out : r.check_in;
         const mappedStatus: any = hasCheckOut ? "checkout" : (r.status === "late" ? "late" : (r.status === "absent" ? "absent" : "present"));
-        const t = new Date(timeStr || r.created_at);
+        const rawTime = timeStr || r.created_at;
+        const t = new Date(rawTime);
 
         return {
           id: String(r.attendance_id),
@@ -136,8 +102,8 @@ export default function LiveAttendanceFeed() {
           department: r.employee_dept || "N/A",
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
           status: mappedStatus,
-          time: t.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
-          timestamp: t.getTime(),
+          time: formatTime(rawTime, true),
+          timestamp: isNaN(t.getTime()) ? Date.now() : t.getTime(),
         };
       });
 
@@ -253,11 +219,17 @@ export default function LiveAttendanceFeed() {
 
       {/* Feed list */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1 custom-scroll">
-        <AnimatePresence initial={false}>
-          {entries.map((entry) => (
-            <FeedEntry key={entry.id} entry={entry} isNew={newIds.has(entry.id)} />
-          ))}
-        </AnimatePresence>
+        {entries.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-white/30 text-xs">
+            No live punches recorded yet. Waiting for hardware scans...
+          </div>
+        ) : (
+          <AnimatePresence initial={false}>
+            {entries.map((entry) => (
+              <FeedEntry key={entry.id} entry={entry} isNew={newIds.has(entry.id)} />
+            ))}
+          </AnimatePresence>
+        )}
       </div>
     </motion.div>
   );
