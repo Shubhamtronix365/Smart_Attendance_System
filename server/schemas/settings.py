@@ -5,3 +5,4 @@ class SettingsSchema(BaseModel):
     late_threshold_minutes: int = Field(..., description="Late threshold in minutes (e.g. 30)")
     ot_multiplier: float = Field(..., description="Overtime multiplier (e.g. 1.5)")
     device_api_key: str = Field(..., description="API key used by ESP32 biometric device")
+    device_id: str = Field(default="ESP32_TRONIX_01", description="Identifier for primary ESP32 biometric device")

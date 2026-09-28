@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "8f5a1fd8964d4ef7b5a1a1f0a1c9e88d0859a0f0254c7d0d0f985b1a3297a8bc"
     JWT_ALGORITHM: str = "HS256"
     DEVICE_API_KEY: str = "esp32_device_secret_key"
+    DEVICE_ID: str = "ESP32_TRONIX_01"
     STANDARD_WORK_HOURS: int = 8
     LATE_THRESHOLD_MINUTES: int = 30
     OT_MULTIPLIER: float = 1.5

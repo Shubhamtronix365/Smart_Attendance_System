@@ -53,7 +53,8 @@ async def get_settings(current_user: Employee = Depends(require_admin)):
         standard_work_hours=settings.STANDARD_WORK_HOURS,
         late_threshold_minutes=settings.LATE_THRESHOLD_MINUTES,
         ot_multiplier=settings.OT_MULTIPLIER,
-        device_api_key=settings.DEVICE_API_KEY
+        device_api_key=settings.DEVICE_API_KEY,
+        device_id=settings.DEVICE_ID
     )
 
 
@@ -70,7 +71,8 @@ async def update_settings(
         "STANDARD_WORK_HOURS": str(payload.standard_work_hours),
         "LATE_THRESHOLD_MINUTES": str(payload.late_threshold_minutes),
         "OT_MULTIPLIER": str(payload.ot_multiplier),
-        "DEVICE_API_KEY": payload.device_api_key
+        "DEVICE_API_KEY": payload.device_api_key,
+        "DEVICE_ID": payload.device_id
     }
     
     try:
@@ -82,12 +84,14 @@ async def update_settings(
         settings.LATE_THRESHOLD_MINUTES = payload.late_threshold_minutes
         settings.OT_MULTIPLIER = payload.ot_multiplier
         settings.DEVICE_API_KEY = payload.device_api_key
+        settings.DEVICE_ID = payload.device_id
         
         return SettingsSchema(
             standard_work_hours=settings.STANDARD_WORK_HOURS,
             late_threshold_minutes=settings.LATE_THRESHOLD_MINUTES,
             ot_multiplier=settings.OT_MULTIPLIER,
-            device_api_key=settings.DEVICE_API_KEY
+            device_api_key=settings.DEVICE_API_KEY,
+            device_id=settings.DEVICE_ID
         )
     except Exception as e:
         raise HTTPException(

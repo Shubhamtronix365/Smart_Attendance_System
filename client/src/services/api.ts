@@ -111,6 +111,7 @@ export const settingsApi = {
     late_threshold_minutes: number;
     ot_multiplier: number;
     device_api_key: string;
+    device_id?: string;
   }) => api.put("/api/settings", data).then((res) => res.data),
 };
 
