@@ -376,10 +376,16 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       else if (event && strcmp(event, "checkin_result") == 0) {
         bool success = doc["success"] | false;
         String empName = doc["employee_name"] | "Employee";
-        String punchType = doc["punch_type"] | "PUNCH";
+        const char* punchStatus = doc["status"] | "check_in";
 
         if (success) {
-          updateLcd(empName, punchType + " OK");
+          if (strcmp(punchStatus, "check_out") == 0) {
+            updateLcd(empName, "Check-Out OK!");
+          } else if (strcmp(punchStatus, "already_done") == 0) {
+            updateLcd(empName, "Already Done!");
+          } else {
+            updateLcd(empName, "Check-In OK!");
+          }
           beepSuccess();
           delay(2000);
         } else {
