@@ -53,6 +53,7 @@ export const employeesApi = {
   create: (data: unknown) => api.post("/api/employees", data),
   update: (id: string, data: unknown) => api.put(`/api/employees/${id}`, data),
   delete: (id: string) => api.delete(`/api/employees/${id}`),
+  deleteAll: () => api.delete("/api/employees/all/clear"),
 };
 
 // ─── Attendance ────────────────────────────────────────────────────────────────

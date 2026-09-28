@@ -153,12 +153,35 @@ async def update_employee(
     await db.refresh(employee)
     return employee
 
+@router.delete("/all/clear")
+async def delete_all_employees(
+    db: AsyncSession = Depends(get_db)
+):
+    """Soft deletes all non-admin employees and broadcasts clear command to hardware."""
+    stmt = select(Employee).where(Employee.role != "admin", Employee.is_active == True)
+    res = await db.execute(stmt)
+    employees = res.scalars().all()
+    count = len(employees)
+    for emp in employees:
+        emp.is_active = False
+    await db.commit()
+
+    try:
+        from server.routes.websocket import ws_manager
+        await ws_manager.broadcast_to_devices({
+            "command": "clear_all_employees"
+        })
+    except Exception:
+        pass
+
+    return {"message": f"Successfully deleted {count} employees", "count": count}
+
 @router.delete("/{employee_id}")
 async def delete_employee(
     employee_id: int,
     db: AsyncSession = Depends(get_db)
 ):
-    """Soft deletes an employee by setting is_active to False."""
+    """Soft deletes an employee by setting is_active to False and removes from hardware."""
     stmt = select(Employee).where(Employee.employee_id == employee_id).where(Employee.is_active == True)
     res = await db.execute(stmt)
     employee = res.scalar_one_or_none()
@@ -171,6 +194,17 @@ async def delete_employee(
         
     employee.is_active = False
     await db.commit()
+
+    try:
+        from server.routes.websocket import ws_manager
+        await ws_manager.broadcast_to_devices({
+            "command": "delete_employee",
+            "fingerprint_id": employee.fingerprint_id,
+            "rfid_uid": employee.rfid_uid
+        })
+    except Exception:
+        pass
+
     return {"message": "Employee soft deleted successfully"}
 
 @router.get("/{employee_id}/summary", response_model=EmployeeSummary)

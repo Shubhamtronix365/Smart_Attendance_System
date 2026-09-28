@@ -6,8 +6,12 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 
 ## Features
 
-- 🔐 **Fingerprint Authentication** via ESP32 + biometric sensor.
+- 🔐 **Fingerprint & RFID Authentication** via ESP32 Tronix hardware (R307S sensor + RC522 reader).
+- 💾 **Offline-First Flash Queue (Preferences.h):** Punches are stored in internal NVS Flash when Wi-Fi is unavailable and automatically synced when reconnected. Records are deleted from ESP32 Flash **only after cloud acknowledgment (`punch_ack`)**.
+- ⏱️ **1-Hour Anti-Bounce Rule:** First punch marks Check-In. Any subsequent punch within 1 hour shows *"Already Marked!"* with warning beeps to prevent false double triggers; punches after 1 hour register Check-Out.
+- 🕒 **Autonomous DS3231 RTC Clock & Local Name Display:** Employee roster is permanently cached in ESP32 Flash; scanning an employee displays their Name and accurate RTC time on the 16x2 LCD with **zero dependency on Wi-Fi or server**.
 - 📡 **Real-time Attendance Tracking** with automated check-in status (present, late) and checkout overtime calculations.
+- 🗑️ **Full Hardware & Cloud Sync Management:** Add, Edit, Delete specific employee, or **Delete All Employees** (bulk wipe) directly from the Web Admin GUI, propagating immediate sensor deletion commands to hardware.
 - 💰 **Auto Payroll Calculation** based on monthly attendance records, overtime allowances, deductions, and approved leaves.
 - 📊 **Dashboard Analytics** with interactive weekly and monthly charts.
 - 🌑 **Immersive 3D Hero UI** with glassmorphism, neon accents, and particle fields.

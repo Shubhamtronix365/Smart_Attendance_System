@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 from datetime import date, datetime
 from typing import Dict, Set, Optional
@@ -101,7 +101,11 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 # ─── Database Attendance Helper for WS Check-in ──────────────────────────────
-async def process_attendance_punch(fingerprint_id: Optional[int], rfid_uid: Optional[str]) -> dict:
+async def process_attendance_punch(
+    fingerprint_id: Optional[int],
+    rfid_uid: Optional[str],
+    device_time: Optional[str] = None
+) -> dict:
     async with async_session_maker() as db:
         employee = None
         scan_source = "biometric"
@@ -137,8 +141,19 @@ async def process_attendance_punch(fingerprint_id: Optional[int], rfid_uid: Opti
                 "method": scan_source
             }
 
-        today = date.today()
         now = datetime.utcnow()
+        if device_time:
+            try:
+                if "T" in device_time:
+                    punch_dt = datetime.fromisoformat(device_time)
+                else:
+                    punch_dt = datetime.strptime(device_time, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                punch_dt = now
+        else:
+            punch_dt = now
+
+        today = punch_dt.date()
 
         att_stmt = select(Attendance).where(
             and_(
@@ -150,13 +165,14 @@ async def process_attendance_punch(fingerprint_id: Optional[int], rfid_uid: Opti
         attendance = att_res.scalar_one_or_none()
 
         if not attendance:
-            check_in_time = now.time()
+            # Check-In
+            check_in_time = punch_dt.time()
             attendance_status = determine_status(check_in_time)
 
             attendance = Attendance(
                 employee_id=employee.employee_id,
                 date=today,
-                check_in=now,
+                check_in=punch_dt,
                 check_out=None,
                 status=attendance_status,
                 source=scan_source,
@@ -173,11 +189,25 @@ async def process_attendance_punch(fingerprint_id: Optional[int], rfid_uid: Opti
                     "status": "already_done",
                     "message": f"Already checked out today, {employee.name}.",
                     "employee_name": employee.name,
-                    "method": scan_source
+                    "method": scan_source,
+                    "time": punch_dt.strftime("%H:%M:%S")
                 }
 
-            attendance.check_out = now
-            working_hours, overtime_hours = calculate_hours(attendance.check_in, now)
+            # 1-Hour Rule: Check time elapsed since check_in
+            time_diff_sec = (punch_dt - attendance.check_in).total_seconds()
+            if time_diff_sec < 3600:
+                return {
+                    "success": True,
+                    "status": "already_marked",
+                    "message": f"In already marked! Try after 1 hr.",
+                    "employee_name": employee.name,
+                    "method": scan_source,
+                    "time": punch_dt.strftime("%H:%M:%S")
+                }
+
+            # Check-Out (After 1 hour)
+            attendance.check_out = punch_dt
+            working_hours, overtime_hours = calculate_hours(attendance.check_in, punch_dt)
             attendance.working_hours = working_hours
             attendance.overtime_hours = overtime_hours
             if attendance.status == AttendanceStatus.ABSENT:
@@ -192,7 +222,7 @@ async def process_attendance_punch(fingerprint_id: Optional[int], rfid_uid: Opti
             "message": msg,
             "employee_name": employee.name,
             "method": scan_source,
-            "time": now.strftime("%H:%M:%S")
+            "time": punch_dt.strftime("%H:%M:%S")
         }
 
 # ─── Endpoint: Web Client WebSocket (/ws/client) ─────────────────────────────
@@ -324,17 +354,27 @@ async def websocket_device_endpoint(
             elif event == "checkin":
                 fid = data.get("fingerprint_id")
                 rfid = data.get("rfid_uid")
-                result = await process_attendance_punch(fid, rfid)
+                device_time = data.get("timestamp")
+                punch_id = data.get("punch_id", "")
+                result = await process_attendance_punch(fid, rfid, device_time)
 
-                # Send response back to ESP32 device
-                await websocket.send_json({
-                    "event": "checkin_result",
+                # Send ACK response back to ESP32 device
+                ack_payload = {
+                    "event": "punch_ack",
+                    "punch_id": punch_id,
                     "success": result["success"],
                     "status": result["status"],
                     "message": result["message"],
                     "employee_name": result.get("employee_name", "Unknown"),
-                    "punch_type": result.get("status", "PUNCH").upper()
-                })
+                    "punch_type": result.get("status", "PUNCH").upper(),
+                    "time": result.get("time", "")
+                }
+                await websocket.send_json(ack_payload)
+
+                # Also send checkin_result for legacy compatibility
+                legacy_payload = dict(ack_payload)
+                legacy_payload["event"] = "checkin_result"
+                await websocket.send_json(legacy_payload)
 
                 # Broadcast live checkin feed to all connected web clients
                 if result["success"]:
@@ -346,7 +386,28 @@ async def websocket_device_endpoint(
                         "time": result["time"]
                     })
 
-            # 3. Heartbeat ping-pong
+            # 3. Synchronize Employee Roster on Boot / Request
+            elif event == "sync_roster":
+                async with async_session_maker() as db:
+                    emp_stmt = select(Employee).where(Employee.is_active == True)
+                    emp_res = await db.execute(emp_stmt)
+                    employees = emp_res.scalars().all()
+                    roster = [
+                        {
+                            "fingerprint_id": emp.fingerprint_id,
+                            "name": emp.name,
+                            "employee_code": emp.employee_code or f"EMP{emp.employee_id:03d}",
+                            "rfid_uid": emp.rfid_uid or ""
+                        }
+                        for emp in employees if emp.fingerprint_id
+                    ]
+                await websocket.send_json({
+                    "event": "roster_data",
+                    "count": len(roster),
+                    "employees": roster
+                })
+
+            # 4. Heartbeat ping-pong
             elif event == "ping":
                 await websocket.send_json({"event": "pong", "time": datetime.utcnow().isoformat()})
 

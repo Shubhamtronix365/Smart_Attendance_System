@@ -366,6 +366,84 @@ function DeleteDialog({ employee, onClose, onConfirm }: {
   );
 }
 
+// ─── Delete All Confirmation Dialog ───────────────────────────────────────────
+function DeleteAllDialog({ count, onClose, onConfirm }: {
+  count: number; onClose: () => void; onConfirm: () => void;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+  const isReady = confirmText.trim().toUpperCase() === "DELETE";
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}
+        onClick={(e) => e.target === e.currentTarget && onClose()}
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          className="w-full max-w-md rounded-3xl p-8 text-center"
+          style={{
+            background: "rgba(10,15,30,0.98)",
+            border: "1px solid rgba(239,68,68,0.4)",
+            boxShadow: "0 0 80px rgba(239,68,68,0.2)",
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
+            style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)" }}
+          >
+            <Trash2 size={28} className="text-red-400" />
+          </motion.div>
+          <h3 className="text-white font-black text-xl mb-2">Delete ALL Employees?</h3>
+          <p className="text-white/60 text-sm mb-4 leading-relaxed">
+            This will wipe <span className="text-red-400 font-bold">{count} employees</span> from the cloud database AND send an immediate purge command to all connected ESP32 biometric devices.
+          </p>
+          <div className="mb-6 text-left">
+            <label className="text-xs text-white/50 block mb-1.5 font-medium">
+              Type <span className="text-red-400 font-bold">DELETE</span> to confirm:
+            </label>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-center font-mono font-bold tracking-widest text-sm focus:border-red-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 border border-white/10 transition-all"
+            >
+              Cancel
+            </button>
+            <motion.button
+              disabled={!isReady}
+              onClick={onConfirm}
+              whileHover={{ scale: isReady ? 1.02 : 1 }}
+              whileTap={{ scale: isReady ? 0.97 : 1 }}
+              className="flex-1 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              style={{ background: isReady ? "linear-gradient(135deg, #ef4444, #dc2626)" : "rgba(239,68,68,0.2)" }}
+            >
+              Confirm Wipe
+            </motion.button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // ─── Employee Row ─────────────────────────────────────────────────────────────
 function EmployeeRow({ emp, index, onEdit, onDelete }: {
   emp: Employee; index: number; onEdit: () => void; onDelete: () => void;
@@ -469,6 +547,7 @@ export default function EmployeesPage() {
   const [showHardwareModal, setShowHardwareModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [deleteEmployee, setDeleteEmployee] = useState<Employee | null>(null);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -580,6 +659,18 @@ export default function EmployeesPage() {
     }
   }, [deleteEmployee, fetchEmployees, success, error]);
 
+  const handleDeleteAll = useCallback(async () => {
+    try {
+      const res = await employeesApi.deleteAll();
+      success(res.data?.message || "All employees cleared successfully.");
+      setShowDeleteAllModal(false);
+      fetchEmployees();
+    } catch (err: any) {
+      console.error("Error clearing employees", err);
+      error(err.response?.data?.detail || "Failed to clear all employees.");
+    }
+  }, [fetchEmployees, success, error]);
+
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>
       <AdminSidebar userName="Admin User" userRole="Administrator" />
@@ -655,6 +746,20 @@ export default function EmployeesPage() {
 
             {/* Buttons */}
             <div className="flex items-center gap-2.5 ml-auto">
+              {employees.length > 0 && (
+                <motion.button
+                  id="delete-all-btn"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowDeleteAllModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all"
+                  title="Wipe all employees from database and hardware"
+                >
+                  <Trash2 size={14} />
+                  <span>Delete All</span>
+                </motion.button>
+              )}
+
               <motion.button
                 id="smart-enroll-btn"
                 whileHover={{ scale: 1.03 }}
@@ -803,6 +908,17 @@ export default function EmployeesPage() {
       <AnimatePresence>
         {deleteEmployee && (
           <DeleteDialog employee={deleteEmployee} onClose={() => setDeleteEmployee(null)} onConfirm={handleDelete} />
+        )}
+      </AnimatePresence>
+
+      {/* Delete All Dialog */}
+      <AnimatePresence>
+        {showDeleteAllModal && (
+          <DeleteAllDialog
+            count={employees.length}
+            onClose={() => setShowDeleteAllModal(false)}
+            onConfirm={handleDeleteAll}
+          />
         )}
       </AnimatePresence>
 
