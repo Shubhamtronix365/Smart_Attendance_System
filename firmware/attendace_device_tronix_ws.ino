@@ -669,6 +669,25 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         if (fid > 0) {
           finger.deleteModel(fid);
           Serial.printf("[SENSOR] Deleted Fingerprint model slot #%d\n", fid);
+          // CRITICAL: Clear the anti-bounce NVS key for this slot.
+          // Without this, a new person registered on the same slot will be
+          // blocked by the old person's timestamp ("Already Marked!")
+          prefsDebounce.begin("punch_deb", false);
+          String fidKey = "df_" + String(fid);
+          prefsDebounce.remove(fidKey.c_str());
+          prefsDebounce.end();
+          Serial.printf("[DEBOUNCE] Cleared anti-bounce key %s\n", fidKey.c_str());
+        }
+        // Also clear anti-bounce for RFID if present
+        if (strlen(rfidUid) > 0) {
+          String cleanRfid = String(rfidUid);
+          cleanRfid.replace(" ", "");
+          cleanRfid.toUpperCase();
+          prefsDebounce.begin("punch_deb", false);
+          String rfidKey = "dr_" + cleanRfid;
+          prefsDebounce.remove(rfidKey.c_str());
+          prefsDebounce.end();
+          Serial.printf("[DEBOUNCE] Cleared anti-bounce key %s\n", rfidKey.c_str());
         }
         deleteLocalEmployee(fid, String(rfidUid));
         updateLcd("Employee Deleted", "Slot #" + String(fid));
@@ -678,7 +697,12 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       else if (command && strcmp(command, "clear_all_employees") == 0) {
         finger.emptyDatabase();
         clearLocalEmployees();
-        Serial.println("[PURGE] All fingerprint models and local records wiped!");
+        // CRITICAL: Clear ALL anti-bounce records so every re-registered
+        // employee starts with a clean slate on their first scan
+        prefsDebounce.begin("punch_deb", false);
+        prefsDebounce.clear();
+        prefsDebounce.end();
+        Serial.println("[PURGE] All fingerprint models, local records, and anti-bounce data wiped!");
         updateLcd("Database Purged", "All Emps Cleared");
         showReady();
       }
