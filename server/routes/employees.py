@@ -1,7 +1,8 @@
 from typing import List, Optional
 from decimal import Decimal
+from datetime import date as date_type
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func, or_, cast, String, update
+from sqlalchemy import select, func, or_, cast, String, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database.connection import get_db
@@ -183,12 +184,25 @@ async def delete_all_employees(
     res = await db.execute(stmt)
     employees = res.scalars().all()
     count = len(employees)
+    emp_ids = [emp.employee_id for emp in employees]
     for emp in employees:
         emp.is_active = False
         emp.fingerprint_id = None
         emp.rfid_uid = None
     # Release fingerprint_id across all inactive records to make all 127 slots available
     await db.execute(update(Employee).where(Employee.is_active == False).values(fingerprint_id=None, rfid_uid=None))
+
+    # Delete today's attendance for all deleted employees so re-registration starts fresh
+    if emp_ids:
+        from server.utils.time_utils import get_current_local_date
+        today = get_current_local_date()
+        await db.execute(
+            delete(Attendance).where(
+                Attendance.employee_id.in_(emp_ids),
+                Attendance.date == today
+            )
+        )
+
     await db.commit()
 
     try:
@@ -226,6 +240,17 @@ async def delete_employee(
     employee.is_active = False
     employee.fingerprint_id = None
     employee.rfid_uid = None
+
+    # Delete today's attendance for this employee so re-registration starts fresh
+    from server.utils.time_utils import get_current_local_date
+    today = get_current_local_date()
+    await db.execute(
+        delete(Attendance).where(
+            Attendance.employee_id == employee_id,
+            Attendance.date == today
+        )
+    )
+
     await db.commit()
 
     try:
