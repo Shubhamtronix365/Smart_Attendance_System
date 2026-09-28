@@ -798,19 +798,18 @@ export default function EmployeesPage() {
                 <span>Sensor: {employees.filter(e => e.fingerprintId).length}/127 Slots</span>
               </div>
 
-              {employees.length > 0 && (
-                <motion.button
-                  id="delete-all-btn"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowDeleteAllModal(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all"
-                  title="Wipe all employees from database and hardware"
-                >
-                  <Trash2 size={14} />
-                  <span>Delete All</span>
-                </motion.button>
-              )}
+              <motion.button
+                id="delete-all-btn"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setShowDeleteAllModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all"
+                title="Wipe all fingerprints from hardware sensor and database"
+              >
+                <Trash2 size={14} />
+                <span>Wipe All / Sensor</span>
+              </motion.button>
+
 
               <motion.button
                 id="smart-enroll-btn"

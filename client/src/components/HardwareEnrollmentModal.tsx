@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   ChevronRight,
   Sliders,
+  Trash2,
 } from "lucide-react";
 import { deviceApi } from "@/services/api";
 import { useToast } from "@/components/ToastProvider";
@@ -351,6 +352,31 @@ export default function HardwareEnrollmentModal({
     }
   };
 
+  const [isWipingSensor, setIsWipingSensor] = useState(false);
+
+  const handleWipeSensorDatabase = async () => {
+    if (!window.confirm("⚠️ WARNING: Are you sure you want to wipe ALL fingerprints from the physical R307 sensor and ESP32 local flash? This will execute finger.emptyDatabase() on the hardware.")) {
+      return;
+    }
+    try {
+      setIsWipingSensor(true);
+      await deviceApi.clearSensor();
+      success("Wipe command sent! Physical sensor database wiped and ESP32 roster cleared.");
+      setFingerprintId(1);
+      // Re-fetch next slot
+      deviceApi.getNextSlot().then((info: any) => {
+        if (info?.next_slot) {
+          setFingerprintId(info.next_slot);
+        }
+      }).catch(() => {});
+    } catch (err: any) {
+      console.error("Failed to wipe sensor:", err);
+      toastError(err.response?.data?.detail || "Failed to wipe physical sensor.");
+    } finally {
+      setIsWipingSensor(false);
+    }
+  };
+
   const handleCancel = async () => {
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -423,12 +449,24 @@ export default function HardwareEnrollmentModal({
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleCancel}
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleWipeSensorDatabase}
+                disabled={isWipingSensor}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 disabled:opacity-40 transition-all"
+                title="Send finger.emptyDatabase() to wipe all fingerprints from physical R307 sensor"
+              >
+                <Trash2 size={13} />
+                <span>{isWipingSensor ? "Wiping..." : "Wipe Sensor Hardware"}</span>
+              </button>
+              <button
+                onClick={handleCancel}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
           {/* Stepper Wizard Bar */}
@@ -547,6 +585,16 @@ export default function HardwareEnrollmentModal({
                       placeholder="e.g. 4"
                       className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-sm outline-none focus:border-cyan-400"
                     />
+                    <p className="text-[11px] text-white/40 mt-1.5 flex items-center justify-between">
+                      <span>R307 Sensor (1-127)</span>
+                      <button
+                        type="button"
+                        onClick={handleWipeSensorDatabase}
+                        className="text-red-400 hover:text-red-300 underline font-mono text-[10px]"
+                      >
+                        Wipe Sensor Hardware
+                      </button>
+                    </p>
                   </div>
                 </div>
 
