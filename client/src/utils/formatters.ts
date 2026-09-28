@@ -24,19 +24,24 @@ export function formatTime(
     }
 
     // Parse ISO or SQL datetime
-    let dateObj: Date;
     const cleanStr = isoStr.replace(' ', 'T');
 
-    if (cleanStr.endsWith('Z') || cleanStr.includes('+')) {
-      dateObj = new Date(cleanStr);
-    } else {
-      // If datetime was saved in UTC (e.g. from Python datetime.utcnow()), append Z
-      dateObj = new Date(`${cleanStr}Z`);
-      if (isNaN(dateObj.getTime())) {
-        dateObj = new Date(cleanStr);
-      }
+    // If string has date + time without explicit UTC timezone indicator (e.g. "2026-09-28T17:14:10")
+    // format directly from the time components to preserve exact local punch time
+    const match = cleanStr.match(/[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (match && !cleanStr.endsWith('Z') && !cleanStr.includes('+')) {
+      const hours = parseInt(match[1], 10);
+      const minutes = match[2];
+      const seconds = match[3] || '00';
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const h12 = hours % 12 || 12;
+      return includeSeconds
+        ? `${String(h12).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`
+        : `${String(h12).padStart(2, '0')}:${minutes} ${ampm}`;
     }
 
+    // Otherwise, parse as Date (e.g. UTC ISO string ending in Z or with timezone offset)
+    const dateObj = new Date(cleanStr);
     if (isNaN(dateObj.getTime())) {
       return isoStr;
     }

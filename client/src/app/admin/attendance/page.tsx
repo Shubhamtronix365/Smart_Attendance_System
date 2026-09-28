@@ -244,10 +244,43 @@ export default function AttendancePage() {
 
   useEffect(() => {
     fetchAttendance();
-    if (viewMode === "live") {
-      const interval = setInterval(fetchAttendance, 15000);
-      return () => clearInterval(interval);
+
+    let ws: WebSocket | null = null;
+    try {
+      if (typeof window !== "undefined") {
+        let wsUrl = "";
+        if (process.env.NEXT_PUBLIC_API_URL) {
+          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
+          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+        } else {
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const host = window.location.hostname || "localhost";
+          wsUrl = `${protocol}//${host}:8000/ws/client`;
+        }
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "attendance_updated" || data.event === "live_attendance") {
+              fetchAttendance();
+            }
+          } catch (e) {
+            // ignore
+          }
+        };
+      }
+    } catch (err) {
+      console.warn("Attendance WS init error", err);
     }
+
+    let interval: NodeJS.Timeout | null = null;
+    if (viewMode === "live") {
+      interval = setInterval(fetchAttendance, 15000);
+    }
+    return () => {
+      if (ws) ws.close();
+      if (interval) clearInterval(interval);
+    };
   }, [viewMode, selectedDate, fetchAttendance]);
 
   const filtered = records.filter(r =>

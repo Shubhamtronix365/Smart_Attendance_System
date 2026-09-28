@@ -9,6 +9,7 @@ from server.database.connection import get_db
 from server.dependencies.auth import get_current_user, require_admin
 from server.models import Attendance, AttendanceStatus, Employee
 from server.schemas.attendance import AttendanceOut, AttendanceManualEntry, AttendanceStats, AttendanceUpdate
+from server.utils.time_utils import get_current_local_date, get_current_local_time
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
 
@@ -76,7 +77,7 @@ async def today_attendance(
     if current_user.role != "admin":
         raise HTTPException(status_code=433, detail="Admin privilege required")
         
-    today = date.today()
+    today = get_current_local_date()
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(Attendance.date == today)
     res = await db.execute(stmt)
     records = res.scalars().all()
@@ -108,7 +109,7 @@ async def live_attendance(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin privilege required")
         
-    today = date.today()
+    today = get_current_local_date()
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
         Attendance.date == today
     ).order_by(Attendance.created_at.desc()).limit(20)
@@ -151,7 +152,7 @@ async def get_today_stats(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin privilege required")
         
-    today = date.today()
+    today = get_current_local_date()
     
     # Total active employees
     tot_stmt = select(func.count(Employee.employee_id)).where(Employee.is_active == True)
@@ -193,7 +194,7 @@ async def get_attendance_analytics(
 
     from datetime import timedelta
     from server.models import Payroll
-    today = date.today()
+    today = get_current_local_date()
 
     # 1. Total active employees
     tot_stmt = select(func.count(Employee.employee_id)).where(Employee.is_active == True)

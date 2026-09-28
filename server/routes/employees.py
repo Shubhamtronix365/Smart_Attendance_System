@@ -171,6 +171,9 @@ async def delete_all_employees(
         await ws_manager.broadcast_to_devices({
             "command": "clear_all_employees"
         })
+        await ws_manager.broadcast_to_clients({
+            "event": "all_employees_cleared"
+        })
     except Exception:
         pass
 
@@ -201,6 +204,10 @@ async def delete_employee(
             "command": "delete_employee",
             "fingerprint_id": employee.fingerprint_id,
             "rfid_uid": employee.rfid_uid
+        })
+        await ws_manager.broadcast_to_clients({
+            "event": "employee_deleted",
+            "employee_id": employee_id
         })
     except Exception:
         pass

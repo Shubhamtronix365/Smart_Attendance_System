@@ -11,6 +11,7 @@ from server.database.connection import async_session_maker
 from server.models import Employee, Attendance, AttendanceStatus
 from server.services.attendance_service import determine_status, calculate_hours
 from server.routes.device import enrollment_session, get_next_free_fingerprint_id
+from server.utils.time_utils import get_current_local_time, get_current_local_date
 
 logger = logging.getLogger("smart_attendance.websocket")
 router = APIRouter(tags=["WebSockets"])
@@ -141,7 +142,7 @@ async def process_attendance_punch(
                 "method": scan_source
             }
 
-        now = datetime.utcnow()
+        now = get_current_local_time()
         if device_time:
             try:
                 if "T" in device_time:
@@ -315,6 +316,22 @@ async def websocket_device_endpoint(
         return
 
     await ws_manager.connect_device(device_id, websocket)
+    # Calibrate DS3231 RTC module with local office time on connection
+    try:
+        now_local = get_current_local_time()
+        await websocket.send_json({
+            "command": "sync_time",
+            "year": now_local.year,
+            "month": now_local.month,
+            "day": now_local.day,
+            "hour": now_local.hour,
+            "minute": now_local.minute,
+            "second": now_local.second,
+            "iso": now_local.strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        logger.warning(f"Failed to send initial time sync to device: {e}")
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -358,7 +375,7 @@ async def websocket_device_endpoint(
             elif event == "checkin":
                 fid = data.get("fingerprint_id")
                 rfid = data.get("rfid_uid")
-                device_time = data.get("timestamp")
+                device_time = data.get("device_time") or data.get("timestamp")
                 punch_id = data.get("punch_id", "")
                 result = await process_attendance_punch(fid, rfid, device_time)
 
@@ -380,7 +397,7 @@ async def websocket_device_endpoint(
                 legacy_payload["event"] = "checkin_result"
                 await websocket.send_json(legacy_payload)
 
-                # Broadcast live checkin feed to all connected web clients
+                # Broadcast live checkin feed and attendance update to all connected web clients
                 if result["success"]:
                     await ws_manager.broadcast_to_clients({
                         "event": "live_attendance",
@@ -388,6 +405,9 @@ async def websocket_device_endpoint(
                         "punch_type": result["status"],
                         "method": result["method"],
                         "time": result["time"]
+                    })
+                    await ws_manager.broadcast_to_clients({
+                        "event": "attendance_updated"
                     })
 
             # 3. Synchronize Employee Roster on Boot / Request

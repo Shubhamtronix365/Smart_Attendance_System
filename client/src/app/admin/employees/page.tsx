@@ -564,6 +564,42 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     fetchEmployees();
+
+    let ws: WebSocket | null = null;
+    try {
+      let wsUrl = "";
+      if (typeof window !== "undefined") {
+        if (process.env.NEXT_PUBLIC_API_URL) {
+          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
+          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+        } else {
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const host = window.location.hostname || "localhost";
+          wsUrl = `${protocol}//${host}:8000/ws/client`;
+        }
+        ws = new WebSocket(wsUrl);
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "employee_deleted" && data.employee_id) {
+              setEmployees((prev) => prev.filter((e) => e.id !== String(data.employee_id)));
+            } else if (data.event === "all_employees_cleared") {
+              setEmployees([]);
+            } else if (data.event === "attendance_updated") {
+              fetchEmployees();
+            }
+          } catch (e) {
+            // ignore
+          }
+        };
+      }
+    } catch (err) {
+      console.warn("WebSocket init error", err);
+    }
+
+    return () => {
+      if (ws) ws.close();
+    };
   }, [fetchEmployees]);
 
   // Filtered employees
@@ -632,26 +668,34 @@ export default function EmployeesPage() {
 
   const handleDelete = useCallback(async () => {
     if (!deleteEmployee) return;
+    const target = deleteEmployee;
+    // Realtime optimistic removal
+    setEmployees((prev) => prev.filter((e) => e.id !== target.id));
+    setDeleteEmployee(null);
+
     try {
-      await employeesApi.delete(deleteEmployee.id);
-      success("Employee deleted successfully.");
-      setDeleteEmployee(null);
+      await employeesApi.delete(target.id);
+      success(`Employee ${target.name} deleted successfully.`);
       fetchEmployees();
     } catch (err: any) {
       console.error("Error deleting employee", err);
       error(err.response?.data?.detail || "Failed to delete employee.");
+      fetchEmployees();
     }
   }, [deleteEmployee, fetchEmployees, success, error]);
 
   const handleDeleteAll = useCallback(async () => {
+    setShowDeleteAllModal(false);
+    // Realtime optimistic wipe
+    setEmployees([]);
     try {
       const res = await employeesApi.deleteAll();
       success(res.data?.message || "All employees cleared successfully.");
-      setShowDeleteAllModal(false);
       fetchEmployees();
     } catch (err: any) {
       console.error("Error clearing employees", err);
       error(err.response?.data?.detail || "Failed to clear all employees.");
+      fetchEmployees();
     }
   }, [fetchEmployees, success, error]);
 

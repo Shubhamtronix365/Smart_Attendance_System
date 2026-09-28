@@ -149,8 +149,9 @@ async def device_checkin(
             detail=f"{identifier} not registered or employee deactivated"
         )
 
-    today = date.today()
-    now = datetime.utcnow()
+    from server.utils.time_utils import get_current_local_time
+    now = get_current_local_time()
+    today = now.date()
 
     # 2. Check if attendance record exists for today
     att_stmt = select(Attendance).where(
@@ -202,6 +203,22 @@ async def device_checkin(
 
         status_msg = "check_out"
         msg = f"Check-out successful! Goodbye {employee.name}. Worked {working_hours:.2f} hrs."
+
+    try:
+        from server.routes.websocket import ws_manager
+        import asyncio
+        asyncio.create_task(ws_manager.broadcast_to_clients({
+            "event": "live_attendance",
+            "employee_name": employee.name,
+            "punch_type": status_msg,
+            "method": scan_source,
+            "time": now.strftime("%H:%M:%S")
+        }))
+        asyncio.create_task(ws_manager.broadcast_to_clients({
+            "event": "attendance_updated"
+        }))
+    except Exception:
+        pass
 
     return {
         "employee_name": employee.name,

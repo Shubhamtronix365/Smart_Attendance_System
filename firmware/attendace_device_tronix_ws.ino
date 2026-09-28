@@ -679,7 +679,20 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         delay(2000);
         showReady();
       }
-      // 5. Remote Enrollment Triggers
+      // 5. Automatic DS3231 RTC Time Calibration
+      else if (command && strcmp(command, "sync_time") == 0) {
+        int y = doc["year"] | 2026;
+        int m = doc["month"] | 1;
+        int d = doc["day"] | 1;
+        int hh = doc["hour"] | 0;
+        int mm = doc["minute"] | 0;
+        int ss = doc["second"] | 0;
+        if (rtcOK) {
+          rtc.adjust(DateTime(y, m, d, hh, mm, ss));
+          Serial.printf("[RTC SYNC] DS3231 RTC calibrated: %04d-%02d-%02d %02d:%02d:%02d\n", y, m, d, hh, mm, ss);
+        }
+      }
+      // 6. Remote Enrollment Triggers
       else if (command && strcmp(command, "start_enroll") == 0) {
         int fid = doc["fingerprint_id"] | 1;
         String code = doc["employee_code"] | "EMP";
