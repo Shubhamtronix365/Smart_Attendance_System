@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.config import settings
@@ -98,7 +98,10 @@ class EnrollmentState:
 enrollment_session = EnrollmentState()
 
 async def get_next_free_fingerprint_id(db: AsyncSession) -> int:
-    stmt = select(Employee.fingerprint_id).where(Employee.fingerprint_id.isnot(None))
+    stmt = select(Employee.fingerprint_id).where(
+        Employee.fingerprint_id.isnot(None),
+        Employee.is_active == True
+    )
     res = await db.execute(stmt)
     used_ids = set(res.scalars().all())
     for fid in range(1, 128):
@@ -238,7 +241,24 @@ async def start_enrollment(
     Called by the Web Admin console to trigger a new interactive enrollment.
     Allocates the next available fingerprint slot on the hardware.
     """
-    check_stmt = select(Employee).where(Employee.employee_code == payload.employee_code)
+    # Release any inactive employee holding this employee code or slot
+    await db.execute(
+        update(Employee)
+        .where(Employee.is_active == False)
+        .where(
+            or_(
+                Employee.employee_code == payload.employee_code,
+                Employee.fingerprint_id == payload.fingerprint_id if payload.fingerprint_id else False
+            )
+        )
+        .values(employee_code=None, fingerprint_id=None)
+    )
+    await db.commit()
+
+    check_stmt = select(Employee).where(
+        Employee.employee_code == payload.employee_code,
+        Employee.is_active == True
+    )
     check_res = await db.execute(check_stmt)
     if check_res.scalar_one_or_none():
         raise HTTPException(
@@ -370,7 +390,29 @@ async def finalize_enrollment(
     Finalizes the registration by creating the new employee profile in the database
     with all 4 hardware fields (code, name, finger_id, rfid_uid) and company details.
     """
-    email_stmt = select(Employee).where(Employee.email == payload.email)
+    # 1. Release conflicting slots, codes, or RFIDs held by soft-deleted/inactive records
+    await db.execute(
+        update(Employee)
+        .where(Employee.is_active == False)
+        .where(
+            or_(
+                Employee.fingerprint_id == payload.fingerprint_id if payload.fingerprint_id else False,
+                Employee.rfid_uid == payload.rfid_uid if payload.rfid_uid else False,
+                Employee.employee_code == payload.employee_code if payload.employee_code else False
+            )
+        )
+        .values(fingerprint_id=None, rfid_uid=None, employee_code=None)
+    )
+    # If an inactive employee had this exact email, archive it so Postgres unique constraint doesn't clash
+    inactive_email_res = await db.execute(
+        select(Employee).where(Employee.email == payload.email, Employee.is_active == False)
+    )
+    for inact in inactive_email_res.scalars().all():
+        inact.email = f"archived_{inact.employee_id}_{inact.email}"
+    await db.commit()
+
+    # 2. Check for collisions among ACTIVE employees only
+    email_stmt = select(Employee).where(Employee.email == payload.email, Employee.is_active == True)
     email_res = await db.execute(email_stmt)
     if email_res.scalar_one_or_none():
         raise HTTPException(
@@ -379,7 +421,7 @@ async def finalize_enrollment(
         )
 
     if payload.fingerprint_id:
-        fp_stmt = select(Employee).where(Employee.fingerprint_id == payload.fingerprint_id)
+        fp_stmt = select(Employee).where(Employee.fingerprint_id == payload.fingerprint_id, Employee.is_active == True)
         fp_res = await db.execute(fp_stmt)
         if fp_res.scalar_one_or_none():
             raise HTTPException(
@@ -389,7 +431,7 @@ async def finalize_enrollment(
 
     if payload.rfid_uid:
         rfid_clean = payload.rfid_uid.strip().upper()
-        rfid_stmt = select(Employee).where(Employee.rfid_uid == rfid_clean)
+        rfid_stmt = select(Employee).where(Employee.rfid_uid == rfid_clean, Employee.is_active == True)
         rfid_res = await db.execute(rfid_stmt)
         if rfid_res.scalar_one_or_none():
             raise HTTPException(
@@ -509,11 +551,8 @@ async def delete_sensor_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/sensor/clear-all")
 async def clear_all_sensor_slots(db: AsyncSession = Depends(get_db)):
     """Commands the ESP32 to execute finger.emptyDatabase() to wipe all templates from the physical sensor."""
-    stmt = select(Employee).where(Employee.fingerprint_id.isnot(None), Employee.is_active == True)
-    res = await db.execute(stmt)
-    employees = res.scalars().all()
-    for emp in employees:
-        emp.fingerprint_id = None
+    # Wipe fingerprint_id from ALL employees (active and inactive)
+    await db.execute(update(Employee).values(fingerprint_id=None))
     await db.commit()
 
     try:

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func, or_, cast, String
+from sqlalchemy import select, func, or_, cast, String, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database.connection import get_db
@@ -54,8 +54,29 @@ async def create_employee(
     db: AsyncSession = Depends(get_db)
 ):
     """Creates a new employee record and hashes password if provided."""
-    # Check for existing email
-    chk_stmt = select(Employee).where(Employee.email == emp_data.email)
+    # 1. Release conflicting slots, codes, or RFIDs held by soft-deleted/inactive records
+    await db.execute(
+        update(Employee)
+        .where(Employee.is_active == False)
+        .where(
+            or_(
+                Employee.fingerprint_id == emp_data.fingerprint_id if emp_data.fingerprint_id else False,
+                Employee.rfid_uid == emp_data.rfid_uid if emp_data.rfid_uid else False,
+                Employee.employee_code == emp_data.employee_code if emp_data.employee_code else False
+            )
+        )
+        .values(fingerprint_id=None, rfid_uid=None, employee_code=None)
+    )
+    # If an inactive employee had this exact email, archive it so Postgres unique constraint doesn't clash
+    inactive_email_res = await db.execute(
+        select(Employee).where(Employee.email == emp_data.email, Employee.is_active == False)
+    )
+    for inact in inactive_email_res.scalars().all():
+        inact.email = f"archived_{inact.employee_id}_{inact.email}"
+    await db.commit()
+
+    # 2. Check for active existing email
+    chk_stmt = select(Employee).where(Employee.email == emp_data.email, Employee.is_active == True)
     chk_res = await db.execute(chk_stmt)
     if chk_res.scalar_one_or_none():
         raise HTTPException(
@@ -64,8 +85,8 @@ async def create_employee(
         )
         
     if emp_data.fingerprint_id:
-        # Check for fingerprint_id uniqueness
-        fp_stmt = select(Employee).where(Employee.fingerprint_id == emp_data.fingerprint_id)
+        # Check for fingerprint_id uniqueness among ACTIVE employees
+        fp_stmt = select(Employee).where(Employee.fingerprint_id == emp_data.fingerprint_id, Employee.is_active == True)
         fp_res = await db.execute(fp_stmt)
         if fp_res.scalar_one_or_none():
             raise HTTPException(
@@ -164,6 +185,10 @@ async def delete_all_employees(
     count = len(employees)
     for emp in employees:
         emp.is_active = False
+        emp.fingerprint_id = None
+        emp.rfid_uid = None
+    # Release fingerprint_id across all inactive records to make all 127 slots available
+    await db.execute(update(Employee).where(Employee.is_active == False).values(fingerprint_id=None, rfid_uid=None))
     await db.commit()
 
     try:
@@ -177,7 +202,7 @@ async def delete_all_employees(
     except Exception:
         pass
 
-    return {"message": f"Successfully deleted {count} employees", "count": count}
+    return {"message": f"Successfully deleted {count} employees and wiped sensor roster", "count": count}
 
 @router.delete("/{employee_id}")
 async def delete_employee(
@@ -195,15 +220,20 @@ async def delete_employee(
             detail="Employee not found"
         )
         
+    old_fid = employee.fingerprint_id
+    old_rfid = employee.rfid_uid
+
     employee.is_active = False
+    employee.fingerprint_id = None
+    employee.rfid_uid = None
     await db.commit()
 
     try:
         from server.routes.websocket import ws_manager
         await ws_manager.broadcast_to_devices({
             "command": "delete_employee",
-            "fingerprint_id": employee.fingerprint_id,
-            "rfid_uid": employee.rfid_uid
+            "fingerprint_id": old_fid,
+            "rfid_uid": old_rfid
         })
         await ws_manager.broadcast_to_clients({
             "event": "employee_deleted",

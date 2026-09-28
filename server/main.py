@@ -64,11 +64,19 @@ async def startup_event():
     logger.info("Starting up Smart Attendance System API...")
     # Verify database connection
     try:
-        from sqlalchemy import text
+        from sqlalchemy import text, update
         from server.database.connection import async_session_maker
+        from server.models import Employee
         async with async_session_maker() as session:
             await session.execute(text("SELECT 1"))
-        logger.info("Successfully connected to the database.")
+            # Auto-clean slots held by soft-deleted records from previous sessions
+            await session.execute(
+                update(Employee)
+                .where(Employee.is_active == False)
+                .values(fingerprint_id=None, rfid_uid=None)
+            )
+            await session.commit()
+        logger.info("Successfully connected to the database and released any inactive sensor slots.")
     except Exception as e:
         logger.critical(f"Database connection failed during startup: {str(e)}")
 
