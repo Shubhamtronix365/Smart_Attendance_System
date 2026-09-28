@@ -18,8 +18,16 @@ function getCookie(name: string): string | undefined {
 
 // ─── Request Interceptor — Attach JWT ────────────────────────────────────────
 api.interceptors.request.use((config) => {
-  const token = getCookie("access_token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  let token: string | null = null;
+  if (typeof window !== "undefined") {
+    token = localStorage.getItem("access_token");
+  }
+  if (!token) {
+    token = getCookie("access_token") || null;
+  }
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -28,6 +36,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401 && typeof window !== "undefined") {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("role");
       if (window.location.pathname !== "/login" && window.location.pathname !== "/") {
         window.location.href = "/login";
       }

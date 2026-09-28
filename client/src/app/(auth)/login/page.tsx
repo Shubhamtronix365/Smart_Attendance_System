@@ -297,11 +297,25 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Divider */}
-            <div className="relative flex items-center gap-4 mb-6">
-              <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
-              <span className="text-white/30 text-xs">or sign in with email</span>
-              <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+            {/* Quick Demo Credentials */}
+            <div className="mb-5 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
+              <span className="text-[11px] text-white/40 block mb-2 font-medium">⚡ Quick Demo Login (Click to fill):</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setEmail("admin@system.com"); setPassword("admin123"); }}
+                  className="flex-1 py-1.5 px-2.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold border border-cyan-500/20 transition-all text-center"
+                >
+                  🛡️ Admin Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEmail("bhavesh@system.com"); setPassword("bhavesh123"); }}
+                  className="flex-1 py-1.5 px-2.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs font-semibold border border-purple-500/20 transition-all text-center"
+                >
+                  👤 Employee Demo
+                </button>
+              </div>
             </div>
 
             {/* Form */}

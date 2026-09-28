@@ -57,8 +57,8 @@ async def login(
         value=access_token,
         httponly=True,
         max_age=60 * 8 * 60,  # 8 hours in seconds
-        samesite="lax",
-        secure=False,  # Set to True in production with HTTPS
+        samesite="none",
+        secure=True,  # Required for cross-origin HTTPS
     )
     
     return {
@@ -71,7 +71,7 @@ async def login(
 @router.post("/logout")
 async def logout(response: Response):
     """Clears the session token by deleting the cookie."""
-    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="access_token", samesite="none", secure=True)
     return {"message": "Successfully logged out"}
 
 @router.get("/me", response_model=EmployeeOut)

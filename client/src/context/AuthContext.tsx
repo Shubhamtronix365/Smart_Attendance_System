@@ -30,8 +30,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // On mount — try to fetch current user from the session cookie
+  // On mount — try to fetch current user if token exists
   useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
     authApi.me()
       .then((res) => {
         const dbUser = res.data;
@@ -46,12 +52,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatar: dbUser.name.split(" ").map((n: string) => n[0]).join("").toUpperCase(),
         });
       })
-      .catch(() => setUser(null))
+      .catch(() => {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("role");
+        }
+        setUser(null);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
   const login = useCallback(async (email: string, password: string, rememberMe?: boolean) => {
-    await authApi.login(email, password, rememberMe);
+    const res = await authApi.login(email, password, rememberMe);
+    const token = res.data?.access_token;
+    if (token && typeof window !== "undefined") {
+      localStorage.setItem("access_token", token);
+      localStorage.setItem("role", res.data?.role || "");
+    }
     const meRes = await authApi.me();
     const dbUser = meRes.data;
     const mappedUser: User = {
@@ -72,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.logout().catch(() => null);
     setUser(null);
     if (typeof window !== "undefined") {
+      localStorage.removeItem("access_token");
       localStorage.removeItem("role");
       window.location.href = "/login";
     }
