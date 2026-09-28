@@ -266,6 +266,30 @@ export default function LeavePage() {
 
   useEffect(() => {
     fetchLeaves();
+    // Poll every 30 seconds as a fallback
+    const interval = setInterval(fetchLeaves, 30000);
+
+    // WebSocket for real-time leave updates
+    let ws: WebSocket | null = null;
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
+      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (["leave_updated", "leave_created", "leave_approved", "leave_rejected", "attendance_updated"].includes(data.event)) {
+            fetchLeaves();
+          }
+        } catch {}
+      };
+      ws.onerror = () => {};
+    } catch {}
+
+    return () => {
+      clearInterval(interval);
+      if (ws) ws.close();
+    };
   }, [fetchLeaves]);
 
   const filtered = activeTab === "all" ? leaves : leaves.filter(l => l.status === activeTab);

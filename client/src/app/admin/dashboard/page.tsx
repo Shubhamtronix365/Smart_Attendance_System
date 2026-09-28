@@ -134,9 +134,31 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchDashboardData();
-    // Poll every 15 seconds to update the stats
+    // Poll every 15 seconds as a fallback
     const interval = setInterval(fetchDashboardData, 15000);
-    return () => clearInterval(interval);
+
+    // WebSocket for real-time updates
+    let ws: WebSocket | null = null;
+    const WS_EVENTS = ["attendance_updated", "live_attendance", "employee_created", "employee_deleted", "all_employees_cleared"];
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
+      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (WS_EVENTS.includes(data.event)) {
+            fetchDashboardData();
+          }
+        } catch {}
+      };
+      ws.onerror = () => {}; // silently ignore — polling covers us
+    } catch {}
+
+    return () => {
+      clearInterval(interval);
+      if (ws) ws.close();
+    };
   }, [fetchDashboardData]);
 
   // Construct dynamic cards list

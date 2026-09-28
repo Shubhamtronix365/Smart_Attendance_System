@@ -203,6 +203,30 @@ export default function ReportsPage() {
 
   useEffect(() => {
     fetchReport();
+    // Poll every 30 seconds as a fallback
+    const interval = setInterval(fetchReport, 30000);
+
+    // WebSocket for real-time attendance updates
+    let ws: WebSocket | null = null;
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
+      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (["attendance_updated", "live_attendance"].includes(data.event)) {
+            fetchReport();
+          }
+        } catch {}
+      };
+      ws.onerror = () => {};
+    } catch {}
+
+    return () => {
+      clearInterval(interval);
+      if (ws) ws.close();
+    };
   }, [fetchReport]);
 
   const handleExport = async (format: "pdf" | "excel") => {

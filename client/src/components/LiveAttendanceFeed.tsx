@@ -142,7 +142,7 @@ export default function LiveAttendanceFeed() {
     fetchFeed(true);
   }, [fetchFeed]);
 
-  // 10-second polling
+  // 10-second polling fallback
   useEffect(() => {
     if (!isLive) {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -151,6 +151,29 @@ export default function LiveAttendanceFeed() {
     intervalRef.current = setInterval(() => fetchFeed(false), 10000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isLive, fetchFeed]);
+
+  // WebSocket for instant real-time updates
+  useEffect(() => {
+    if (!isLive) return;
+    let ws: WebSocket | null = null;
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
+      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (["attendance_updated", "live_attendance"].includes(data.event)) {
+            fetchFeed(false);
+          }
+        } catch {}
+      };
+      ws.onerror = () => {};
+    } catch {}
+    return () => {
+      if (ws) ws.close();
     };
   }, [isLive, fetchFeed]);
 
