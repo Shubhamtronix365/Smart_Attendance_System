@@ -316,16 +316,19 @@ This application is built for high-performance production hosting across:
 > [!TIP]
 > **24/7 Keepalive:** Render's free tier usually spins down after 15 minutes of inactivity. However, because the ESP32 maintains an open WebSocket connection with a 25-second keepalive ping, **your Render instance stays awake 24/7 automatically!**
 
-### 3. Frontend Deployment on Cloudflare Pages
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) $\rightarrow$ **Compute (Workers & Pages)** $\rightarrow$ **Create Application** $\rightarrow$ **Pages** $\rightarrow$ **Connect to Git**.
-2. Select your repository and configure build settings:
-   - **Framework Preset:** Next.js
-   - **Root directory:** `client`
-   - **Build command:** `npm run build`
-   - **Build output directory:** `.next`
+### 3. Frontend Deployment on Cloudflare Pages / Workers
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) $\rightarrow$ **Compute (Workers & Pages)** $\rightarrow$ **Create Application** $\rightarrow$ **Pages** $\rightarrow$ **Connect to Git** (or deploy via Wrangler).
+2. Configure build settings:
+   - **Option A: Root Directory (Repository Root `/`)**
+     - **Build command:** `npm run build` (which runs `npm --prefix client install && npm --prefix client run build`)
+     - **Build output directory:** `client/out`
+   - **Option B: Subdirectory (`client`)**
+     - **Root directory:** `client`
+     - **Build command:** `npm run build`
+     - **Build output directory:** `out`
 3. Under **Environment variables**, add:
-   - `NEXT_PUBLIC_API_URL`: `https://your-backend.onrender.com`
-   - `NEXT_PUBLIC_WS_URL`: `wss://your-backend.onrender.com/ws/client`
+   - `NEXT_PUBLIC_API_URL`: `https://smart-attendance-backend-tzp4.onrender.com`
+   - `NEXT_PUBLIC_WS_URL`: `wss://smart-attendance-backend-tzp4.onrender.com/ws/client`
 4. Deploy! Your web application will be live across Cloudflare's global edge network.
 
 ### 4. ESP32 Tronix Firmware Configuration

@@ -1,0 +1,8 @@
+﻿{
+  "name": "smart-attendance-system",
+  "compatibility_date": "2024-09-23",
+  "assets": {
+    "directory": "./client/out",
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -613,22 +613,18 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
     case WStype_CONNECTED:
       isWsConnected = true;
       Serial.println("[WS] Connected to Server Successfully!");
-      updateLcd("WS Connected!", "Syncing Roster..");
-      beepSuccess();
-
-      // Request latest roster from cloud to ensure flash is 100% updated
+      updateLcd("WS Connected!", "Ready");
+      // Request latest roster from cloud without blocking loop
       webSocket.sendTXT("{\"event\":\"sync_roster\"}");
-      delay(1200);
-      showReady();
       break;
 
     case WStype_TEXT: {
-      String msg = String((char*)payload);
-      Serial.printf("[WS Message Received]: %s\n", msg.c_str());
-
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, msg);
-      if (error) return;
+      DynamicJsonDocument doc(2048);
+      DeserializationError error = deserializeJson(doc, payload, length);
+      if (error) {
+        Serial.printf("[JSON PARSE ERROR]: %s\n", error.c_str());
+        return;
+      }
 
       const char* command = doc["command"];
       const char* event   = doc["event"];
@@ -640,8 +636,20 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           handlePunchAck(String(pId));
         }
       }
-      // 2. Full Roster Received from Server -> Save to Flash
+      // 2. Full Roster Received from Server -> Save to Flash & Calibrate RTC
       else if (event && strcmp(event, "roster_data") == 0) {
+        if (doc.containsKey("clock") && rtcOK) {
+          JsonObject clk = doc["clock"];
+          int y = clk["year"] | 2026;
+          int m = clk["month"] | 1;
+          int d = clk["day"] | 1;
+          int hh = clk["hour"] | 0;
+          int mm = clk["minute"] | 0;
+          int ss = clk["second"] | 0;
+          rtc.adjust(DateTime(y, m, d, hh, mm, ss));
+          Serial.printf("[RTC SYNC] Calibrated DS3231: %04d-%02d-%02d %02d:%02d:%02d\n", y, m, d, hh, mm, ss);
+        }
+
         JsonArray emps = doc["employees"].as<JsonArray>();
         Serial.printf("[ROSTER] Received %u employees from server. Updating Flash...\n", emps.size());
         for (JsonObject emp : emps) {
@@ -651,8 +659,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           const char* rfid = emp["rfid_uid"] | "";
           saveLocalEmployee(fid, String(name), String(code), String(rfid));
         }
-        updateLcd("Roster Synced!", String(emps.size()) + " Emps Stored");
-        delay(1500);
+        updateLcd("Roster Synced!", String(emps.size()) + " Emps Ready");
         showReady();
       }
       // 3. Delete single employee from Sensor and Flash
@@ -665,8 +672,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         }
         deleteLocalEmployee(fid, String(rfidUid));
         updateLcd("Employee Deleted", "Slot #" + String(fid));
-        beepShort();
-        delay(1500);
         showReady();
       }
       // 4. Wipe ALL employees from Sensor and Flash (Full Bulk Cleanup)
@@ -675,8 +680,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         clearLocalEmployees();
         Serial.println("[PURGE] All fingerprint models and local records wiped!");
         updateLcd("Database Purged", "All Emps Cleared");
-        beepWarning();
-        delay(2000);
         showReady();
       }
       // 5. Automatic DS3231 RTC Time Calibration
@@ -702,11 +705,9 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       else if (command && strcmp(command, "cancel_enroll") == 0) {
         isEnrolling = false;
         updateLcd("Enrollment", "Cancelled");
-        beepError();
-        delay(1500);
         showReady();
       }
-      // 6. Real-time feedback from server
+      // 7. Real-time feedback from server
       else if (event && strcmp(event, "checkin_result") == 0) {
         bool success = doc["success"] | false;
         String empName = doc["employee_name"] | "Employee";
@@ -720,12 +721,8 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           } else {
             updateLcd(empName, "Check-In OK!");
           }
-          beepSuccess();
-          delay(2000);
         } else {
           updateLcd("Not Registered", "Access Denied");
-          beepError();
-          delay(1800);
         }
         showReady();
       }

@@ -316,26 +316,26 @@ async def websocket_device_endpoint(
         return
 
     await ws_manager.connect_device(device_id, websocket)
-    # Calibrate DS3231 RTC module with local office time on connection
-    try:
-        now_local = get_current_local_time()
-        await websocket.send_json({
-            "command": "sync_time",
-            "year": now_local.year,
-            "month": now_local.month,
-            "day": now_local.day,
-            "hour": now_local.hour,
-            "minute": now_local.minute,
-            "second": now_local.second,
-            "iso": now_local.strftime("%Y-%m-%d %H:%M:%S")
-        })
-    except Exception as e:
-        logger.warning(f"Failed to send initial time sync to device: {e}")
 
     try:
         while True:
-            data = await websocket.receive_json()
-            event = data.get("event")
+            try:
+                raw_msg = await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+            except Exception as rx_err:
+                logger.warning(f"Device '{device_id}' transport closed: {rx_err}")
+                break
+
+            try:
+                data = json.loads(raw_msg)
+            except Exception:
+                # Raw text or keepalive ping frame
+                if "ping" in raw_msg.lower():
+                    await websocket.send_text("pong")
+                continue
+
+            event = data.get("event") or data.get("command")
 
             # 1. Hardware enrollment step update
             if event == "step":
@@ -410,7 +410,7 @@ async def websocket_device_endpoint(
                         "event": "attendance_updated"
                     })
 
-            # 3. Synchronize Employee Roster on Boot / Request
+            # 3. Synchronize Employee Roster & Calibrate RTC Clock
             elif event == "sync_roster":
                 async with async_session_maker() as db:
                     emp_stmt = select(Employee).where(Employee.is_active == True)
@@ -425,15 +425,36 @@ async def websocket_device_endpoint(
                         }
                         for emp in employees if emp.fingerprint_id
                     ]
+                now_local = get_current_local_time()
                 await websocket.send_json({
                     "event": "roster_data",
                     "count": len(roster),
-                    "employees": roster
+                    "employees": roster,
+                    "clock": {
+                        "year": now_local.year,
+                        "month": now_local.month,
+                        "day": now_local.day,
+                        "hour": now_local.hour,
+                        "minute": now_local.minute,
+                        "second": now_local.second
+                    }
                 })
 
-            # 4. Heartbeat ping-pong
+            # 4. Heartbeat ping-pong & Time Sync
             elif event == "ping":
-                await websocket.send_json({"event": "pong", "time": datetime.utcnow().isoformat()})
+                now_local = get_current_local_time()
+                await websocket.send_json({
+                    "event": "pong",
+                    "time": now_local.isoformat(),
+                    "clock": {
+                        "year": now_local.year,
+                        "month": now_local.month,
+                        "day": now_local.day,
+                        "hour": now_local.hour,
+                        "minute": now_local.minute,
+                        "second": now_local.second
+                    }
+                })
 
     except WebSocketDisconnect:
         ws_manager.disconnect_device(device_id)
