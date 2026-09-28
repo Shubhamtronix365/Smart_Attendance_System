@@ -210,8 +210,8 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
               <FormField label="Basic Salary (₹)" id="emp-salary" type="number" value={String(form.basicSalary || "")}
                 onChange={(v) => set("basicSalary")(Number(v))}
                 placeholder="75000" icon={<DollarSign size={14} />} />
-              <FormField label="Fingerprint ID" id="emp-fp" value={form.fingerprintId || ""} onChange={set("fingerprintId")}
-                placeholder="FP-001 (from device)" icon={<Fingerprint size={14} />} />
+              <FormField label="Fingerprint Sensor Slot # (1-127)" id="emp-fp" type="number" value={form.fingerprintId || ""} onChange={set("fingerprintId")}
+                placeholder="e.g. 1 (Slot in R307 sensor)" icon={<Fingerprint size={14} />} />
               <FormField label={mode === "add" ? "Default Password" : "Reset Password (Leave blank to keep)"} id="emp-pwd" value={form.password || ""} onChange={set("password")}
                 placeholder={mode === "add" ? "password123" : "Enter new password"} icon={<Lock size={14} />} />
               <FormField label="Joining Date" id="emp-join" type="date" value={form.joiningDate || ""} onChange={set("joiningDate")}
@@ -324,11 +324,25 @@ function DeleteDialog({ employee, onClose, onConfirm }: {
           >
             <AlertTriangle size={28} className="text-red-400" />
           </motion.div>
-          <h3 className="text-white font-black text-xl mb-2">Delete Employee?</h3>
-          <p className="text-white/50 text-sm mb-6">
-            This will permanently remove <span className="text-white font-semibold">{employee.name}</span> ({employee.empId}).
-            This action cannot be undone.
+          <h3 className="text-white font-black text-xl mb-2">Delete from Database & Sensor?</h3>
+          <p className="text-white/60 text-sm mb-4 leading-relaxed">
+            This will permanently delete <span className="text-white font-bold">{employee.name}</span> (<span className="font-mono text-cyan-400">{employee.empId}</span>) from the database.
           </p>
+          {employee.fingerprintId ? (
+            <div className="mb-6 p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-left flex items-start gap-3">
+              <Fingerprint className="text-red-400 shrink-0 mt-0.5" size={18} />
+              <div>
+                <p className="text-red-300 text-xs font-bold">Physical Sensor Model Wipe</p>
+                <p className="text-white/60 text-[11px] mt-0.5">
+                  Slot <span className="text-red-400 font-mono font-bold">#{employee.fingerprintId}</span> will be permanently erased from the physical R307 sensor and ESP32 local flash.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-6 p-3 rounded-2xl bg-white/5 border border-white/10 text-left text-xs text-white/50">
+              No fingerprint template registered on the sensor.
+            </div>
+          )}
           <div className="flex gap-3">
             <button onClick={onClose}
               className="flex-1 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 border border-white/10 transition-all">
@@ -338,10 +352,10 @@ function DeleteDialog({ employee, onClose, onConfirm }: {
               onClick={onConfirm}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              className="flex-1 py-3 rounded-xl text-sm font-bold text-white"
+              className="flex-1 py-3 rounded-xl text-sm font-bold text-white shadow-lg shadow-red-500/20"
               style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)" }}
             >
-              Delete
+              Delete from Sensor & DB
             </motion.button>
           </div>
         </motion.div>
@@ -388,9 +402,9 @@ function DeleteAllDialog({ count, onClose, onConfirm }: {
           >
             <Trash2 size={28} className="text-red-400" />
           </motion.div>
-          <h3 className="text-white font-black text-xl mb-2">Delete ALL Employees?</h3>
+          <h3 className="text-white font-black text-xl mb-2">Wipe All from Database & Sensor?</h3>
           <p className="text-white/60 text-sm mb-4 leading-relaxed">
-            This will wipe <span className="text-red-400 font-bold">{count} employees</span> from the cloud database AND send an immediate purge command to all connected ESP32 biometric devices.
+            This will wipe <span className="text-red-400 font-bold">{count} employees</span> from the cloud database AND send an immediate <code className="text-red-300 bg-red-500/20 px-1 py-0.5 rounded font-mono">finger.emptyDatabase()</code> command to wipe all fingerprint templates from the physical R307 sensor and ESP32 flash memory.
           </p>
           <div className="mb-6 text-left">
             <label className="text-xs text-white/50 block mb-1.5 font-medium">
@@ -452,9 +466,13 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
             <p className="text-white text-sm font-semibold">{emp.name}</p>
             <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
               <span className="text-white/40 text-xs font-mono">{emp.employeeCode || emp.empId}</span>
-              {emp.fingerprintId && (
-                <span className="inline-flex items-center gap-1 text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1.5 py-0.5 rounded font-mono">
-                  <Fingerprint size={10} /> FP #{emp.fingerprintId}
+              {emp.fingerprintId ? (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono font-semibold" title={`Stored in physical R307 sensor storage slot #${emp.fingerprintId}`}>
+                  <Fingerprint size={10} className="text-cyan-400" /> Sensor Slot #{emp.fingerprintId}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-white/5 text-white/30 border border-white/10 px-1.5 py-0.5 rounded font-mono">
+                  No Sensor FP
                 </span>
               )}
               {emp.rfidUid && (
@@ -509,6 +527,7 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
               <Pencil size={13} />
             </button>
             <button onClick={onDelete}
+              title={emp.fingerprintId ? `Delete from Database and erase Slot #${emp.fingerprintId} from R307 sensor` : "Delete employee"}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all">
               <Trash2 size={13} />
             </button>
@@ -774,6 +793,11 @@ export default function EmployeesPage() {
 
             {/* Buttons */}
             <div className="flex items-center gap-2.5 ml-auto">
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-300" title="Occupied slots in physical R307 fingerprint sensor">
+                <Fingerprint size={13} className="text-cyan-400" />
+                <span>Sensor: {employees.filter(e => e.fingerprintId).length}/127 Slots</span>
+              </div>
+
               {employees.length > 0 && (
                 <motion.button
                   id="delete-all-btn"

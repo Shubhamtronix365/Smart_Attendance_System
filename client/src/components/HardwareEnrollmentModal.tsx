@@ -93,6 +93,13 @@ export default function HardwareEnrollmentModal({
       return;
     }
 
+    // Auto-fetch next available slot on physical sensor
+    deviceApi.getNextSlot().then((info: any) => {
+      if (info?.next_slot) {
+        setFingerprintId((prev) => prev || info.next_slot);
+      }
+    }).catch(() => {});
+
     try {
       let wsUrl = process.env.NEXT_PUBLIC_WS_URL;
       if (!wsUrl) {

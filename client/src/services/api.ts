@@ -137,6 +137,12 @@ export const deviceApi = {
     api.post("/api/device/enroll/cancel").then((res) => res.data),
   finalizeEnrollment: (data: unknown) =>
     api.post("/api/device/enroll/finalize", data).then((res) => res.data),
+  getNextSlot: () =>
+    api.get("/api/device/next-slot").then((res) => res.data),
+  deleteSlot: (slotId: number) =>
+    api.delete(`/api/device/sensor/slot/${slotId}`).then((res) => res.data),
+  clearSensor: () =>
+    api.post("/api/device/sensor/clear-all").then((res) => res.data),
 };
 
 export default api;

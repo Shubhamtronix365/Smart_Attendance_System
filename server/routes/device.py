@@ -399,6 +399,9 @@ async def finalize_enrollment(
     else:
         rfid_clean = None
 
+    from server.utils.time_utils import get_current_local_date, get_current_local_time
+    now_local = get_current_local_time()
+
     new_emp = Employee(
         employee_code=payload.employee_code or enrollment_session.employee_code,
         name=payload.name,
@@ -413,8 +416,8 @@ async def finalize_enrollment(
         is_active=True,
         hashed_password=get_password_hash(payload.password or "password123"),
         plain_password=payload.password or "password123",
-        joining_date=date.today(),
-        created_at=datetime.utcnow()
+        joining_date=get_current_local_date(),
+        created_at=now_local
     )
 
     db.add(new_emp)
@@ -422,6 +425,21 @@ async def finalize_enrollment(
     await db.refresh(new_emp)
 
     enrollment_session.reset()
+
+    # Broadcast employee creation so web clients refresh
+    try:
+        from server.routes.websocket import ws_manager
+        await ws_manager.broadcast_to_clients({
+            "event": "employee_created",
+            "employee": {
+                "id": new_emp.employee_id,
+                "name": new_emp.name,
+                "fingerprint_id": new_emp.fingerprint_id,
+                "rfid_uid": new_emp.rfid_uid
+            }
+        })
+    except Exception:
+        pass
 
     return {
         "success": True,
@@ -431,3 +449,82 @@ async def finalize_enrollment(
         "fingerprint_id": new_emp.fingerprint_id,
         "rfid_uid": new_emp.rfid_uid
     }
+
+@router.get("/next-slot")
+async def get_next_slot(db: AsyncSession = Depends(get_db)):
+    """Returns the next available fingerprint slot on the physical sensor (1-127) and current capacity."""
+    stmt = select(Employee.fingerprint_id, Employee.name, Employee.employee_id, Employee.employee_code).where(
+        Employee.fingerprint_id.isnot(None),
+        Employee.is_active == True
+    )
+    res = await db.execute(stmt)
+    rows = res.all()
+    occupied = [
+        {"slot": r[0], "name": r[1], "employee_id": r[2], "employee_code": r[3]}
+        for r in rows if r[0] is not None
+    ]
+    occupied.sort(key=lambda x: x["slot"])
+    used_slots = set(item["slot"] for item in occupied)
+    next_slot = 1
+    for s in range(1, 128):
+        if s not in used_slots:
+            next_slot = s
+            break
+    return {
+        "next_slot": next_slot,
+        "total_slots": 127,
+        "used_count": len(occupied),
+        "free_count": max(127 - len(occupied), 0),
+        "occupied": occupied
+    }
+
+@router.delete("/sensor/slot/{slot_id}")
+async def delete_sensor_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
+    """Deletes a specific fingerprint template directly from the physical R307 sensor and ESP32."""
+    stmt = select(Employee).where(Employee.fingerprint_id == slot_id, Employee.is_active == True)
+    res = await db.execute(stmt)
+    employee = res.scalar_one_or_none()
+    
+    if employee:
+        employee.fingerprint_id = None
+        await db.commit()
+    
+    try:
+        from server.routes.websocket import ws_manager
+        await ws_manager.broadcast_to_devices({
+            "command": "delete_employee",
+            "fingerprint_id": slot_id,
+            "rfid_uid": employee.rfid_uid if employee else ""
+        })
+        await ws_manager.broadcast_to_clients({
+            "event": "sensor_slot_deleted",
+            "slot_id": slot_id,
+            "employee_id": employee.employee_id if employee else None
+        })
+    except Exception:
+        pass
+        
+    return {"message": f"Slot #{slot_id} erased from sensor and ESP32 flash", "slot_id": slot_id}
+
+@router.post("/sensor/clear-all")
+async def clear_all_sensor_slots(db: AsyncSession = Depends(get_db)):
+    """Commands the ESP32 to execute finger.emptyDatabase() to wipe all templates from the physical sensor."""
+    stmt = select(Employee).where(Employee.fingerprint_id.isnot(None), Employee.is_active == True)
+    res = await db.execute(stmt)
+    employees = res.scalars().all()
+    for emp in employees:
+        emp.fingerprint_id = None
+    await db.commit()
+
+    try:
+        from server.routes.websocket import ws_manager
+        await ws_manager.broadcast_to_devices({
+            "command": "clear_all_employees"
+        })
+        await ws_manager.broadcast_to_clients({
+            "event": "sensor_cleared"
+        })
+    except Exception:
+        pass
+
+    return {"message": "All fingerprint templates erased from physical sensor and ESP32 flash"}
