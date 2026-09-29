@@ -252,11 +252,19 @@ Smart_Attendance_System/
 - `GET /api/leave/{id}` — Get single leave request details.
 - `PUT /api/leave/{id}/approve` — Approve pending request (Admin only).
 - `PUT /api/leave/{id}/reject` — Reject pending request (Admin only).
+- `GET /api/leave/my-balance` — Current employee's remaining leave balances for the calendar year.
 - `GET /api/leave/balance/{employee_id}` — Remaining balances for leave categories.
+
+### Employee Self-Service
+- `GET /api/attendance/my` — Logged-in employee's monthly attendance records.
+- `GET /api/attendance/my-stats` — Logged-in employee's monthly present/absent/late/leave statistics.
+- `GET /api/payroll/my` — Logged-in employee's payroll and payslip history.
+- `GET /api/leave/my-balance` — Logged-in employee's quota balance.
 
 ### Payroll
 - `POST /api/payroll/generate/{year}/{month}` — Generate payroll for all active employees (Admin only).
 - `GET /api/payroll` — List payroll summary lines.
+- `GET /api/payroll/my` — List current employee's payslips.
 - `PUT /api/payroll/{id}/mark_paid` — Mark payroll line item status as paid/unpaid (Admin only).
 - `GET /api/payroll/payslip/{payroll_id}` — Binary PDF payslip download.
 

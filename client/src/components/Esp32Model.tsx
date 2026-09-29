@@ -247,8 +247,8 @@ function DataFlowLines() {
 
   useFrame((state) => {
     if (lineRef.current) {
-      const mat = lineRef.current.material as THREE.LineDashedMaterial;
-      mat.dashOffset = -state.clock.getElapsedTime() * 0.5;
+      const mat = lineRef.current.material as any;
+      if (mat) mat.dashOffset = -state.clock.getElapsedTime() * 0.5;
     }
   });
 

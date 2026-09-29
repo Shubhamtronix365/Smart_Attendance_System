@@ -102,6 +102,53 @@ async def submit_leave_request(
         approver_name=None
     )
 
+@router.get("/my-balance")
+async def my_leave_balance(
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """Returns the logged-in employee's leave balance for the current calendar year."""
+    current_year = date.today().year
+
+    stmt = select(Leave).where(
+        and_(
+            Leave.employee_id == current_user.employee_id,
+            Leave.approval_status == LeaveStatus.APPROVED,
+            extract("year", Leave.start_date) == current_year
+        )
+    )
+    res = await db.execute(stmt)
+    leaves = res.scalars().all()
+
+    used_casual = 0
+    used_sick = 0
+    used_paid = 0
+    used_unpaid = 0
+
+    for l in leaves:
+        duration = (l.end_date - l.start_date).days + 1
+        if l.leave_type == LeaveType.CASUAL:
+            used_casual += duration
+        elif l.leave_type == LeaveType.SICK:
+            used_sick += duration
+        elif l.leave_type == LeaveType.PAID:
+            used_paid += duration
+        elif l.leave_type == LeaveType.UNPAID:
+            used_unpaid += duration
+
+    balance_casual = max(CASUAL_LEAVE_QUOTA - used_casual, 0)
+    balance_sick = max(SICK_LEAVE_QUOTA - used_sick, 0)
+    balance_paid = max(PAID_LEAVE_QUOTA - used_paid, 0)
+    total_remaining = balance_casual + balance_sick + balance_paid
+
+    return {
+        "casual": balance_casual,
+        "sick": balance_sick,
+        "paid": balance_paid,
+        "unpaid": used_unpaid,
+        "total_remaining": total_remaining
+    }
+
 @router.get("/{leave_id}", response_model=LeaveOut)
 async def get_leave_request(
     leave_id: int,

@@ -6,6 +6,9 @@ import { Bell, ChevronDown, Search, Fingerprint, LogOut, User, Settings } from "
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
+import { attendanceApi } from "@/services/api";
+import { formatTime } from "@/utils/formatters";
+
 // Live clock hook
 function useLiveClock() {
   const [time, setTime] = useState(new Date());
@@ -16,11 +19,13 @@ function useLiveClock() {
   return time;
 }
 
-const NOTIFICATIONS = [
-  { id: 1, text: "Raj Kumar clocked in late (9:24 AM)", time: "5m ago", unread: true },
-  { id: 2, text: "New leave request from Priya Singh", time: "12m ago", unread: true },
-  { id: 3, text: "Payroll processing complete", time: "1h ago", unread: false },
-];
+interface NotificationItem {
+  id: string;
+  text: string;
+  time: string;
+  unread: boolean;
+  link?: string;
+}
 
 interface AdminTopBarProps {
   title?: string;
@@ -44,8 +49,89 @@ export default function AdminTopBar({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  const unreadCount = NOTIFICATIONS.filter((n) => n.unread).length;
+  // Load real recent live events as notifications
+  useEffect(() => {
+    let isMounted = true;
+    const loadRecentEvents = async () => {
+      try {
+        const res = await attendanceApi.live();
+        if (res.data && Array.isArray(res.data) && isMounted) {
+          const items: NotificationItem[] = res.data.map((item: any) => ({
+            id: `att-${item.attendance_id || item.employee_id}-${item.check_in || Date.now()}`,
+            text: `${item.employee_name || 'Employee'} punched ${item.status || 'in'} (${formatTime(item.check_in || item.check_out, false)})`,
+            time: item.check_in ? formatTime(item.check_in, false) : "Recent",
+            unread: true,
+            link: "/admin/attendance",
+          }));
+          setNotifications(items);
+        }
+      } catch (err) {
+        // Fallback default
+        if (isMounted) {
+          setNotifications([
+            { id: "1", text: "Biometric system online and listening for events", time: "Just now", unread: false, link: "/admin/attendance" }
+          ]);
+        }
+      }
+    };
+
+    loadRecentEvents();
+
+    // Listen to real-time WebSocket events
+    let ws: WebSocket | null = null;
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
+      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === "live_attendance" || data.event === "attendance_updated") {
+            const empName = data.employee_name || data.data?.employee_name || "Employee";
+            const punchStatus = data.status || data.data?.status || "checked in";
+            const newNotif: NotificationItem = {
+              id: `ws-${Date.now()}-${Math.random()}`,
+              text: `${empName} ${punchStatus} via biometric hardware`,
+              time: "Just now",
+              unread: true,
+              link: "/admin/attendance",
+            };
+            setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
+          } else if (data.event === "leave_created") {
+            const newNotif: NotificationItem = {
+              id: `ws-leave-${Date.now()}`,
+              text: `New leave request submitted`,
+              time: "Just now",
+              unread: true,
+              link: "/admin/leave",
+            };
+            setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
+          }
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      isMounted = false;
+      if (ws) ws.close();
+    };
+  }, []);
+
+  const unreadCount = notifications.filter((n) => n.unread).length;
+
+  const markAllRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchValue.trim()) {
+      router.push(`/admin/employees?search=${encodeURIComponent(searchValue.trim())}`);
+    }
+  };
 
   const dateStr = now.toLocaleDateString("en-IN", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -85,14 +171,14 @@ export default function AdminTopBar({
       </div>
 
       {/* Search bar */}
-      <div className="relative hidden lg:flex items-center">
+      <form onSubmit={handleSearchSubmit} className="relative hidden lg:flex items-center">
         <Search size={14} className="absolute left-3 text-white/30" />
         <input
           type="text"
-          placeholder="Search..."
+          placeholder="Search employees..."
           value={searchValue}
           onChange={(e) => setSearchValue(e.target.value)}
-          className="w-48 pl-9 pr-4 py-2 text-white text-sm outline-none rounded-xl transition-all"
+          className="w-52 pl-9 pr-4 py-2 text-white text-sm outline-none rounded-xl transition-all"
           style={{
             background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.08)",
@@ -100,7 +186,7 @@ export default function AdminTopBar({
           onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,245,255,0.4)")}
           onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)")}
         />
-      </div>
+      </form>
 
       {/* Notification Bell */}
       <div className="relative">
@@ -141,26 +227,53 @@ export default function AdminTopBar({
                 boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
               }}
             >
-              <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 <p className="text-white text-sm font-semibold">Notifications</p>
+                {unreadCount > 0 && (
+                  <button
+                    onClick={markAllRead}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    Mark all read
+                  </button>
+                )}
               </div>
-              {NOTIFICATIONS.map((n) => (
-                <div
-                  key={n.id}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${n.unread ? "bg-cyan-400" : "bg-white/20"}`}
-                    style={n.unread ? { boxShadow: "0 0 6px #00f5ff" } : {}} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white/80 text-xs leading-relaxed">{n.text}</p>
-                    <p className="text-white/30 text-xs mt-0.5">{n.time}</p>
-                  </div>
+              {notifications.length === 0 ? (
+                <div className="p-6 text-center text-white/30 text-xs">
+                  No notifications
                 </div>
-              ))}
-              <div className="px-4 py-3 text-center">
-                <button className="text-cyan-400/70 hover:text-cyan-400 text-xs transition-colors">
-                  View all notifications
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    onClick={() => {
+                      setNotifications((prev) =>
+                        prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
+                      );
+                      setShowNotifications(false);
+                      if (n.link) router.push(n.link);
+                    }}
+                    className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${n.unread ? "bg-cyan-400" : "bg-white/20"}`}
+                      style={n.unread ? { boxShadow: "0 0 6px #00f5ff" } : {}} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white/80 text-xs leading-relaxed">{n.text}</p>
+                      <p className="text-white/30 text-xs mt-0.5">{n.time}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div className="px-4 py-3 text-center" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    router.push("/admin/attendance");
+                  }}
+                  className="text-cyan-400/70 hover:text-cyan-400 text-xs transition-colors"
+                >
+                  View live attendance feed &rarr;
                 </button>
               </div>
             </motion.div>

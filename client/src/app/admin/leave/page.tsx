@@ -308,7 +308,7 @@ export default function LeavePage() {
   const reject = async (id: string) => {
     try {
       await leaveApi.reject(id);
-      error("Leave request rejected.");
+      success("Leave request rejected.");
       fetchLeaves();
     } catch (err) {
       console.error("Error rejecting leave", err);
@@ -318,8 +318,8 @@ export default function LeavePage() {
 
   return (
     <div className="min-h-screen" style={{ background:"#0a0f1e" }}>
-      <AdminSidebar userName="Admin User" userRole="Administrator" />
-      <AdminTopBar title="Leave Management" userName="Admin User" userRole="Administrator" />
+      <AdminSidebar />
+      <AdminTopBar title="Leave Management" />
 
       <main className="min-h-screen pt-16" style={{ marginLeft:"240px" }}>
         <div className="p-6 lg:p-8">

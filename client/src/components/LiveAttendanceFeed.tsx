@@ -117,7 +117,7 @@ export default function LiveAttendanceFeed() {
             }
           });
           if (newEntryIds.length > 0) {
-            setNewIds((p) => new Set([...p, ...newEntryIds]));
+            setNewIds((p) => new Set([...Array.from(p), ...newEntryIds]));
             setTimeout(() => {
               setNewIds((p) => {
                 const next = new Set(p);

@@ -259,12 +259,16 @@ export default function ReportsPage() {
     }
   };
 
-  const handlePrint  = () => success("Sending to printer...");
+  const handlePrint = () => {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ background:"#0a0f1e" }}>
-      <AdminSidebar userName="Admin User" userRole="Administrator" />
-      <AdminTopBar title="Reports" userName="Admin User" userRole="Administrator" />
+      <AdminSidebar />
+      <AdminTopBar title="Reports" />
 
       <main className="min-h-screen pt-16" style={{ marginLeft:"240px" }}>
         <div className="p-6 lg:p-8">

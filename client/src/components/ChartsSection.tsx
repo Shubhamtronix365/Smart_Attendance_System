@@ -220,7 +220,7 @@ function MonthlyPayrollChart({ data }: { data: PayrollTrendItem[] }) {
             content={({ active, payload, label }) => (
               <CustomTooltip
                 active={active}
-                label={label}
+                label={label != null ? String(label) : undefined}
                 payload={payload?.map((p) => ({
                   ...p,
                   value: Number(p.value),

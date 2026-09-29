@@ -61,6 +61,54 @@ async def generate_payroll_endpoint(
         for r in records
     ]
 
+@router.get("/my", response_model=List[PayrollOut])
+async def my_payroll(
+    year: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """Returns the logged-in employee's own payroll records, optionally filtered by year."""
+    import datetime as _dt
+    effective_year = year or _dt.date.today().year
+
+    stmt = (
+        select(Payroll)
+        .options(joinedload(Payroll.employee))
+        .where(
+            and_(
+                Payroll.employee_id == current_user.employee_id,
+                Payroll.year == effective_year
+            )
+        )
+        .order_by(Payroll.year.desc(), Payroll.month.desc())
+    )
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    return [
+        PayrollOut(
+            payroll_id=r.payroll_id,
+            employee_id=r.employee_id,
+            month=r.month,
+            year=r.year,
+            working_days=r.working_days,
+            present_days=r.present_days,
+            absent_days=r.absent_days,
+            leave_days=r.leave_days,
+            overtime_hours=r.overtime_hours,
+            basic_salary=r.basic_salary,
+            overtime_pay=r.overtime_pay,
+            deductions=r.deductions,
+            final_salary=r.final_salary,
+            is_paid=r.is_paid,
+            generated_at=r.generated_at,
+            employee_name=r.employee.name if r.employee else "Unknown",
+            department=r.employee.department if r.employee else "N/A",
+            designation=r.employee.designation if r.employee else "N/A"
+        )
+        for r in records
+    ]
+
 @router.get("", response_model=List[PayrollOut])
 async def list_payroll(
     month: Optional[int] = Query(None, ge=1, le=12),

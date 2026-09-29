@@ -13,6 +13,86 @@ from server.utils.time_utils import get_current_local_date, get_current_local_ti
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
 
+@router.get("/my", response_model=List[AttendanceOut])
+async def my_attendance(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2000),
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """Returns the logged-in employee's own attendance records for the given month and year."""
+    from sqlalchemy import extract
+    stmt = (
+        select(Attendance)
+        .options(joinedload(Attendance.employee))
+        .where(
+            and_(
+                Attendance.employee_id == current_user.employee_id,
+                extract("month", Attendance.date) == month,
+                extract("year", Attendance.date) == year
+            )
+        )
+        .order_by(Attendance.date.desc())
+    )
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    return [
+        AttendanceOut(
+            attendance_id=r.attendance_id,
+            employee_id=r.employee_id,
+            date=r.date,
+            check_in=r.check_in,
+            check_out=r.check_out,
+            working_hours=r.working_hours,
+            overtime_hours=r.overtime_hours,
+            status=r.status,
+            source=r.source,
+            created_at=r.created_at,
+            employee_name=r.employee.name if r.employee else "Unknown",
+            employee_dept=r.employee.department if r.employee else "N/A"
+        )
+        for r in records
+    ]
+
+@router.get("/my-stats")
+async def my_attendance_stats(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2000),
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """Returns the logged-in employee's monthly attendance statistics for the given month and year."""
+    from sqlalchemy import extract
+    stmt = (
+        select(Attendance)
+        .where(
+            and_(
+                Attendance.employee_id == current_user.employee_id,
+                extract("month", Attendance.date) == month,
+                extract("year", Attendance.date) == year
+            )
+        )
+    )
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    present_days = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.WFH))
+    late_days = sum(1 for r in records if r.status == AttendanceStatus.LATE)
+    absent_days = sum(1 for r in records if r.status == AttendanceStatus.ABSENT)
+    leave_days = sum(1 for r in records if r.status == AttendanceStatus.LEAVE)
+    overtime_hours = sum(float(r.overtime_hours or 0) for r in records)
+    total_working_hours = sum(float(r.working_hours or 0) for r in records)
+
+    return {
+        "present_days": present_days,
+        "absent_days": absent_days,
+        "late_days": late_days,
+        "leave_days": leave_days,
+        "overtime_hours": round(overtime_hours, 2),
+        "total_working_hours": round(total_working_hours, 2)
+    }
+
 @router.get("", response_model=List[AttendanceOut])
 async def list_attendance(
     attendance_date: Optional[date] = Query(None, alias="date"),
@@ -75,7 +155,7 @@ async def today_attendance(
 ):
     """Lists all attendance records for today (Admin only)."""
     if current_user.role != "admin":
-        raise HTTPException(status_code=433, detail="Admin privilege required")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privilege required")
         
     today = get_current_local_date()
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(Attendance.date == today)

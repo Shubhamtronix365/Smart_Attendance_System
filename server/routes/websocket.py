@@ -72,11 +72,15 @@ class ConnectionManager:
             logger.info(f"Hardware device '{device_id}' disconnected. Remaining devices: {len(self.active_devices)}")
         # Notify web clients
         import asyncio
-        asyncio.create_task(self.broadcast_to_clients({
-            "event": "device_offline",
-            "device_id": device_id,
-            "timestamp": datetime.utcnow().isoformat()
-        }))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.broadcast_to_clients({
+                "event": "device_offline",
+                "device_id": device_id,
+                "timestamp": datetime.utcnow().isoformat()
+            }))
+        except RuntimeError:
+            pass
 
     async def send_to_device(self, device_id: str, message: dict) -> bool:
         ws = self.active_devices.get(device_id)

@@ -12,7 +12,7 @@ import AdminTopBar from "@/components/AdminTopBar";
 import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
-import { payrollApi } from "@/services/api";
+import { payrollApi, reportsApi } from "@/services/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PayrollRow {
@@ -338,12 +338,27 @@ export default function PayrollPage() {
     }
   }, [rows, fetchPayroll, success, error]);
 
-  const handleBulkDownload = () => success("Generating payslip bundle… (zip will download shortly)");
+  const handleBulkDownload = async () => {
+    try {
+      success("Exporting full payroll statement PDF...");
+      const { month, year } = parsePeriod();
+      const res = await reportsApi.exportPayroll({ month: String(month), year: String(year) }, "pdf");
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const link = document.createElement("a");
+      link.href = window.URL.createObjectURL(blob);
+      link.download = `Payroll_Full_Statement_${selectedMonth.replace(/\s+/g, "_")}.pdf`;
+      link.click();
+      success("Payroll statement downloaded successfully.");
+    } catch (err) {
+      console.error("Error exporting bulk payroll:", err);
+      error("Failed to export payroll statement.");
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ background:"#0a0f1e" }}>
-      <AdminSidebar userName="Admin User" userRole="Administrator" />
-      <AdminTopBar title="Payroll" userName="Admin User" userRole="Administrator" />
+      <AdminSidebar />
+      <AdminTopBar title="Payroll" />
 
       <main className="min-h-screen pt-16" style={{ marginLeft:"240px" }}>
         <div className="p-6 lg:p-8">

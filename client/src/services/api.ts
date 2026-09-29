@@ -145,5 +145,17 @@ export const deviceApi = {
     api.post("/api/device/sensor/clear-all").then((res) => res.data),
 };
 
+// ─── Employee Self-Service ────────────────────────────────────────────────────
+export const employeeSelfApi = {
+  myAttendance: (month: number, year: number) =>
+    api.get("/api/attendance/my", { params: { month, year } }),
+  myStats: (month: number, year: number) =>
+    api.get("/api/attendance/my-stats", { params: { month, year } }),
+  myPayroll: (year?: number) =>
+    api.get("/api/payroll/my", { params: year ? { year } : {} }),
+  myLeaveBalance: () =>
+    api.get("/api/leave/my-balance"),
+};
+
 export default api;
 

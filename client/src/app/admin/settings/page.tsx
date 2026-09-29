@@ -133,8 +133,8 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>
-      <AdminSidebar userName="Admin User" userRole="Administrator" />
-      <AdminTopBar title="Settings" userName="Admin User" userRole="Administrator" />
+      <AdminSidebar />
+      <AdminTopBar title="Settings" />
 
       <main className="min-h-screen pt-16" style={{ marginLeft: "240px" }}>
         <div className="p-6 lg:p-8">

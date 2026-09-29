@@ -167,10 +167,12 @@ function ParticleBg() {
 function MagneticButton({
   children,
   className,
+  style,
   onClick,
 }: {
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
   onClick?: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -193,6 +195,7 @@ function MagneticButton({
   return (
     <motion.button
       ref={ref}
+      style={style}
       animate={{ x: pos.x, y: pos.y, ...glowPulse.animate }}
       transition={{ type: "spring", stiffness: 200, damping: 20 }}
       onMouseMove={handleMouseMove}
@@ -231,7 +234,6 @@ function FloatingDataCard({
       initial={{ opacity: 0, filter: "blur(12px)", scale: 0.8 }}
       animate={{ opacity: 1, filter: "blur(0px)", scale: 1 }}
       transition={{ delay, duration: 0.7, ease: "easeOut" }}
-      {...floatVariants(delay)}
     >
       <motion.div
         animate={floatVariants(delay).animate}

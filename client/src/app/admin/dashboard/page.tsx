@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Users, UserCheck, UserX, Clock, FileWarning,
-  IndianRupee, CalendarDays, TrendingUp, Activity,
+  IndianRupee, Activity, CalendarDays,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import AdminSidebar from "@/components/AdminSidebar";
@@ -14,6 +14,7 @@ import LiveAttendanceFeed from "@/components/LiveAttendanceFeed";
 import ChartsSection from "@/components/ChartsSection";
 import { attendanceApi, leaveApi, payrollApi, employeesApi } from "@/services/api";
 import { formatTime } from "@/utils/formatters";
+import { useAuth } from "@/context/AuthContext";
 
 // ─── Status Configuration ─────────────────────────────────────────────────────
 
@@ -72,8 +73,14 @@ function AttendanceRing({ present, total }: { present: number; total: number }) 
 // ─── Main Dashboard Page ───────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const router = useRouter();
+  const { user } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarWidth = sidebarCollapsed ? 72 : 240;
+
+  const userName = user?.name || "Admin";
+  const userRole = user?.role === "admin" ? "Administrator" : (user?.designation || "Employee");
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const [stats, setStats] = useState({ total: 0, present: 0, absent: 0, late: 0, leave: 0 });
   const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
@@ -235,13 +242,11 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>
       {/* Sidebar */}
-      <AdminSidebar userName="Admin User" userRole="Administrator" />
+      <AdminSidebar />
 
       {/* Top Bar */}
       <AdminTopBar
         title="Dashboard"
-        userName="Admin User"
-        userRole="Administrator"
         sidebarCollapsed={sidebarCollapsed}
       />
 
@@ -264,7 +269,7 @@ export default function AdminDashboard() {
               <span className="text-cyan-400/60 text-sm font-medium uppercase tracking-widest">Overview</span>
             </div>
             <h1 className="text-3xl font-black text-white">
-              Good morning, Admin 👋
+              {greeting}, {userName} 👋
             </h1>
             <p className="text-white/40 mt-1">Here&apos;s what&apos;s happening across your organization today.</p>
           </motion.div>

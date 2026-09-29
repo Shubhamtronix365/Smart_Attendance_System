@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { motion, useAnimationControls } from "framer-motion";
 
 /**
  * useCountUp — animates a number from 0 to `target` over `duration` ms

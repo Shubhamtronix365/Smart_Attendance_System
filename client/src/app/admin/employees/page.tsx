@@ -720,8 +720,8 @@ export default function EmployeesPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>
-      <AdminSidebar userName="Admin User" userRole="Administrator" />
-      <AdminTopBar title="Employees" userName="Admin User" userRole="Administrator" />
+      <AdminSidebar />
+      <AdminTopBar title="Employees" />
 
       <main className="min-h-screen pt-16 transition-all" style={{ marginLeft: "240px" }}>
         <div className="p-6 lg:p-8">

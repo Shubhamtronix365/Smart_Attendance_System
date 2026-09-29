@@ -94,6 +94,5 @@ async def change_password(
             detail="Incorrect current password"
         )
     current_user.hashed_password = get_password_hash(payload.new_password)
-    current_user.plain_password = payload.new_password
     await db.commit()
     return {"message": "Password updated successfully"}
