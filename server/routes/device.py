@@ -9,7 +9,7 @@ from server.config import settings
 from server.database.connection import get_db
 from server.dependencies.auth import get_password_hash
 from server.models import Employee, Attendance, AttendanceStatus
-from server.services.attendance_service import determine_status, calculate_hours
+from server.services.attendance_service import determine_status, calculate_hours, calculate_late_minutes
 
 router = APIRouter(prefix="/device", tags=["Device (ESP32 Tronix)"])
 
@@ -170,12 +170,14 @@ async def device_checkin(
     if not attendance:
         check_in_time = now.time()
         attendance_status = determine_status(check_in_time)
+        late_mins = calculate_late_minutes(check_in_time)
 
         attendance = Attendance(
             employee_id=employee.employee_id,
             date=today,
             check_in=now,
             check_out=None,
+            late_minutes=late_mins,
             status=attendance_status,
             source=scan_source,
             created_at=now
@@ -184,7 +186,8 @@ async def device_checkin(
         await db.commit()
 
         status_msg = "check_in"
-        msg = f"Check-in successful! Welcome {employee.name}."
+        late_str = f" (Late by {late_mins}m)" if late_mins > 0 else ""
+        msg = f"Check-in successful! Welcome {employee.name}.{late_str}"
     else:
         if attendance.check_out is not None:
             return {

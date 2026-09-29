@@ -6,7 +6,7 @@ import {
   Search, Plus, Pencil, Trash2, X, ChevronLeft, ChevronRight,
   Filter, Fingerprint, User, Mail, Phone, Building2, Briefcase,
   DollarSign, Calendar, CheckCircle2, XCircle, AlertTriangle,
-  MoreVertical, Lock, Eye, EyeOff, Cpu, Radio,
+  MoreVertical, Lock, Eye, EyeOff, Cpu, Radio, Clock, TrendingUp, AlertCircle,
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -25,6 +25,9 @@ interface Employee {
   department: string;
   designation: string;
   basicSalary: number;
+  overtimeRate?: number;
+  lateDeductionRate?: number;
+  lateDeductionType?: "per_day" | "per_hour";
   fingerprintId: string;
   rfidUid?: string;
   joiningDate: string;
@@ -209,7 +212,16 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
                 placeholder="Sr. Engineer" icon={<Briefcase size={14} />} required />
               <FormField label="Basic Salary (₹)" id="emp-salary" type="number" value={String(form.basicSalary || "")}
                 onChange={(v) => set("basicSalary")(Number(v))}
-                placeholder="75000" icon={<DollarSign size={14} />} />
+                placeholder="75000" icon={<DollarSign size={14} />} required />
+              <FormField label="Overtime Rate (₹/hr) — Custom" id="emp-ot-rate" type="number"
+                value={String(form.overtimeRate ?? "")} onChange={(v) => set("overtimeRate")(v ? Number(v) : 0)}
+                placeholder="e.g. 250 (Leave 0 for default 1.5x)" icon={<TrendingUp size={14} />} />
+              <FormField label="Late Penalty Rate (₹) — Custom" id="emp-late-rate" type="number"
+                value={String(form.lateDeductionRate ?? "")} onChange={(v) => set("lateDeductionRate")(v ? Number(v) : 0)}
+                placeholder="e.g. 300 or 500" icon={<Clock size={14} />} />
+              <SelectField label="Late Penalty Mode" id="emp-late-type"
+                value={form.lateDeductionType || "per_day"} onChange={set("lateDeductionType")}
+                options={["per_day", "per_hour"]} icon={<AlertCircle size={14} />} />
               <FormField label="Fingerprint Sensor Slot # (1-127)" id="emp-fp" type="number" value={form.fingerprintId || ""} onChange={set("fingerprintId")}
                 placeholder="e.g. 1 (Slot in R307 sensor)" icon={<Fingerprint size={14} />} />
               <FormField label={mode === "add" ? "Default Password" : "Reset Password (Leave blank to keep)"} id="emp-pwd" value={form.password || ""} onChange={set("password")}
@@ -480,6 +492,13 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
                   <Radio size={10} /> {emp.rfidUid}
                 </span>
               )}
+              {((emp.lateDeductionRate ?? 0) > 0 || (emp.overtimeRate ?? 0) > 0) && (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded font-mono" title="Custom late penalty & overtime rates">
+                  {emp.lateDeductionRate ? `Late: -₹${emp.lateDeductionRate}/${emp.lateDeductionType === "per_hour" ? "hr" : "day"}` : ""}
+                  {emp.lateDeductionRate && emp.overtimeRate ? " • " : ""}
+                  {emp.overtimeRate ? `OT: ₹${emp.overtimeRate}/hr` : ""}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -567,6 +586,9 @@ export default function EmployeesPage() {
         department: emp.department || "",
         designation: emp.designation || "",
         basicSalary: Number(emp.salary) || 0,
+        overtimeRate: Number(emp.overtime_rate) || 0,
+        lateDeductionRate: Number(emp.late_deduction_rate) || 0,
+        lateDeductionType: emp.late_deduction_type || "per_day",
         fingerprintId: emp.fingerprint_id ? String(emp.fingerprint_id) : "",
         rfidUid: emp.rfid_uid || "",
         joiningDate: emp.joining_date || "",
@@ -649,6 +671,9 @@ export default function EmployeesPage() {
         department: data.department || "",
         designation: data.designation || "",
         salary: Number(data.basicSalary) || 0,
+        overtime_rate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : 0,
+        late_deduction_rate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : 0,
+        late_deduction_type: data.lateDeductionType || "per_day",
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,
         role: "employee",
         password: "password123", // default password
@@ -673,6 +698,9 @@ export default function EmployeesPage() {
         department: data.department || "",
         designation: data.designation || "",
         salary: Number(data.basicSalary) || 0,
+        overtime_rate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : 0,
+        late_deduction_rate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : 0,
+        late_deduction_type: data.lateDeductionType || "per_day",
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,
       };
       if (data.employeeCode) backendData.employee_code = data.employeeCode;

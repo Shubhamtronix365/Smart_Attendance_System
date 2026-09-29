@@ -14,6 +14,9 @@ class Employee(Base):
     department = Column(String(100), nullable=True)
     designation = Column(String(100), nullable=True)
     salary = Column(Numeric(12, 2), nullable=False)
+    overtime_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Custom OT rate per hour (e.g. 250, 400). If 0 or null, falls back to 1.5x hourly formula
+    late_deduction_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Deduction amount per late instance/day (e.g. 300, 500)
+    late_deduction_type = Column(String(30), nullable=True, default="per_day")  # "per_day" (flat penalty) or "per_hour" (penalty per late hour)
     fingerprint_id = Column(Integer, unique=True, nullable=True)  # ID stored in sensor (1-127)
     rfid_uid = Column(String(50), unique=True, nullable=True)  # RC522 RFID Card UID (e.g. 'A1 B2 C3 D4')
     joining_date = Column(Date, default=date.today)

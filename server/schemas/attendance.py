@@ -11,6 +11,7 @@ class AttendanceBase(BaseModel):
     check_out: Optional[datetime] = None
     working_hours: Optional[Decimal] = None
     overtime_hours: Decimal = Decimal("0.00")
+    late_minutes: Optional[int] = 0
     status: AttendanceStatus = AttendanceStatus.ABSENT
     source: str = "biometric"  # "biometric" | "manual"
 

@@ -100,8 +100,24 @@ async def startup_event():
                 .where(Employee.is_active == False)
                 .values(fingerprint_id=None, rfid_uid=None)
             )
+            # Auto-ensure new columns exist in PostgreSQL
+            column_updates = [
+                "ALTER TABLE employees ADD COLUMN IF NOT EXISTS overtime_rate NUMERIC(10,2) DEFAULT 0;",
+                "ALTER TABLE employees ADD COLUMN IF NOT EXISTS late_deduction_rate NUMERIC(10,2) DEFAULT 0;",
+                "ALTER TABLE employees ADD COLUMN IF NOT EXISTS late_deduction_type VARCHAR(30) DEFAULT 'per_day';",
+                "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS late_minutes INTEGER DEFAULT 0;",
+                "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS late_days INTEGER DEFAULT 0;",
+                "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS late_deduction NUMERIC(12,2) DEFAULT 0;",
+                "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS bonus NUMERIC(12,2) DEFAULT 0;",
+                "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS remarks VARCHAR(255);",
+            ]
+            for col_sql in column_updates:
+                try:
+                    await session.execute(text(col_sql))
+                except Exception:
+                    pass
             await session.commit()
-        logger.info("Successfully connected to the database and released any inactive sensor slots.")
+        logger.info("Successfully connected to database, verified columns, and released inactive sensor slots.")
     except Exception as e:
         logger.critical(f"Database connection failed during startup: {str(e)}")
 

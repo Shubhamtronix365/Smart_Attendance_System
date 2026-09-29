@@ -100,6 +100,10 @@ export const payrollApi = {
     api.get(`/api/payroll/payslip/${id}`, { responseType: "blob" }),
   markPaid: (id: string | number, isPaid: boolean) =>
     api.put(`/api/payroll/${id}/mark_paid`, { is_paid: isPaid }),
+  previewIndividual: (employeeId: number, year: number, month: number) =>
+    api.get(`/api/payroll/preview/${employeeId}`, { params: { year, month } }).then((res) => res.data),
+  saveManualPayroll: (data: unknown) =>
+    api.post("/api/payroll/manual-save", data).then((res) => res.data),
 };
 
 // ─── Reports ──────────────────────────────────────────────────────────────────

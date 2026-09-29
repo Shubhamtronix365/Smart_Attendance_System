@@ -22,6 +22,7 @@ class Attendance(Base):
     check_out = Column(DateTime, nullable=True)
     working_hours = Column(Numeric(4, 2), nullable=True)
     overtime_hours = Column(Numeric(4, 2), default=0)
+    late_minutes = Column(Integer, default=0, nullable=True)  # Minutes late past 9:00 AM standard shift start
     status = Column(
         Enum(AttendanceStatus, name="attendance_status", values_callable=lambda x: [e.value for e in x]),
         default=AttendanceStatus.ABSENT,

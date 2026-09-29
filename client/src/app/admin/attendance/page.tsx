@@ -29,6 +29,7 @@ interface AttendanceRecord {
   workingHours: string;
   status: AttendanceStatus;
   otHours: string;
+  lateMinutes?: number;
 }
 
 // ─── Manual Entry Modal ───────────────────────────────────────────────────────
@@ -231,6 +232,7 @@ export default function AttendancePage() {
           workingHours: r.working_hours ? `${r.working_hours}h` : "—",
           status: mappedStatus as AttendanceStatus,
           otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
+          lateMinutes: r.late_minutes ? Number(r.late_minutes) : 0,
         };
       });
       setRecords(mapped);
@@ -495,7 +497,16 @@ export default function AttendancePage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-white/70 text-sm font-mono">{r.checkIn}</td>
+                      <td className="px-4 py-3.5 text-white/70 text-sm font-mono">
+                        <div>
+                          <span>{r.checkIn}</span>
+                          {((r.lateMinutes && r.lateMinutes > 0) || r.status === "late") && (
+                            <span className="block text-[11px] text-amber-400 font-sans font-medium mt-0.5">
+                              Late by {r.lateMinutes ? (r.lateMinutes >= 60 ? `${Math.floor(r.lateMinutes / 60)}h ${r.lateMinutes % 60}m` : `${r.lateMinutes}m`) : "—"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5 text-white/70 text-sm font-mono">{r.checkOut}</td>
                       <td className="px-4 py-3.5 text-white/60 text-sm">{r.workingHours}</td>
                       <td className="px-4 py-3.5"><StatusBadge status={r.status} /></td>

@@ -283,7 +283,14 @@ export default function EmployeeAttendancePage() {
                           <span className="ml-1.5 text-white/30 font-normal">({dayName})</span>
                         </td>
                         <td className="py-4 px-6 font-mono text-cyan-300">
-                          {r.check_in ? formatTime(r.check_in) : "--:--"}
+                          <div>
+                            <span>{r.check_in ? formatTime(r.check_in) : "--:--"}</span>
+                            {((r.late_minutes && Number(r.late_minutes) > 0) || r.status?.toLowerCase() === "late") && (
+                              <span className="block text-[10px] text-amber-400 font-sans font-medium mt-0.5">
+                                Late by {r.late_minutes ? (Number(r.late_minutes) >= 60 ? `${Math.floor(Number(r.late_minutes) / 60)}h ${Number(r.late_minutes) % 60}m` : `${r.late_minutes}m`) : "—"}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-6 font-mono text-white/70">
                           {r.check_out ? formatTime(r.check_out) : "--:--"}

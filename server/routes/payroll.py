@@ -7,8 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.database.connection import get_db
 from server.dependencies.auth import get_current_user, require_admin
 from server.models import Payroll, Employee
-from server.schemas.payroll import PayrollOut, PayrollUpdate
-from server.services.payroll_service import generate_payroll_for_all, calculate_employee_payroll
+from server.schemas.payroll import PayrollOut, PayrollUpdate, ManualPayrollSaveRequest
+from server.services.payroll_service import (
+    generate_payroll_for_all,
+    calculate_employee_payroll,
+    preview_individual_payroll
+)
 from server.services.pdf_service import generate_payslip_pdf
 
 router = APIRouter(prefix="/payroll", tags=["Payroll"])
@@ -286,3 +290,102 @@ async def download_payslip(
             "Content-Disposition": f"attachment; filename={filename}"
         }
     )
+
+@router.get("/preview/{employee_id}")
+async def get_individual_payroll_preview(
+    employee_id: int,
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """
+    Returns live calculated payroll preview for an individual employee with custom
+    overtime rate and late deduction breakdown (Admin only).
+    """
+    emp_stmt = select(Employee).where(Employee.employee_id == employee_id)
+    emp_res = await db.execute(emp_stmt)
+    employee = emp_res.scalar_one_or_none()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    preview = await preview_individual_payroll(employee, year, month, db)
+    return preview
+
+@router.post("/manual-save")
+async def save_manual_payroll(
+    payload: ManualPayrollSaveRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """
+    Saves or overrides manual payroll calculation for an individual employee.
+    Admin can customize late deductions, overtime pay, bonus, and final salary.
+    """
+    from datetime import datetime as _dt
+    emp_stmt = select(Employee).where(Employee.employee_id == payload.employee_id)
+    emp_res = await db.execute(emp_stmt)
+    employee = emp_res.scalar_one_or_none()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    pay_stmt = select(Payroll).where(
+        and_(
+            Payroll.employee_id == payload.employee_id,
+            Payroll.month == payload.month,
+            Payroll.year == payload.year
+        )
+    )
+    pay_res = await db.execute(pay_stmt)
+    payroll = pay_res.scalar_one_or_none()
+
+    now = _dt.utcnow()
+    if payroll:
+        payroll.working_days = payload.working_days
+        payroll.present_days = payload.present_days
+        payroll.absent_days = payload.absent_days
+        payroll.late_days = payload.late_days or 0
+        payroll.leave_days = payload.leave_days
+        payroll.overtime_hours = payload.overtime_hours
+        payroll.basic_salary = payload.basic_salary
+        payroll.overtime_pay = payload.overtime_pay
+        payroll.late_deduction = payload.late_deduction
+        payroll.deductions = payload.deductions
+        payroll.bonus = payload.bonus or 0
+        payroll.remarks = payload.remarks
+        payroll.final_salary = payload.final_salary
+        if payload.is_paid is not None:
+            payroll.is_paid = payload.is_paid
+        payroll.generated_at = now
+    else:
+        payroll = Payroll(
+            employee_id=payload.employee_id,
+            month=payload.month,
+            year=payload.year,
+            working_days=payload.working_days,
+            present_days=payload.present_days,
+            absent_days=payload.absent_days,
+            late_days=payload.late_days or 0,
+            leave_days=payload.leave_days,
+            overtime_hours=payload.overtime_hours,
+            basic_salary=payload.basic_salary,
+            overtime_pay=payload.overtime_pay,
+            late_deduction=payload.late_deduction,
+            deductions=payload.deductions,
+            bonus=payload.bonus or 0,
+            remarks=payload.remarks,
+            final_salary=payload.final_salary,
+            is_paid=payload.is_paid or False,
+            generated_at=now
+        )
+        db.add(payroll)
+
+    await db.commit()
+    await db.refresh(payroll)
+    return {
+        "success": True,
+        "message": f"Manual payroll successfully saved for {employee.name}",
+        "payroll_id": payroll.payroll_id,
+        "final_salary": float(payroll.final_salary)
+    }
+

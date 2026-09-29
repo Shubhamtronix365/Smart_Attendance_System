@@ -10,9 +10,11 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 - 💾 **Offline-First Flash Queue (Preferences.h):** Punches are stored in internal NVS Flash when Wi-Fi is unavailable and automatically synced when reconnected. Records are deleted from ESP32 Flash **only after cloud acknowledgment (`punch_ack`)**.
 - ⏱️ **1-Hour Anti-Bounce Rule:** First punch marks Check-In. Any subsequent punch within 1 hour shows *"Already Marked!"* with warning beeps to prevent false double triggers; punches after 1 hour register Check-Out.
 - 🕒 **Autonomous DS3231 RTC Clock & Local Name Display:** Employee roster is permanently cached in ESP32 Flash; scanning an employee displays their Name and accurate RTC time on the 16x2 LCD with **zero dependency on Wi-Fi or server**.
-- 📡 **Real-time Attendance Tracking** with automated check-in status (present, late) and checkout overtime calculations.
+- 📡 **Real-time Attendance Tracking & Shift Rules:** Standard 9:00 AM – 5:00 PM shift schedule. Any login after 9:00 AM is logged as `LATE` and displays exact elapsed late minutes/hours. Shifts automatically deduct a **1-hour free lunch break** from total duration (net 7h standard work day), computing overtime past 7 net hours.
+- ⚙️ **Per-Employee Custom Penalty & OT Rates:** Admin can configure individual overtime rates (₹/hr) and late arrival penalties (e.g. ₹300 or ₹500 per day or per hour) for each employee separately in their profile.
+- 🧮 **Interactive Manual Payroll Calculator:** Dedicated admin modal allowing live calculation previews (`/preview/{id}`), manual adjustments of working/present/late days, overtime pay, bonuses, late deductions, and custom audit remarks with instant net salary recalculation and permanent saving (`/manual-save`).
 - 🗑️ **Full Hardware & Cloud Sync Management:** Add, Edit, Delete specific employee, or **Delete All Employees** (bulk wipe) directly from the Web Admin GUI, propagating immediate sensor deletion commands to hardware.
-- 💰 **Auto Payroll Calculation** based on monthly attendance records, overtime allowances, deductions, and approved leaves.
+- 💰 **Auto & Manual Payroll Calculation** based on monthly attendance records, overtime allowances, deductions, and approved leaves.
 - 📊 **Dashboard Analytics** with interactive weekly and monthly charts.
 - 🌑 **Immersive 3D Hero UI** with glassmorphism, neon accents, and particle fields.
 - 🔒 **Secure JWT Authentication** stored in HTTPOnly cookies or Bearer tokens.
@@ -266,6 +268,8 @@ Smart_Attendance_System/
 - `POST /api/payroll/generate/{year}/{month}` — Generate payroll for all active employees (Admin only).
 - `GET /api/payroll` — List payroll summary lines.
 - `GET /api/payroll/my` — List current employee's payslips.
+- `GET /api/payroll/preview/{employee_id}` — Preview individual employee's dynamic calculation breakdown (working days, present/late days, overtime pay, custom late deductions) for a specific year and month.
+- `POST /api/payroll/manual-save` — Save or override an individual employee's customized payroll line item with bonus, remarks, and net salary.
 - `PUT /api/payroll/{id}/mark_paid` — Mark payroll line item status as paid/unpaid (Admin only).
 - `GET /api/payroll/payslip/{payroll_id}` — Binary PDF payslip download.
 
