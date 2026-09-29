@@ -18,6 +18,7 @@ from server.routes.leave import router as leave_router
 from server.routes.payroll import router as payroll_router
 from server.routes.reports import router as reports_router
 from server.routes.settings import router as settings_router
+from server.routes.database import router as database_router
 from server.routes.websocket import router as websocket_router
 
 # Setup logger
@@ -119,6 +120,7 @@ app.include_router(leave_router, prefix="/api")
 app.include_router(payroll_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(database_router, prefix="/api")
 app.include_router(websocket_router)
 
 @app.get("/")

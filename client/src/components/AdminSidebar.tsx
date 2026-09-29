@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, Users, CalendarCheck, FileText,
   DollarSign, BarChart2, Settings, LogOut,
-  Fingerprint, ChevronLeft, ChevronRight,
+  Fingerprint, ChevronLeft, ChevronRight, Database,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { id: "leave", label: "Leave", icon: FileText, href: "/admin/leave" },
   { id: "payroll", label: "Payroll", icon: DollarSign, href: "/admin/payroll" },
   { id: "reports", label: "Reports", icon: BarChart2, href: "/admin/reports" },
+  { id: "database", label: "Database", icon: Database, href: "/admin/database" },
   { id: "settings", label: "Settings", icon: Settings, href: "/admin/settings" },
 ];
 

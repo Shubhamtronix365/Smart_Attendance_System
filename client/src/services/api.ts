@@ -160,5 +160,55 @@ export const employeeSelfApi = {
     api.get("/api/leave/my-balance"),
 };
 
+// ─── Database Vault & Explorer (NeonDB) ──────────────────────────────────────
+export const databaseApi = {
+  verifyAccess: (password: string) =>
+    api.post("/api/database/verify-access", { password }).then((res) => res.data),
+  getOverview: (vaultToken: string) =>
+    api.get("/api/database/overview", {
+      headers: { "X-Vault-Token": vaultToken },
+    }).then((res) => res.data),
+  getTableSchema: (tableName: string, vaultToken: string) =>
+    api.get(`/api/database/tables/${tableName}/schema`, {
+      headers: { "X-Vault-Token": vaultToken },
+    }).then((res) => res.data),
+  getTableData: (
+    tableName: string,
+    params: {
+      page?: number;
+      page_size?: number;
+      search?: string;
+      sort_by?: string;
+      sort_dir?: string;
+      reveal_secrets?: boolean;
+    },
+    vaultToken: string
+  ) =>
+    api.get(`/api/database/tables/${tableName}/data`, {
+      params,
+      headers: { "X-Vault-Token": vaultToken },
+    }).then((res) => res.data),
+  runQuery: (query: string, vaultToken: string) =>
+    api.post(
+      "/api/database/query",
+      { query },
+      { headers: { "X-Vault-Token": vaultToken } }
+    ).then((res) => res.data),
+  downloadCsv: async (tableName: string, vaultToken: string) => {
+    const res = await api.get(`/api/database/tables/${tableName}/export`, {
+      headers: { "X-Vault-Token": vaultToken },
+      responseType: "blob",
+    });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${tableName}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  },
+};
+
 export default api;
+
 

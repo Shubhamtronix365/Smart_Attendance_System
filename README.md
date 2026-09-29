@@ -278,6 +278,14 @@ Smart_Attendance_System/
 - `GET /api/settings` — Retrieve standard shift window hours, late grace threshold, overtime pay multiplier, and ESP32 authorization key.
 - `PUT /api/settings` — Dynamically update active settings in-memory and write changes to the `.env` configuration file.
 
+### Database Vault & Explorer (Admin only)
+- `POST /api/database/verify-access` — Re-authenticates administrator with account password to unlock the elevated database vault.
+- `GET /api/database/overview` — Live NeonDB serverless database health, PostgreSQL engine version, total storage size, and table row counts.
+- `GET /api/database/tables/{table_name}/schema` — Column specifications, SQL data types, primary keys, and nullability.
+- `GET /api/database/tables/{table_name}/data` — Paginated and searchable raw table records with column sorting and password hash masking.
+- `POST /api/database/query` — Safe, read-only SQL query runner (`SELECT` and `WITH` statements only with query execution metrics).
+- `GET /api/database/tables/{table_name}/export` — Direct CSV table export download.
+
 ---
 
 ## Production Cloud Deployment (Cloudflare + Render + Neon DB)
