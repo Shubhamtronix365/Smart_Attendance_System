@@ -93,9 +93,11 @@ export const payrollApi = {
     api.get("/api/payroll", { params: { month, year, employee_id: employeeId } }),
   generate: (month: number, year: number) =>
     api.post(`/api/payroll/generate/${year}/${month}`),
-  payslip: (id: string) =>
+  payslip: (id: string | number) =>
     api.get(`/api/payroll/payslip/${id}`, { responseType: "blob" }),
-  markPaid: (id: string, isPaid: boolean) =>
+  downloadPdf: (id: string | number) =>
+    api.get(`/api/payroll/payslip/${id}`, { responseType: "blob" }),
+  markPaid: (id: string | number, isPaid: boolean) =>
     api.put(`/api/payroll/${id}/mark_paid`, { is_paid: isPaid }),
 };
 

@@ -64,6 +64,9 @@ async def my_attendance_stats(
 ):
     """Returns the logged-in employee's monthly attendance statistics for the given month and year."""
     from sqlalchemy import extract
+    from datetime import date, timedelta
+    from server.utils.time_utils import get_working_days_in_month
+
     stmt = (
         select(Attendance)
         .where(
@@ -77,20 +80,44 @@ async def my_attendance_stats(
     res = await db.execute(stmt)
     records = res.scalars().all()
 
-    present_days = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.WFH))
+    on_time_days = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.WFH))
     late_days = sum(1 for r in records if r.status == AttendanceStatus.LATE)
-    absent_days = sum(1 for r in records if r.status == AttendanceStatus.ABSENT)
+    half_day_days = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY)
     leave_days = sum(1 for r in records if r.status == AttendanceStatus.LEAVE)
+    
+    # Total days attended at work
+    present_days = on_time_days + late_days + half_day_days
+
     overtime_hours = sum(float(r.overtime_hours or 0) for r in records)
     total_working_hours = sum(float(r.working_hours or 0) for r in records)
 
+    total_working_days = get_working_days_in_month(year, month)
+    today = date.today()
+    if year == today.year and month == today.month:
+        cur = date(year, month, 1)
+        working_days_elapsed = 0
+        while cur <= today:
+            if cur.weekday() < 5:  # Monday to Friday
+                working_days_elapsed += 1
+            cur += timedelta(days=1)
+    elif date(year, month, 1) < today:
+        working_days_elapsed = total_working_days
+    else:
+        working_days_elapsed = 0
+
+    absent_days = max(0, working_days_elapsed - present_days - leave_days)
+
     return {
         "present_days": present_days,
-        "absent_days": absent_days,
+        "on_time_days": on_time_days,
         "late_days": late_days,
+        "half_day_days": half_day_days,
+        "absent_days": absent_days,
         "leave_days": leave_days,
         "overtime_hours": round(overtime_hours, 2),
-        "total_working_hours": round(total_working_hours, 2)
+        "total_working_hours": round(total_working_hours, 2),
+        "working_days_total": total_working_days,
+        "working_days_elapsed": working_days_elapsed
     }
 
 @router.get("", response_model=List[AttendanceOut])

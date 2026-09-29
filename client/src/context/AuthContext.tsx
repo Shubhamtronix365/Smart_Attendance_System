@@ -6,13 +6,20 @@ import { authApi } from "@/services/api";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface User {
   id: string;
+  employee_id?: number;
   name: string;
   email: string;
   role: "admin" | "employee";
   avatar?: string;
   department?: string;
   empId?: string;
+  employee_code?: string;
   designation?: string;
+  salary?: number | string;
+  phone?: string;
+  fingerprint_id?: number | null;
+  rfid_uid?: string | null;
+  joining_date?: string | null;
 }
 
 interface AuthContextValue {
@@ -43,13 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const dbUser = res.data;
         setUser({
           id: String(dbUser.employee_id),
+          employee_id: dbUser.employee_id,
           name: dbUser.name,
           email: dbUser.email,
           role: dbUser.role as "admin" | "employee",
           department: dbUser.department || "",
           designation: dbUser.designation || "",
           empId: `EMP${String(dbUser.employee_id).padStart(3, "0")}`,
+          employee_code: dbUser.employee_code || `EMP${String(dbUser.employee_id).padStart(3, "0")}`,
           avatar: dbUser.name.split(" ").map((n: string) => n[0]).join("").toUpperCase(),
+          salary: dbUser.salary || 0,
+          phone: dbUser.phone || "",
+          fingerprint_id: dbUser.fingerprint_id ?? null,
+          rfid_uid: dbUser.rfid_uid ?? null,
+          joining_date: dbUser.joining_date ?? null,
         });
       })
       .catch(() => {
