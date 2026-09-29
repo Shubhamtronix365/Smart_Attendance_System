@@ -666,7 +666,7 @@ export default function EmployeesPage() {
   const handleEdit = useCallback(async (data: Partial<Employee>) => {
     if (!editEmployee) return;
     try {
-      const backendData = {
+      const backendData: Record<string, any> = {
         name: data.name,
         email: data.email,
         phone: data.phone || "",
@@ -675,6 +675,10 @@ export default function EmployeesPage() {
         salary: Number(data.basicSalary) || 0,
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,
       };
+      if (data.employeeCode) backendData.employee_code = data.employeeCode;
+      if (data.rfidUid) backendData.rfid_uid = data.rfidUid;
+      if (data.password && data.password.trim()) backendData.password = data.password.trim();
+
       await employeesApi.update(editEmployee.id, backendData);
       success("Employee details updated.");
       setEditEmployee(null);

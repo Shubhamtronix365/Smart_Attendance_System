@@ -135,6 +135,8 @@ async def get_employee(
         )
     return employee
 
+from sqlalchemy.exc import IntegrityError
+
 @router.put("/{employee_id}", response_model=EmployeeOut)
 async def update_employee(
     employee_id: int,
@@ -152,14 +154,68 @@ async def update_employee(
             detail="Employee not found"
         )
         
-    # Verify fingerprint unique constraint if changing
+    # Release conflicting slots, codes, or RFIDs held by soft-deleted/inactive records
+    await db.execute(
+        update(Employee)
+        .where(Employee.is_active == False)
+        .where(
+            or_(
+                Employee.fingerprint_id == emp_data.fingerprint_id if emp_data.fingerprint_id else False,
+                Employee.rfid_uid == emp_data.rfid_uid if emp_data.rfid_uid else False,
+                Employee.employee_code == emp_data.employee_code if emp_data.employee_code else False
+            )
+        )
+        .values(fingerprint_id=None, rfid_uid=None, employee_code=None)
+    )
+
+    # If an inactive employee has this new email, archive it
+    if emp_data.email and emp_data.email != employee.email:
+        inactive_email_res = await db.execute(
+            select(Employee).where(Employee.email == emp_data.email, Employee.is_active == False)
+        )
+        for inact in inactive_email_res.scalars().all():
+            inact.email = f"archived_{inact.employee_id}_{inact.email}"
+        await db.commit()
+
+        # Check for active employee with same email
+        email_stmt = select(Employee).where(
+            Employee.email == emp_data.email,
+            Employee.employee_id != employee_id,
+            Employee.is_active == True
+        )
+        email_res = await db.execute(email_stmt)
+        if email_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email address is already registered to another employee"
+            )
+
+    # Verify fingerprint unique constraint if changing among active employees
     if emp_data.fingerprint_id is not None and emp_data.fingerprint_id != employee.fingerprint_id:
-        fp_stmt = select(Employee).where(Employee.fingerprint_id == emp_data.fingerprint_id)
+        fp_stmt = select(Employee).where(
+            Employee.fingerprint_id == emp_data.fingerprint_id,
+            Employee.employee_id != employee_id,
+            Employee.is_active == True
+        )
         fp_res = await db.execute(fp_stmt)
         if fp_res.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Fingerprint ID already assigned to another employee"
+                detail=f"Fingerprint ID {emp_data.fingerprint_id} already assigned to another employee"
+            )
+
+    # Verify RFID unique constraint if changing among active employees
+    if emp_data.rfid_uid is not None and emp_data.rfid_uid != employee.rfid_uid:
+        rfid_stmt = select(Employee).where(
+            Employee.rfid_uid == emp_data.rfid_uid,
+            Employee.employee_id != employee_id,
+            Employee.is_active == True
+        )
+        rfid_res = await db.execute(rfid_stmt)
+        if rfid_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="RFID UID already assigned to another employee"
             )
             
     # Apply updates
@@ -168,11 +224,20 @@ async def update_employee(
             if value:
                 employee.hashed_password = get_password_hash(value)
                 employee.plain_password = value
+        elif field == "rfid_uid" and value:
+            employee.rfid_uid = value.strip().upper()
         else:
             setattr(employee, field, value)
             
-    await db.commit()
-    await db.refresh(employee)
+    try:
+        await db.commit()
+        await db.refresh(employee)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Database constraint conflict while updating employee"
+        )
     return employee
 
 @router.delete("/all/clear")

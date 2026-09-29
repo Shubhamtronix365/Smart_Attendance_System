@@ -49,14 +49,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Exception Handler
+# Global Exception Handlers
+from sqlalchemy.exc import IntegrityError
+
+@app.exception_handler(IntegrityError)
+async def integrity_exception_handler(request: Request, exc: IntegrityError):
+    logger.error(f"Database IntegrityError caught: {str(exc)}", exc_info=True)
+    resp = JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": "A database constraint violation occurred (e.g. duplicate email, RFID card, or fingerprint slot)."}
+    )
+    origin = request.headers.get("origin")
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Methods"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "*"
+    return resp
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global error handler caught: {str(exc)}", exc_info=True)
-    return JSONResponse(
+    resp = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An unexpected error occurred on the server. Please try again later."}
     )
+    origin = request.headers.get("origin")
+    if origin:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Credentials"] = "true"
+        resp.headers["Access-Control-Allow-Methods"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "*"
+    return resp
 
 # Lifespan events
 @app.on_event("startup")

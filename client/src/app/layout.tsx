@@ -4,7 +4,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/ToastProvider";
 import { AuthProvider } from "@/context/AuthContext";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: "Smart Attendance System | Biometric Powered",
