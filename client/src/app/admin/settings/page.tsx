@@ -136,8 +136,8 @@ export default function SettingsPage() {
       <AdminSidebar />
       <AdminTopBar title="Settings" />
 
-      <main className="min-h-screen pt-16" style={{ marginLeft: "240px" }}>
-        <div className="p-6 lg:p-8">
+      <main className="min-h-screen pt-16 md:ml-60 transition-all">
+        <div className="p-4 sm:p-6 lg:p-8">
           {/* Header */}
           <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
             <h1 className="text-3xl font-black text-white mb-1">System Settings</h1>

@@ -92,11 +92,11 @@ function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string;
         style={{ background:"rgba(10,15,30,0.99)", border:"1px solid rgba(255,255,255,0.1)", boxShadow:"0 32px 80px rgba(0,0,0,0.6)" }}
       >
         {/* Header */}
-        <div className="px-7 py-5 flex items-center justify-between"
+        <div className="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between"
           style={{ background:"linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
           <div>
             <p className="text-cyan-400 text-xs font-semibold uppercase tracking-widest mb-1">Payslip</p>
-            <h3 className="text-white font-black text-xl">{row.name}</h3>
+            <h3 className="text-white font-black text-lg sm:text-xl">{row.name}</h3>
             <p className="text-white/40 text-xs">{row.empId} · {row.department} · {month}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
@@ -105,7 +105,7 @@ function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string;
         </div>
 
         {/* Breakdown */}
-        <div className="px-7 py-5">
+        <div className="px-5 sm:px-7 py-4 sm:py-5">
           <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Earnings & Deductions</p>
           <div className="flex flex-col gap-2 mb-5">
             {breakdown.filter(b => b.value > 0).map((b) => (
@@ -137,12 +137,12 @@ function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string;
           <div className="p-4 rounded-2xl text-center"
             style={{ background:"linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))", border:"1px solid rgba(0,245,255,0.15)" }}>
             <p className="text-white/50 text-xs mb-1">Net Salary</p>
-            <p className="text-3xl font-black" style={{ color:"#00f5ff" }}>₹{row.netSalary.toLocaleString("en-IN")}</p>
+            <p className="text-2xl sm:text-3xl font-black" style={{ color:"#00f5ff" }}>₹{row.netSalary.toLocaleString("en-IN")}</p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-7 pb-6" style={{ borderTop:"1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex flex-col sm:flex-row gap-3 px-5 sm:px-7 pt-4 pb-5 sm:pb-6" style={{ borderTop:"1px solid rgba(255,255,255,0.06)" }}>
           <button onClick={() => { success("Payslip sent to printer."); onClose(); }}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all">
             <Printer size={14} />Print
@@ -324,7 +324,7 @@ function ManualPayrollModal({
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        className="w-full max-w-3xl my-8 rounded-3xl overflow-hidden"
+        className="w-full max-w-3xl my-4 sm:my-8 rounded-2xl sm:rounded-3xl overflow-hidden"
         style={{
           background: "rgba(10,15,30,0.98)",
           border: "1px solid rgba(0,245,255,0.25)",
@@ -333,7 +333,7 @@ function ManualPayrollModal({
       >
         {/* Header */}
         <div
-          className="px-7 py-5 flex items-center justify-between"
+          className="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between"
           style={{
             background: "linear-gradient(135deg, rgba(0,245,255,0.12), rgba(124,58,237,0.12))",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -341,33 +341,33 @@ function ManualPayrollModal({
         >
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center text-cyan-400"
+              className="w-9 sm:w-10 h-9 sm:h-10 rounded-2xl flex items-center justify-center text-cyan-400 shrink-0"
               style={{ background: "rgba(0,245,255,0.1)", border: "1px solid rgba(0,245,255,0.2)" }}
             >
-              <Calculator size={20} />
+              <Calculator size={18} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-white font-black text-xl">Manual Payroll Calculator</h3>
-                <span className="text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                <h3 className="text-white font-black text-lg sm:text-xl">Manual Payroll Calculator</h3>
+                <span className="hidden sm:inline-block text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
                   Individual Override
                 </span>
               </div>
-              <p className="text-white/40 text-xs mt-0.5">
+              <p className="text-white/40 text-[11px] sm:text-xs mt-0.5">
                 Set custom late deductions (₹300/₹500), overtime rates & 1-hour lunch break policy
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all shrink-0"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-7 max-h-[75vh] overflow-y-auto space-y-6">
+        <div className="p-4 sm:p-7 max-h-[75vh] overflow-y-auto space-y-4 sm:space-y-6">
           {/* Employee & Period Selector Row */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -658,10 +658,10 @@ function ManualPayrollModal({
 
         {/* Modal Footer */}
         <div
-          className="flex flex-wrap items-center justify-between gap-3 px-7 py-5"
+          className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-5 sm:px-7 py-4 sm:py-5"
           style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between sm:justify-start gap-2">
             <button
               type="button"
               onClick={handleRecalculate}
@@ -680,11 +680,11 @@ function ManualPayrollModal({
             </label>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all"
+              className="flex-1 sm:flex-none px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all text-center"
             >
               Cancel
             </button>
@@ -694,7 +694,7 @@ function ManualPayrollModal({
               whileTap={{ scale: 0.98 }}
               onClick={handleSave}
               disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-50"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-50 whitespace-nowrap"
               style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
             >
               {isSaving ? (
@@ -795,7 +795,7 @@ function PayrollRowComponent({ row, index, onPreview, onMarkPaid, onAdjust }: {
                 exit={{ height:0 }}
                 className="overflow-hidden"
               >
-                <div className="grid grid-cols-4 gap-3 pt-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
                   {[
                     { label:"Basic",         value:`₹${row.basicSalary.toLocaleString("en-IN")}`,  color:"#00f5ff" },
                     { label:"PF (12%)",      value:`−₹${Math.round(row.basicSalary*0.06).toLocaleString("en-IN")}`, color:"#ef4444" },
@@ -927,8 +927,8 @@ export default function PayrollPage() {
       <AdminSidebar />
       <AdminTopBar title="Payroll" />
 
-      <main className="min-h-screen pt-16" style={{ marginLeft:"240px" }}>
-        <div className="p-6 lg:p-8">
+      <main className="min-h-screen pt-16 md:ml-60 transition-all">
+        <div className="p-4 sm:p-6 lg:p-8">
           <motion.div initial={{ opacity:0, y:-16 }} animate={{ opacity:1, y:0 }} className="mb-6">
             <h1 className="text-3xl font-black text-white mb-1">Payroll Management</h1>
             <p className="text-white/40">Generate and manage monthly salary payroll</p>

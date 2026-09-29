@@ -356,8 +356,8 @@ export default function AttendancePage() {
       <AdminSidebar />
       <AdminTopBar title="Attendance" />
 
-      <main className="min-h-screen pt-16" style={{ marginLeft:"240px" }}>
-        <div className="p-6 lg:p-8">
+      <main className="min-h-screen pt-16 md:ml-60 transition-all">
+        <div className="p-4 sm:p-6 lg:p-8">
 
           {/* Header */}
           <motion.div initial={{ opacity:0, y:-16 }} animate={{ opacity:1, y:0 }} className="mb-6">
@@ -422,7 +422,7 @@ export default function AttendancePage() {
                 onBlur={(e)=>(e.currentTarget.style.borderColor="rgba(255,255,255,0.1)")} />
             </div>
 
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
               {/* Manual entry */}
               <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
                 onClick={() => setShowModal(true)}

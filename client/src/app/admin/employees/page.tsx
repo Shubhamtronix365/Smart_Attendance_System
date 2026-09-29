@@ -181,7 +181,7 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
           }}
         >
           {/* Modal header */}
-          <div className="flex items-center justify-between px-8 py-5"
+          <div className="flex items-center justify-between px-5 sm:px-8 py-4 sm:py-5"
             style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
             <div>
               <h3 className="text-white font-black text-lg">
@@ -199,7 +199,7 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
 
           {/* Form */}
           <form onSubmit={handleSubmit}>
-            <div className="px-8 py-6 grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
+            <div className="px-5 sm:px-8 py-5 sm:py-6 grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto">
               <FormField label="Full Name" id="emp-name" value={form.name || ""} onChange={set("name")}
                 placeholder="Arjun Sharma" icon={<User size={14} />} required />
               <FormField label="Email Address" id="emp-email" type="email" value={form.email || ""} onChange={set("email")}
@@ -231,7 +231,7 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 px-8 py-5"
+            <div className="flex items-center justify-end gap-3 px-5 sm:px-8 py-4 sm:py-5"
               style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
               <button type="button" onClick={onClose}
                 className="px-5 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all">
@@ -540,7 +540,7 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
       </td>
       <td className="px-4 py-3.5">
         <div className="relative flex items-center justify-end">
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={onEdit}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all">
               <Pencil size={13} />
@@ -755,8 +755,8 @@ export default function EmployeesPage() {
       <AdminSidebar />
       <AdminTopBar title="Employees" />
 
-      <main className="min-h-screen pt-16 transition-all" style={{ marginLeft: "240px" }}>
-        <div className="p-6 lg:p-8">
+      <main className="min-h-screen pt-16 md:ml-60 transition-all">
+        <div className="p-4 sm:p-6 lg:p-8">
 
           {/* Page header */}
           <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
@@ -824,7 +824,7 @@ export default function EmployeesPage() {
             </div>
 
             {/* Buttons */}
-            <div className="flex items-center gap-2.5 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 sm:ml-auto w-full sm:w-auto">
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-300" title="Occupied slots in physical R307 fingerprint sensor">
                 <Fingerprint size={13} className="text-cyan-400" />
                 <span>Sensor: {employees.filter(e => e.fingerprintId).length}/127 Slots</span>

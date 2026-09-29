@@ -252,10 +252,11 @@ export default function AdminDashboard() {
 
       {/* Main content area */}
       <main
-        className="min-h-screen pt-16 transition-all duration-300"
-        style={{ marginLeft: `${sidebarWidth}px` }}
+        className={`min-h-screen pt-16 transition-all duration-300 ml-0 ${
+          sidebarCollapsed ? "md:ml-[72px]" : "md:ml-60"
+        }`}
       >
-        <div className="p-6 lg:p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
 
           {/* Page header */}
           <motion.div

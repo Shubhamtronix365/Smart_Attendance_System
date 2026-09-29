@@ -142,10 +142,10 @@ export default function AdminTopBar({
 
   return (
     <header
-      className="fixed top-0 right-0 z-20 h-16 flex items-center px-6 gap-4"
+      className={`fixed top-0 right-0 z-20 h-16 flex items-center px-4 md:px-6 gap-3 md:gap-4 transition-all duration-300 left-0 ${
+        sidebarCollapsed ? "md:left-[72px]" : "md:left-60"
+      }`}
       style={{
-        left: sidebarCollapsed ? "72px" : "240px",
-        transition: "left 0.3s",
         background: "rgba(10,15,30,0.85)",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         backdropFilter: "blur(20px)",
@@ -154,7 +154,8 @@ export default function AdminTopBar({
       {/* Hamburger Menu Button (Mobile only) */}
       <button
         onClick={() => window.dispatchEvent(new CustomEvent("toggle-admin-sidebar"))}
-        className="md:hidden text-white/60 hover:text-white p-1.5 rounded-xl hover:bg-white/5 transition-all mr-2 flex items-center justify-center border border-white/10"
+        className="md:hidden text-white/60 hover:text-white p-2 rounded-xl hover:bg-white/5 transition-all shrink-0 flex items-center justify-center border border-white/10"
+        aria-label="Toggle navigation menu"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -162,7 +163,7 @@ export default function AdminTopBar({
       </button>
 
       {/* Page title */}
-      <h2 className="text-white font-bold text-lg mr-auto">{title}</h2>
+      <h2 className="text-white font-bold text-base sm:text-lg mr-auto truncate">{title}</h2>
 
       {/* Live date/time */}
       <div className="hidden md:flex flex-col items-end">
@@ -219,7 +220,7 @@ export default function AdminTopBar({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.97 }}
               transition={{ duration: 0.18 }}
-              className="absolute right-0 top-12 w-80 rounded-2xl overflow-hidden z-50"
+              className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden z-50"
               style={{
                 background: "rgba(10,15,30,0.98)",
                 border: "1px solid rgba(255,255,255,0.1)",
@@ -309,7 +310,7 @@ export default function AdminTopBar({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.97 }}
               transition={{ duration: 0.18 }}
-              className="absolute right-0 top-12 w-52 rounded-2xl overflow-hidden z-50"
+              className="absolute right-0 top-12 w-52 max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden z-50"
               style={{
                 background: "rgba(10,15,30,0.98)",
                 border: "1px solid rgba(255,255,255,0.1)",

@@ -321,15 +321,15 @@ export default function LeavePage() {
       <AdminSidebar />
       <AdminTopBar title="Leave Management" />
 
-      <main className="min-h-screen pt-16" style={{ marginLeft:"240px" }}>
-        <div className="p-6 lg:p-8">
+      <main className="min-h-screen pt-16 md:ml-60 transition-all">
+        <div className="p-4 sm:p-6 lg:p-8">
           <motion.div initial={{ opacity:0, y:-16 }} animate={{ opacity:1, y:0 }} className="mb-6">
             <h1 className="text-3xl font-black text-white mb-1">Leave Management</h1>
             <p className="text-white/40">Review and manage employee leave requests</p>
           </motion.div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 p-1 rounded-2xl w-fit" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
+          <div className="flex gap-1 mb-6 p-1 rounded-2xl w-full sm:w-fit overflow-x-auto" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
             {TABS.map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className="relative flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all"

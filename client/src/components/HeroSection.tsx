@@ -339,41 +339,41 @@ export default function HeroSection() {
       />
 
       {/* ── Top Navigation Bar ── */}
-      <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-12 py-5 max-w-7xl mx-auto border-b border-white/5 backdrop-blur-md">
-        <Link href="/" className="flex items-center gap-3">
+      <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-6 lg:px-12 py-3.5 sm:py-5 max-w-7xl mx-auto border-b border-white/5 backdrop-blur-md">
+        <Link href="/" className="flex items-center gap-2.5 sm:gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
+            className="w-9 sm:w-10 h-9 sm:h-10 rounded-xl flex items-center justify-center shrink-0"
             style={{
               background: "linear-gradient(135deg, rgba(0,245,255,0.2), rgba(124,58,237,0.2))",
               border: "1px solid rgba(0,245,255,0.4)",
             }}
           >
-            <Fingerprint size={22} className="text-cyan-400" />
+            <Fingerprint size={20} className="text-cyan-400" />
           </div>
-          <span className="font-extrabold text-xl text-white tracking-tight">
+          <span className="font-extrabold text-lg sm:text-xl text-white tracking-tight">
             Smart<span className="text-cyan-400">Attend</span>
           </span>
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => router.push("/employee/dashboard")}
-            className="hidden sm:inline-flex px-4 py-2 rounded-xl text-xs font-semibold text-white/70 hover:text-white border border-white/10 hover:border-white/20 transition-colors cursor-pointer"
+            className="hidden sm:inline-flex px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold text-white/70 hover:text-white border border-white/10 hover:border-white/20 transition-colors cursor-pointer"
           >
             Employee Portal
           </button>
           <button
             type="button"
             onClick={() => router.push("/admin/dashboard")}
-            className="hidden sm:inline-flex px-4 py-2 rounded-xl text-xs font-semibold text-cyan-400 hover:text-cyan-300 border border-cyan-400/30 hover:border-cyan-400/50 bg-cyan-400/10 transition-colors cursor-pointer"
+            className="hidden sm:inline-flex px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold text-cyan-400 hover:text-cyan-300 border border-cyan-400/30 hover:border-cyan-400/50 bg-cyan-400/10 transition-colors cursor-pointer"
           >
             Admin Dashboard
           </button>
           <button
             type="button"
             onClick={() => router.push("/login")}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-black shadow-lg transition-transform hover:scale-105 cursor-pointer"
+            className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 rounded-xl text-xs font-bold text-black shadow-lg transition-transform hover:scale-105 cursor-pointer whitespace-nowrap"
             style={{
               background: "linear-gradient(135deg, #00f5ff, #7c3aed)",
             }}
@@ -384,7 +384,7 @@ export default function HeroSection() {
       </header>
 
       {/* ── Main Content ── */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 lg:px-12 flex flex-col lg:flex-row items-center gap-12 lg:gap-0 pt-32 pb-16">
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 flex flex-col lg:flex-row items-center gap-8 lg:gap-0 pt-24 sm:pt-32 pb-12 sm:pb-16">
 
         {/* ── LEFT SIDE (60%) ── */}
         <motion.div
@@ -423,7 +423,7 @@ export default function HeroSection() {
                     stiffness: 90,
                     damping: 16,
                   }}
-                  className="text-6xl lg:text-7xl xl:text-8xl font-black leading-none tracking-tight"
+                  className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black leading-tight sm:leading-none tracking-tight"
                   style={{
                     background: "linear-gradient(135deg, #00f5ff 0%, #7c3aed 100%)",
                     WebkitBackgroundClip: "text",
@@ -441,13 +441,13 @@ export default function HeroSection() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.9 }}
-              className="text-2xl lg:text-3xl font-light text-white/70 tracking-wide h-10"
+              className="text-xl sm:text-2xl lg:text-3xl font-light text-white/70 tracking-wide h-10"
             >
               {subtitle}
               <motion.span
                 animate={{ opacity: [0, 1, 0] }}
                 transition={{ duration: 0.8, repeat: Infinity }}
-                className="inline-block w-0.5 h-7 bg-cyan-400 ml-1 align-middle"
+                className="inline-block w-0.5 h-6 sm:h-7 bg-cyan-400 ml-1 align-middle"
               />
             </motion.div>
           </div>
@@ -581,8 +581,8 @@ export default function HeroSection() {
 
         {/* ── RIGHT SIDE (40%) ── */}
         <motion.div
-          className="w-full lg:w-[40%] relative flex items-center justify-center"
-          style={{ y: rightY, minHeight: "520px" }}
+          className="w-full lg:w-[40%] relative flex items-center justify-center min-h-[360px] sm:min-h-[440px] lg:min-h-[520px]"
+          style={{ y: rightY }}
         >
           {/* Scan ring wrapper behind canvas */}
           <motion.div
@@ -592,7 +592,7 @@ export default function HeroSection() {
             animate="animate"
           >
             <div
-              className="w-80 h-80 rounded-full"
+              className="w-64 sm:w-80 h-64 sm:h-80 rounded-full"
               style={{
                 border: "1px solid rgba(0,245,255,0.12)",
                 boxShadow: "0 0 60px rgba(0,245,255,0.06), inset 0 0 60px rgba(124,58,237,0.04)",
@@ -602,7 +602,7 @@ export default function HeroSection() {
 
           {/* 3D Canvas */}
           <motion.div
-            className="relative w-full h-[520px]"
+            className="relative w-full h-[360px] sm:h-[440px] lg:h-[520px]"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.5, duration: 0.8, ease: "easeOut" }}
@@ -618,7 +618,7 @@ export default function HeroSection() {
             color="#22c55e"
             glowColor="#22c55e"
             delay={1.0}
-            position="top-4 left-0 lg:-left-12"
+            position="top-2 left-2 sm:left-0 lg:-left-12 lg:top-4"
           />
           <FloatingDataCard
             icon={<DollarSign size={14} />}
@@ -627,7 +627,7 @@ export default function HeroSection() {
             color="#a78bfa"
             glowColor="#7c3aed"
             delay={1.3}
-            position="top-4 right-0 lg:-right-8"
+            position="top-2 right-2 sm:right-0 lg:-right-8 lg:top-4"
           />
           <FloatingDataCard
             icon={<Clock size={14} />}
@@ -636,7 +636,7 @@ export default function HeroSection() {
             color="#f59e0b"
             glowColor="#f59e0b"
             delay={1.6}
-            position="bottom-8 left-1/2 -translate-x-1/2 lg:left-auto lg:translate-x-0 lg:-right-8 lg:bottom-16"
+            position="bottom-4 left-1/2 -translate-x-1/2 lg:left-auto lg:translate-x-0 lg:-right-8 lg:bottom-16"
           />
         </motion.div>
       </div>
