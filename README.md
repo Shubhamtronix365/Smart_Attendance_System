@@ -252,6 +252,7 @@ Smart_Attendance_System/
 - `GET /api/leave/{id}` — Get single leave request details.
 - `PUT /api/leave/{id}/approve` — Approve pending request (Admin only).
 - `PUT /api/leave/{id}/reject` — Reject pending request (Admin only).
+- `DELETE /api/leave/{id}` — Cancel/withdraw leave request (employees withdraw own pending; admins delete any and cleanup attendance).
 - `GET /api/leave/my-balance` — Current employee's remaining leave balances for the calendar year.
 - `GET /api/leave/balance/{employee_id}` — Remaining balances for leave categories.
 

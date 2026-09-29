@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import EmployeeSidebar from "@/components/EmployeeSidebar";
 import EmployeeTopBar from "@/components/EmployeeTopBar";
 import StatusBadge from "@/components/StatusBadge";
+import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
 import { employeeSelfApi } from "@/services/api";
@@ -244,35 +245,34 @@ export default function EmployeeAttendancePage() {
             </span>
           </div>
 
-          {isLoading ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="animate-spin text-cyan-400" size={28} />
-              <p className="text-white/40 text-xs">Loading records...</p>
-            </div>
-          ) : filteredRecords.length === 0 ? (
-            <div className="py-20 text-center">
-              <CalendarDays className="mx-auto mb-3 text-white/20" size={40} />
-              <p className="text-white/60 text-sm font-medium">No attendance recorded</p>
-              <p className="text-white/30 text-xs mt-1">
-                No check-in entries found for {MONTH_NAMES[selectedMonth - 1]} {selectedYear}.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
-                    <th className="py-3.5 px-6">Date</th>
-                    <th className="py-3.5 px-6">Check In</th>
-                    <th className="py-3.5 px-6">Check Out</th>
-                    <th className="py-3.5 px-6">Working Hours</th>
-                    <th className="py-3.5 px-6">Overtime</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6">Punch Method</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-6">Date</th>
+                  <th className="py-3.5 px-6">Check In</th>
+                  <th className="py-3.5 px-6">Check Out</th>
+                  <th className="py-3.5 px-6">Working Hours</th>
+                  <th className="py-3.5 px-6">Overtime</th>
+                  <th className="py-3.5 px-6">Status</th>
+                  <th className="py-3.5 px-6">Punch Method</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {isLoading ? (
+                  <LoadingSkeleton rows={6} cols={7} />
+                ) : filteredRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center">
+                      <CalendarDays className="mx-auto mb-3 text-white/20" size={36} />
+                      <p className="text-white/60 text-sm font-medium">No attendance recorded</p>
+                      <p className="text-white/30 text-xs mt-1">
+                        No check-in entries found for {MONTH_NAMES[selectedMonth - 1]} {selectedYear}.
+                      </p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filteredRecords.map((r: any) => {
+                ) : (
+                  filteredRecords.map((r: any) => {
                     const punchDate = new Date(r.date + "T00:00:00");
                     const dayName = punchDate.toLocaleDateString("en-IN", { weekday: "short" });
 
@@ -321,11 +321,11 @@ export default function EmployeeAttendancePage() {
                         </td>
                       </tr>
                     );
-                  })}
+                  })
+                )}
                 </tbody>
               </table>
             </div>
-          )}
         </div>
       </main>
     </div>

@@ -17,6 +17,7 @@ import {
 import { useRouter } from "next/navigation";
 import EmployeeSidebar from "@/components/EmployeeSidebar";
 import EmployeeTopBar from "@/components/EmployeeTopBar";
+import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
 import { leaveApi, employeeSelfApi } from "@/services/api";
@@ -37,6 +38,7 @@ export default function EmployeeLeavePage() {
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
   const [balance, setBalance] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
 
   // Form State
@@ -84,6 +86,23 @@ export default function EmployeeLeavePage() {
     const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     return diff > 0 ? diff : 0;
   })();
+
+  const handleWithdrawLeave = async (leaveId: number) => {
+    if (!window.confirm("Are you sure you want to withdraw this leave request?")) {
+      return;
+    }
+    try {
+      setCancellingId(leaveId);
+      await leaveApi.cancel(leaveId);
+      success("Leave application withdrawn successfully.");
+      await loadData();
+    } catch (err: any) {
+      console.error("Failed to withdraw leave", err);
+      error(err.response?.data?.detail || "Failed to withdraw leave application.");
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,35 +240,35 @@ export default function EmployeeLeavePage() {
             </span>
           </div>
 
-          {isLoading ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="animate-spin text-cyan-400" size={28} />
-              <p className="text-white/40 text-xs">Loading leave history...</p>
-            </div>
-          ) : leaveHistory.length === 0 ? (
-            <div className="py-20 text-center">
-              <Calendar className="mx-auto mb-3 text-white/20" size={40} />
-              <p className="text-white/60 text-sm font-medium">No leave requests submitted</p>
-              <p className="text-white/30 text-xs mt-1">
-                When you apply for casual, sick, or paid leave, the approval status will show here.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
-                    <th className="py-3.5 px-6">Leave Type</th>
-                    <th className="py-3.5 px-6">Period</th>
-                    <th className="py-3.5 px-6">Duration</th>
-                    <th className="py-3.5 px-6">Reason</th>
-                    <th className="py-3.5 px-6">Applied On</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6">Reviewed By</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-6">Leave Type</th>
+                  <th className="py-3.5 px-6">Period</th>
+                  <th className="py-3.5 px-6">Duration</th>
+                  <th className="py-3.5 px-6">Reason</th>
+                  <th className="py-3.5 px-6">Applied On</th>
+                  <th className="py-3.5 px-6">Status</th>
+                  <th className="py-3.5 px-6">Reviewed By</th>
+                  <th className="py-3.5 px-6 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {isLoading ? (
+                  <LoadingSkeleton rows={4} cols={8} />
+                ) : leaveHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-16 text-center">
+                      <Calendar className="mx-auto mb-3 text-white/20" size={36} />
+                      <p className="text-white/60 text-sm font-medium">No leave requests submitted</p>
+                      <p className="text-white/30 text-xs mt-1">
+                        When you apply for casual, sick, or paid leave, the approval status will show here.
+                      </p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {leaveHistory.map((l: any) => {
+                ) : (
+                  leaveHistory.map((l: any) => {
                     const start = new Date(l.start_date);
                     const end = new Date(l.end_date);
                     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -293,13 +312,32 @@ export default function EmployeeLeavePage() {
                         <td className="py-4 px-6 text-white/40">
                           {l.approver_name || (l.approval_status === "pending" ? "Awaiting HR" : "-")}
                         </td>
+                        <td className="py-4 px-6 text-right">
+                          {l.approval_status === "pending" ? (
+                            <button
+                              onClick={() => handleWithdrawLeave(l.leave_id)}
+                              disabled={cancellingId === l.leave_id}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all disabled:opacity-50"
+                              title="Withdraw this pending request"
+                            >
+                              {cancellingId === l.leave_id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <X size={12} />
+                              )}
+                              Withdraw
+                            </button>
+                          ) : (
+                            <span className="text-white/20 text-xs">-</span>
+                          )}
+                        </td>
                       </tr>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </main>
 

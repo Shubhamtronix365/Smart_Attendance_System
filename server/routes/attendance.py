@@ -64,8 +64,7 @@ async def my_attendance_stats(
 ):
     """Returns the logged-in employee's monthly attendance statistics for the given month and year."""
     from sqlalchemy import extract
-    from datetime import date, timedelta
-    from server.utils.time_utils import get_working_days_in_month
+    from server.utils.time_utils import get_working_days_in_month, get_elapsed_working_days, get_current_local_date
 
     stmt = (
         select(Attendance)
@@ -92,18 +91,8 @@ async def my_attendance_stats(
     total_working_hours = sum(float(r.working_hours or 0) for r in records)
 
     total_working_days = get_working_days_in_month(year, month)
-    today = date.today()
-    if year == today.year and month == today.month:
-        cur = date(year, month, 1)
-        working_days_elapsed = 0
-        while cur <= today:
-            if cur.weekday() < 5:  # Monday to Friday
-                working_days_elapsed += 1
-            cur += timedelta(days=1)
-    elif date(year, month, 1) < today:
-        working_days_elapsed = total_working_days
-    else:
-        working_days_elapsed = 0
+    today = get_current_local_date()
+    working_days_elapsed = get_elapsed_working_days(year, month, as_of_date=today)
 
     absent_days = max(0, working_days_elapsed - present_days - leave_days)
 

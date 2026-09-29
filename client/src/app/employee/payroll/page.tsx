@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import EmployeeSidebar from "@/components/EmployeeSidebar";
 import EmployeeTopBar from "@/components/EmployeeTopBar";
+import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
 import { employeeSelfApi, payrollApi } from "@/services/api";
@@ -233,37 +234,36 @@ export default function EmployeePayrollPage() {
             </span>
           </div>
 
-          {isLoading ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="animate-spin text-cyan-400" size={28} />
-              <p className="text-white/40 text-xs">Loading payroll records...</p>
-            </div>
-          ) : payrollHistory.length === 0 ? (
-            <div className="py-20 text-center">
-              <AlertCircle className="mx-auto mb-3 text-white/20" size={40} />
-              <p className="text-white/60 text-sm font-medium">No finalized payslips for {selectedYear}</p>
-              <p className="text-white/30 text-xs mt-1 max-w-sm mx-auto">
-                Once HR/Admin runs the automated payroll computation at the end of the monthly billing period, your downloadable PDF payslips will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
-                    <th className="py-3.5 px-6">Billing Period</th>
-                    <th className="py-3.5 px-6">Working Days</th>
-                    <th className="py-3.5 px-6">Present / Absent</th>
-                    <th className="py-3.5 px-6">Base Salary</th>
-                    <th className="py-3.5 px-6">Overtime Pay</th>
-                    <th className="py-3.5 px-6">Deductions</th>
-                    <th className="py-3.5 px-6">Net Payout</th>
-                    <th className="py-3.5 px-6">Disbursement</th>
-                    <th className="py-3.5 px-6 text-right">Action</th>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
+                  <th className="py-3.5 px-6">Billing Period</th>
+                  <th className="py-3.5 px-6">Working Days</th>
+                  <th className="py-3.5 px-6">Present / Absent</th>
+                  <th className="py-3.5 px-6">Base Salary</th>
+                  <th className="py-3.5 px-6">Overtime Pay</th>
+                  <th className="py-3.5 px-6">Deductions</th>
+                  <th className="py-3.5 px-6">Net Payout</th>
+                  <th className="py-3.5 px-6">Disbursement</th>
+                  <th className="py-3.5 px-6 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {isLoading ? (
+                  <LoadingSkeleton rows={4} cols={9} />
+                ) : payrollHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-16 text-center">
+                      <AlertCircle className="mx-auto mb-3 text-white/20" size={36} />
+                      <p className="text-white/60 text-sm font-medium">No finalized payslips for {selectedYear}</p>
+                      <p className="text-white/30 text-xs mt-1 max-w-sm mx-auto">
+                        Once HR/Admin runs the automated payroll computation at the end of the monthly billing period, your downloadable PDF payslips will appear here.
+                      </p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {payrollHistory.map((p: any) => (
+                ) : (
+                  payrollHistory.map((p: any) => (
                     <tr key={p.payroll_id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="py-4 px-6 font-semibold text-white whitespace-nowrap">
                         {MONTH_NAMES[p.month - 1]} {p.year}
@@ -314,11 +314,11 @@ export default function EmployeePayrollPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </main>
     </div>

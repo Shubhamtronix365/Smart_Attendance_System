@@ -351,3 +351,48 @@ async def get_leave_balance(
         "paid": balance_paid,
         "unpaid": used_unpaid  # Unpaid displays days consumed since there is no quota limit
     }
+
+@router.delete("/{leave_id}")
+async def cancel_or_delete_leave(
+    leave_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """
+    Cancels or deletes a leave request.
+    - Employees can withdraw their own leave request if it is still PENDING.
+    - Admins can delete any leave request; if approved, the generated attendance records are cleaned up.
+    """
+    stmt = select(Leave).where(Leave.leave_id == leave_id)
+    res = await db.execute(stmt)
+    leave_obj = res.scalar_one_or_none()
+
+    if not leave_obj:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+
+    if current_user.role != "admin":
+        if leave_obj.employee_id != current_user.employee_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        if leave_obj.approval_status != LeaveStatus.PENDING:
+            raise HTTPException(
+                status_code=400,
+                detail="Only pending leave requests can be withdrawn. Please contact your manager or HR to cancel an approved leave."
+            )
+
+    # If it was approved and admin is deleting it, remove generated attendance records
+    if leave_obj.approval_status == LeaveStatus.APPROVED:
+        from server.models import Attendance, AttendanceStatus
+        from sqlalchemy import delete
+        await db.execute(
+            delete(Attendance).where(
+                Attendance.employee_id == leave_obj.employee_id,
+                Attendance.date >= leave_obj.start_date,
+                Attendance.date <= leave_obj.end_date,
+                Attendance.status == AttendanceStatus.LEAVE
+            )
+        )
+
+    await db.delete(leave_obj)
+    await db.commit()
+    return {"message": "Leave request cancelled successfully", "leave_id": leave_id}
+

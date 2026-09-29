@@ -83,8 +83,9 @@ export const attendanceApi = {
 export const leaveApi = {
   list: (status?: string) => api.get("/api/leave", { params: { status } }),
   request: (data: unknown) => api.post("/api/leave/request", data),
-  approve: (id: string) => api.put(`/api/leave/${id}/approve`),
-  reject: (id: string, reason?: string) => api.put(`/api/leave/${id}/reject`, { reason }),
+  approve: (id: string | number) => api.put(`/api/leave/${id}/approve`),
+  reject: (id: string | number, reason?: string) => api.put(`/api/leave/${id}/reject`, { reason }),
+  cancel: (id: string | number) => api.delete(`/api/leave/${id}`),
 };
 
 // ─── Payroll ──────────────────────────────────────────────────────────────────
