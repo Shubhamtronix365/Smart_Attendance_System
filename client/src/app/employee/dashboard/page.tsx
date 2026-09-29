@@ -206,7 +206,7 @@ export default function EmployeeDashboardPage() {
     : "September payroll pending finalization";
 
   const totalLeaveQuota = leaveBalance?.total_remaining ?? 37;
-  const leaveSubtitle = `${leaveBalance?.casual ?? 12} Casual · ${leaveBalance?.sick ?? 10} Sick · ${leaveBalance?.paid ?? 15} Paid`;
+  const leaveSubtitle = `Annual Quota: ${leaveBalance?.casual ?? 12} Casual · ${leaveBalance?.sick ?? 10} Sick · ${leaveBalance?.paid ?? 15} Paid / yr`;
 
   return (
     <div className="min-h-screen bg-[#0a0f1e] text-white">
@@ -253,9 +253,9 @@ export default function EmployeeDashboardPage() {
             index={1}
           />
           <EmpStatCard
-            title="Leave Balance"
+            title="Annual Leave Balance"
             value={totalLeaveQuota}
-            suffix=" days"
+            suffix=" days/yr"
             subtitle={leaveSubtitle}
             icon={<TrendingUp size={18} />}
             color="#00f5ff"
@@ -451,21 +451,21 @@ export default function EmployeeDashboardPage() {
               {/* Mini Leave Quota Preview */}
               <div className="mb-4 p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-white/70">Remaining Leave Allowances</span>
-                  <span className="text-xs font-mono font-bold text-cyan-400">{totalLeaveQuota} days total</span>
+                  <span className="text-xs font-semibold text-white/70">Remaining Annual Quota (Per Year)</span>
+                  <span className="text-xs font-mono font-bold text-cyan-400">{totalLeaveQuota} days / yr</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
                     <p className="font-bold text-cyan-300">{leaveBalance?.casual ?? 12}</p>
-                    <p className="text-[10px] text-white/40">Casual</p>
+                    <p className="text-[10px] text-white/40">Casual (/12 yr)</p>
                   </div>
                   <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                     <p className="font-bold text-amber-300">{leaveBalance?.sick ?? 10}</p>
-                    <p className="text-[10px] text-white/40">Sick</p>
+                    <p className="text-[10px] text-white/40">Sick (/10 yr)</p>
                   </div>
                   <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                     <p className="font-bold text-emerald-300">{leaveBalance?.paid ?? 15}</p>
-                    <p className="text-[10px] text-white/40">Paid</p>
+                    <p className="text-[10px] text-white/40">Paid (/15 yr)</p>
                   </div>
                 </div>
               </div>

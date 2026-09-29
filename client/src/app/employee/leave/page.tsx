@@ -180,7 +180,7 @@ export default function EmployeeLeavePage() {
                       className="px-2 py-0.5 rounded-full text-[10px] font-bold"
                       style={{ background: `${type.color}15`, color: type.color }}
                     >
-                      {total !== null ? `${remaining} days left` : "Unlimited"}
+                      {total !== null ? `${remaining} days left (Annual)` : "Unlimited"}
                     </span>
                   </div>
 
@@ -188,7 +188,7 @@ export default function EmployeeLeavePage() {
                     <span className="text-3xl font-black" style={{ color: type.color }}>
                       {remaining}
                     </span>
-                    {total !== null && <span className="text-xs text-white/40">/ {total} days</span>}
+                    {total !== null && <span className="text-xs text-white/40">/ {total} days/year (Annual Quota)</span>}
                   </div>
 
                   {total !== null && (
@@ -202,7 +202,7 @@ export default function EmployeeLeavePage() {
                 </div>
 
                 <p className="text-[10px] text-white/30 mt-3 pt-3 border-t border-white/5">
-                  {total !== null ? `${used} days consumed this year` : `${used} days taken without pay`}
+                  {total !== null ? `${used} of ${total} days consumed this calendar year` : `${used} days taken without pay`}
                 </p>
               </motion.div>
             );
@@ -338,7 +338,7 @@ export default function EmployeeLeavePage() {
                   >
                     {LEAVE_TYPES.map((t) => (
                       <option key={t.value} value={t.value} className="bg-[#0a0f1e] text-white">
-                        {t.label} {t.quota !== null ? `(${t.quota} days/yr)` : "(Unpaid)"}
+                        {t.label} {t.quota !== null ? `(${t.quota} days/year - Annual Quota)` : "(Unpaid / LWP)"}
                       </option>
                     ))}
                   </select>
