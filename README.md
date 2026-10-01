@@ -19,10 +19,16 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 - 🌑 **Immersive 3D Hero UI** with glassmorphism, neon accents, and particle fields.
 - 🔒 **Secure JWT Authentication** stored in HTTPOnly cookies or Bearer tokens.
 - 📥 **Exports and Payslips** including professional PDF payslips generated via ReportLab and Excel sheet logs generated via openpyxl.
+- 🔄 **Keep-Alive & Health Check Endpoints (`/health` & `/api/health`):** Dedicated `GET` & `HEAD` keep-alive ping receiver for cron-job websites (e.g. cron-job.org, UptimeRobot, Render pingers) to maintain server uptime, warm up serverless connection pools (`SELECT 1`), and prevent cold-start spin-down delays.
+- 📅 **Dual-Mode Attendance Tracking (Today Live vs Historical Month-Wide):**
+  - **Today Live Mode:** Dedicated real-time feed showing today's attendance data with WebSocket sync, auto-refresh, live statistics counters, and downloadable daily Excel & PDF exports.
+  - **Historical Month Mode:** Automatically loads and displays all attendance data from Day 1 of the chosen month to the end date of that month with check-in, check-out, working hours, status, and full-month downloadable Excel & PDF exports.
+- ⏱️ **Detailed Time-by-Time Reports & Logs:** Complete punch-by-punch attendance logs displaying exact check-in and check-out timestamps, hours, late minutes, overtime, and status for each employee, filterable by month or custom date range, and downloadable in Excel (`.xlsx`) and PDF (`.pdf`).
 
 ---
 
 ## Tech Stack
+
 
 | Layer     | Technology                                                      |
 |-----------|------------------------------------------------------------------|
@@ -202,12 +208,17 @@ Smart_Attendance_System/
 - `GET /api/employees/{id}/summary` — Overview of attendance logs and payroll.
 
 ### Attendance
-- `GET /api/attendance` — Get history (employees get own, admins get all; supports filters).
+- `GET /api/attendance` — Get history with multi-filter support (`date`, `start_date`, `end_date`, `month`, `year`, `department`, `employee_id`, `status`, `size` up to 1000).
+- `GET /api/attendance/export` — Export attendance (single day or full month from day 1 to end date) into Excel (.xlsx) or PDF (.pdf) format with complete check-in / check-out timestamps.
 - `GET /api/attendance/today` — Active check-ins logged for the current date.
 - `GET /api/attendance/live` — Feed of the last 20 check-in/out events.
 - `POST /api/attendance/manual` — Manually insert attendance log (Admin only).
 - `PUT /api/attendance/{id}` — Override existing check-in/out entry (Admin only).
 - `GET /api/attendance/stats/today` — Metrics summary counts for today's logs (Admin only).
+
+### Health & Keep-Alive Wake-Up (Cron Jobs)
+- `GET, HEAD /health` — Keep-alive wake-up ping for cron jobs (e.g. cron-job.org, UptimeRobot, Render pinger). Executes a database ping (`SELECT 1`), keeps PostgreSQL connection pool active, and returns server uptime status and timestamp.
+- `GET, HEAD /api/health` — Canonical API health check endpoint matching the same wake-up contract.
 
 ### Biometric & RFID ESP32 Tronix Device (WebSocket + REST)
 - `ws://<HOST>:8000/ws/device` — Persistent outbound WebSocket connection for ESP32 hardware client. Enables real-time bidirectional messaging from ANY Wi-Fi network, mobile hotspot, or remote office.
@@ -274,9 +285,11 @@ Smart_Attendance_System/
 - `GET /api/payroll/payslip/{payroll_id}` — Binary PDF payslip download.
 
 ### Reports (Admin only)
+- `GET /api/reports/attendance/detailed-logs` — Detailed time-by-time attendance records for each punch across any month or date range, including exact Check-In & Check-Out timestamps, working hours, late minutes, overtime, and status. (Supports JSON, Excel `.xlsx`, and PDF `.pdf` downloads).
 - `GET /api/reports/attendance/daily` — Daily attendance report (JSON, Excel, or PDF format).
-- `GET /api/reports/attendance/monthly` — Monthly attendance report (JSON, Excel, or PDF format).
+- `GET /api/reports/attendance/monthly` — Monthly attendance report summary (JSON, Excel, or PDF format).
 - `GET /api/reports/payroll` — Monthly payroll summary report (JSON, Excel, or PDF format).
+
 
 ### System Settings (Admin only)
 - `GET /api/settings` — Retrieve standard shift window hours, late grace threshold, overtime pay multiplier, and ESP32 authorization key.

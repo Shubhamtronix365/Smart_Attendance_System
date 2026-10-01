@@ -460,3 +460,94 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
+
+
+def generate_historical_attendance_pdf(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT") -> bytes:
+    """
+    Generates a PDF for historical attendance with full timestamps (check-in, check-out)
+    for each employee over a date range or full month.
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=25,
+        leftMargin=25,
+        topMargin=25,
+        bottomMargin=25
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    _add_report_header(
+        story,
+        title,
+        f"Period: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}",
+        styles
+    )
+
+    header_style = ParagraphStyle("HStyleHist", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, color=colors.white, alignment=1)
+    row_style = ParagraphStyle("RStyleHist", parent=styles["Normal"], fontName="Helvetica", fontSize=8, textColor=colors.HexColor("#1e293b"))
+    row_center = ParagraphStyle("RStyleHistC", parent=row_style, alignment=1)
+    row_right = ParagraphStyle("RStyleHistR", parent=row_style, alignment=2)
+
+    table_data = [[
+        Paragraph("<b>Date</b>", header_style),
+        Paragraph("<b>ID</b>", header_style),
+        Paragraph("<b>Employee Name</b>", header_style),
+        Paragraph("<b>Department</b>", header_style),
+        Paragraph("<b>Check-In</b>", header_style),
+        Paragraph("<b>Check-Out</b>", header_style),
+        Paragraph("<b>Hours</b>", header_style),
+        Paragraph("<b>Late</b>", header_style),
+        Paragraph("<b>Overtime</b>", header_style),
+        Paragraph("<b>Status</b>", header_style),
+    ]]
+
+    for r in records:
+        r_date = r.get("date")
+        if hasattr(r_date, "strftime"):
+            date_str = r_date.strftime("%Y-%m-%d")
+        else:
+            date_str = str(r_date) if r_date else "--"
+
+        cin = r.get("check_in")
+        cout = r.get("check_out")
+        cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
+        cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+
+        late_min = int(r.get("late_minutes") or 0)
+        late_str = f"{late_min}m" if late_min > 0 else "—"
+
+        status_str = str(r.get("status") or "absent").replace("_", " ").upper()
+
+        table_data.append([
+            Paragraph(date_str, row_center),
+            Paragraph(str(r.get("employee_id")), row_center),
+            Paragraph(r.get("employee_name") or "Unknown", row_style),
+            Paragraph(r.get("department") or "N/A", row_style),
+            Paragraph(cin_str, row_center),
+            Paragraph(cout_str, row_center),
+            Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}", row_right),
+            Paragraph(late_str, row_center),
+            Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}", row_right),
+            Paragraph(status_str, row_center),
+        ])
+
+    # Table column widths sum to 742 (landscape letter width is 792 - 50 margins = 742)
+    t = Table(table_data, colWidths=[70, 45, 135, 95, 75, 75, 55, 45, 65, 82])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f1629")),
+        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(t)
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+

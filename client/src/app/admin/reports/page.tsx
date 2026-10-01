@@ -11,9 +11,72 @@ import { reportsApi } from "@/services/api";
 import { formatTime } from "@/utils/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ReportType = "daily" | "monthly" | "payroll";
+type ReportType = "detailed" | "daily" | "monthly" | "payroll";
 
 const DEPARTMENTS = ["All Departments", "Engineering", "HR", "Finance", "Operations", "Design", "Marketing"];
+
+// ─── Detailed Logs (Each Time) Table ─────────────────────────────────────────
+function DetailedLogsTable({ data }: { data: any[] }) {
+  return (
+    <table className="w-full">
+      <thead>
+        <tr style={{ borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+          {["Date","Employee","Department","Check-In","Check-Out","Working Hours","Late By","Overtime","Status"].map(h => (
+            <th key={h} className="px-4 py-3 text-left text-white/30 text-xs font-semibold uppercase tracking-wider">{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {data.length === 0 ? (
+          <tr>
+            <td colSpan={9} className="text-center py-16 text-white/40 text-sm">
+              No detailed attendance logs found for this period.
+            </td>
+          </tr>
+        ) : (
+          data.map((r, i) => (
+            <motion.tr key={r.id || i}
+              initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} transition={{ delay: i*0.03 }}
+              className="hover:bg-white/[0.02] transition-colors"
+              style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
+              <td className="px-4 py-3.5 text-cyan-300 font-mono text-xs whitespace-nowrap">{r.date}</td>
+              <td className="px-4 py-3.5 text-white text-sm font-semibold">
+                <div>
+                  <span>{r.name}</span>
+                  <span className="block text-[11px] text-white/40 font-mono">{r.empId}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
+              <td className="px-4 py-3.5 text-white/80 text-sm font-mono font-medium">{r.checkIn}</td>
+              <td className="px-4 py-3.5 text-white/80 text-sm font-mono font-medium">{r.checkOut}</td>
+              <td className="px-4 py-3.5 text-white/70 text-sm">{r.hours}</td>
+              <td className="px-4 py-3.5 text-sm">
+                {r.lateMinutes > 0 ? (
+                  <span className="text-amber-400 font-medium text-xs">Late by {r.lateMinutes}m</span>
+                ) : (
+                  <span className="text-white/20">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3.5 text-sm">
+                {r.otHours && r.otHours !== "—" ? (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background:"rgba(167,139,250,0.1)", color:"#a78bfa" }}>
+                    {r.otHours}
+                  </span>
+                ) : (
+                  <span className="text-white/20">—</span>
+                )}
+              </td>
+              <td className="px-4 py-3.5">
+                <StatusBadge status={r.status as "present"|"absent"|"late"|"halfday"|"leave"} size="sm" />
+              </td>
+            </motion.tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  );
+}
+
 
 // ─── Daily Report Table ───────────────────────────────────────────────────────
 function DailyTable({ data }: { data: any[] }) {
@@ -131,6 +194,7 @@ function PayrollTable({ data }: { data: any[] }) {
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 const REPORT_TABS: { id: ReportType; label: string }[] = [
+  { id:"detailed", label:"Attendance Logs (Each Time)" },
   { id:"daily",   label:"Daily Attendance"   },
   { id:"monthly", label:"Monthly Attendance" },
   { id:"payroll", label:"Payroll Report"     },
@@ -138,15 +202,29 @@ const REPORT_TABS: { id: ReportType; label: string }[] = [
 
 export default function ReportsPage() {
   const { success, error } = useToast();
-  const [activeReport, setActiveReport] = useState<ReportType>("daily");
-  const [fromDate, setFromDate] = useState(new Date().toISOString().split("T")[0]);
-  const [toDate, setToDate]     = useState(new Date().toISOString().split("T")[0]);
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+  const [activeReport, setActiveReport] = useState<ReportType>("detailed");
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
+  const [fromDate, setFromDate] = useState(`${currentMonthStr}-01`);
+  const [toDate, setToDate]     = useState(`${currentMonthStr}-${String(lastDayOfMonth).padStart(2, "0")}`);
   const [department, setDepartment] = useState("All Departments");
 
+  const [detailedData, setDetailedData] = useState<any[]>([]);
   const [dailyData, setDailyData] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [payrollData, setPayrollData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleMonthChange = (monthVal: string) => {
+    setSelectedMonth(monthVal);
+    const [y, m] = monthVal.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    setFromDate(`${monthVal}-01`);
+    setToDate(`${monthVal}-${String(lastDay).padStart(2, "0")}`);
+  };
 
   const fetchReport = useCallback(async () => {
     setIsLoading(true);
@@ -156,7 +234,27 @@ export default function ReportsPage() {
     const dept = department === "All Departments" ? "" : department;
 
     try {
-      if (activeReport === "daily") {
+      if (activeReport === "detailed") {
+        const res = await reportsApi.detailedAttendanceLogs({
+          start_date: fromDate,
+          end_date: toDate,
+          department: dept
+        });
+        const mapped = res.data.map((r: any) => ({
+          id: String(r.id || r.attendance_id),
+          date: r.date,
+          empId: `EMP${String(r.employee_id).padStart(3, "0")}`,
+          name: r.employee_name || "Unknown",
+          dept: r.department || "N/A",
+          checkIn: r.check_in_formatted || formatTime(r.check_in, true),
+          checkOut: r.check_out_formatted || formatTime(r.check_out, true),
+          hours: r.working_hours ? `${r.working_hours}h` : "—",
+          lateMinutes: r.late_minutes || 0,
+          otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
+          status: r.status === "half_day" ? "halfday" : r.status,
+        }));
+        setDetailedData(mapped);
+      } else if (activeReport === "daily") {
         const res = await reportsApi.dailyAttendance({ date: fromDate, department: dept });
         const mapped = res.data.map((r: any) => ({
           id: String(r.employee_id),
@@ -199,7 +297,7 @@ export default function ReportsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [activeReport, fromDate, department, error]);
+  }, [activeReport, fromDate, toDate, department, error]);
 
   useEffect(() => {
     fetchReport();
@@ -238,19 +336,31 @@ export default function ReportsPage() {
       const dept = department === "All Departments" ? "" : department;
 
       let res;
-      if (activeReport === "daily") {
+      let filename = "";
+
+      if (activeReport === "detailed") {
+        res = await reportsApi.exportDetailedAttendanceLogs({
+          start_date: fromDate,
+          end_date: toDate,
+          department: dept
+        }, format);
+        filename = `Detailed_Attendance_${fromDate}_to_${toDate}.${format === "pdf" ? "pdf" : "xlsx"}`;
+      } else if (activeReport === "daily") {
         res = await reportsApi.exportDailyAttendance({ date: fromDate, department: dept }, format);
+        filename = `Daily_Attendance_${fromDate}.${format === "pdf" ? "pdf" : "xlsx"}`;
       } else if (activeReport === "monthly") {
         res = await reportsApi.exportMonthlyAttendance({ month: String(month), year: String(year) }, format);
+        filename = `Monthly_Attendance_${year}_${month}.${format === "pdf" ? "pdf" : "xlsx"}`;
       } else {
         res = await reportsApi.exportPayroll({ month: String(month), year: String(year) }, format);
+        filename = `Payroll_Report_${year}_${month}.${format === "pdf" ? "pdf" : "xlsx"}`;
       }
 
       const mimeType = format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       const blob = new Blob([res.data], { type: mimeType });
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
-      link.download = `${activeReport}_Report_${fromDate}.${format === "pdf" ? "pdf" : "xlsx"}`;
+      link.download = filename;
       link.click();
       success("Report exported successfully.");
     } catch (err) {
@@ -273,15 +383,15 @@ export default function ReportsPage() {
       <main className="min-h-screen pt-16 md:ml-60 transition-all">
         <div className="p-4 sm:p-6 lg:p-8">
           <motion.div initial={{ opacity:0, y:-16 }} animate={{ opacity:1, y:0 }} className="mb-6">
-            <h1 className="text-3xl font-black text-white mb-1">Reports</h1>
-            <p className="text-white/40">Generate and export detailed reports</p>
+            <h1 className="text-3xl font-black text-white mb-1">Reports & Logs</h1>
+            <p className="text-white/40">Generate and export detailed time-by-time attendance & payroll reports</p>
           </motion.div>
 
           {/* Report type tabs */}
           <div className="flex gap-1 mb-6 p-1 rounded-2xl w-full sm:w-fit overflow-x-auto" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
             {REPORT_TABS.map(tab => (
               <button key={tab.id} onClick={() => setActiveReport(tab.id)}
-                className="relative px-5 py-2 rounded-xl text-sm font-semibold transition-all"
+                className="relative px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all whitespace-nowrap"
                 style={{ color: activeReport === tab.id ? "black" : "rgba(255,255,255,0.4)" }}>
                 {activeReport === tab.id && (
                   <motion.div layoutId="report-tab"
@@ -300,17 +410,54 @@ export default function ReportsPage() {
             className="neo-card p-5 flex flex-wrap items-end gap-4 mb-6"
           >
             <Filter size={16} className="text-white/30 mt-auto mb-1 shrink-0" />
-            <div>
-              <label className="text-white/40 text-xs font-medium mb-1.5 block">Target Date / Start Date</label>
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-                className="px-4 py-2.5 text-white text-sm outline-none rounded-xl"
-                style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }} />
-            </div>
-            {activeReport === "daily" && (
+
+            {/* Quick Month Picker */}
+            {(activeReport === "detailed" || activeReport === "monthly" || activeReport === "payroll") && (
+              <div>
+                <label className="text-white/40 text-xs font-medium mb-1.5 block">Select Month</label>
+                <div className="relative flex items-center">
+                  <Calendar size={13} className="absolute left-3 text-white/40 pointer-events-none" />
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => handleMonthChange(e.target.value)}
+                    className="pl-8 pr-3 py-2 text-white text-xs outline-none rounded-xl"
+                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(0,245,255,0.3)" }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Custom Range or Single Date */}
+            {activeReport === "detailed" ? (
+              <>
+                <div>
+                  <label className="text-white/40 text-xs font-medium mb-1.5 block">From Date (Day 1)</label>
+                  <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                    className="px-3 py-2 text-white text-xs outline-none rounded-xl"
+                    style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }} />
+                </div>
+                <div>
+                  <label className="text-white/40 text-xs font-medium mb-1.5 block">To Date (End Date)</label>
+                  <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                    className="px-3 py-2 text-white text-xs outline-none rounded-xl"
+                    style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }} />
+                </div>
+              </>
+            ) : activeReport === "daily" ? (
+              <div>
+                <label className="text-white/40 text-xs font-medium mb-1.5 block">Target Date</label>
+                <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                  className="px-3 py-2 text-white text-xs outline-none rounded-xl"
+                  style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }} />
+              </div>
+            ) : null}
+
+            {(activeReport === "detailed" || activeReport === "daily") && (
               <div>
                 <label className="text-white/40 text-xs font-medium mb-1.5 block">Department</label>
                 <select value={department} onChange={(e) => setDepartment(e.target.value)}
-                  className="px-4 py-2.5 text-white text-sm outline-none rounded-xl"
+                  className="px-4 py-2 text-white text-xs outline-none rounded-xl"
                   style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }}>
                   {DEPARTMENTS.map(d => <option key={d} value={d} className="bg-[#0a0f1e]">{d}</option>)}
                 </select>
@@ -320,16 +467,18 @@ export default function ReportsPage() {
             {/* Export buttons */}
             <div className="ml-auto flex items-center gap-2">
               <button onClick={handlePrint}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all">
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all">
                 <Printer size={13} />Print
               </button>
               <button onClick={() => handleExport("excel")}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-emerald-400 border border-emerald-400/20 hover:bg-emerald-400/10 transition-all">
+                title="Download report in Excel format"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-emerald-400 border border-emerald-400/20 hover:bg-emerald-400/10 transition-all">
                 <FileSpreadsheet size={13} />Excel
               </button>
               <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
                 onClick={() => handleExport("pdf")}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold text-black"
+                title="Download report in PDF format"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-black"
                 style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>
                 <FileText size={13} />PDF
               </motion.button>
@@ -343,13 +492,20 @@ export default function ReportsPage() {
             transition={{ type:"spring", stiffness:200, damping:22 }}
             className="neo-card overflow-hidden"
           >
-            <div className="px-6 py-4" style={{ borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-              <p className="text-white font-bold">
-                {REPORT_TABS.find(t => t.id === activeReport)?.label}
-              </p>
-              <p className="text-white/30 text-xs mt-0.5">
-                {fromDate} · {activeReport === "daily" ? department : "All Departments"}
-              </p>
+            <div className="px-6 py-4 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+              <div>
+                <p className="text-white font-bold">
+                  {REPORT_TABS.find(t => t.id === activeReport)?.label}
+                </p>
+                <p className="text-white/30 text-xs mt-0.5">
+                  {activeReport === "detailed" ? `${fromDate} to ${toDate}` : fromDate} · {activeReport === "payroll" ? "All" : department}
+                </p>
+              </div>
+              {activeReport === "detailed" && (
+                <span className="text-cyan-400/80 text-xs font-mono">
+                  Showing each punch timestamp & hours
+                </span>
+              )}
             </div>
             <div className="overflow-x-auto">
               <AnimatePresence mode="wait">
@@ -360,9 +516,10 @@ export default function ReportsPage() {
                   </div>
                 ) : (
                   <>
-                    {activeReport === "daily"   && <DailyTable   key="daily"   data={dailyData}   />}
-                    {activeReport === "monthly" && <MonthlyTable key="monthly" data={monthlyData} />}
-                    {activeReport === "payroll" && <PayrollTable key="payroll" data={payrollData} />}
+                    {activeReport === "detailed" && <DetailedLogsTable key="detailed" data={detailedData} />}
+                    {activeReport === "daily"    && <DailyTable        key="daily"    data={dailyData} />}
+                    {activeReport === "monthly"  && <MonthlyTable      key="monthly"  data={monthlyData} />}
+                    {activeReport === "payroll"  && <PayrollTable      key="payroll"  data={payrollData} />}
                   </>
                 )}
               </AnimatePresence>
@@ -373,4 +530,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
 

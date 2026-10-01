@@ -298,3 +298,99 @@ def generate_payroll_report_excel(year: int, month: int, payrolls: list) -> byte
     excel_bytes = buffer.getvalue()
     buffer.close()
     return excel_bytes
+
+
+def generate_historical_attendance_excel(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT") -> bytes:
+    """
+    Generates a comprehensive historical attendance Excel report for a date range or full month.
+    Each record contains detailed timestamps (check-in, check-out) and statistics.
+    records is a list of dicts:
+    [date, employee_id, employee_name, department, check_in, check_out, working_hours, late_minutes, overtime_hours, status, source]
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Attendance Logs"
+    ws.views.sheetView[0].showGridLines = True
+
+    # Title Block
+    ws.cell(row=2, column=2, value=title).font = TITLE_FONT
+    ws.cell(row=3, column=2, value=f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')}").font = SUBTITLE_FONT
+
+    headers = [
+        "Date", "Employee ID", "Employee Name", "Department",
+        "Check-In Time", "Check-Out Time", "Working Hours", "Late (min)",
+        "Overtime (hrs)", "Status", "Source"
+    ]
+
+    start_row = 5
+    for col_idx, header in enumerate(headers, start=2):
+        cell = ws.cell(row=start_row, column=col_idx, value=header)
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
+        cell.alignment = ALIGN_CENTER
+        cell.border = THIN_BORDER
+
+    current_row = start_row + 1
+    for r in records:
+        # Date column
+        r_date = r.get("date")
+        if hasattr(r_date, "strftime"):
+            date_str = r_date.strftime("%Y-%m-%d")
+        else:
+            date_str = str(r_date) if r_date else "--"
+
+        ws.cell(row=current_row, column=2, value=date_str).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=3, value=r.get("employee_id")).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=4, value=r.get("employee_name") or "Unknown").alignment = ALIGN_LEFT
+        ws.cell(row=current_row, column=5, value=r.get("department") or "N/A").alignment = ALIGN_LEFT
+
+        # Formatted check-in / check-out times
+        cin = r.get("check_in")
+        cout = r.get("check_out")
+        cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
+        cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+
+        ws.cell(row=current_row, column=6, value=cin_str).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=7, value=cout_str).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=8, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
+        ws.cell(row=current_row, column=9, value=int(r.get("late_minutes") or 0)).alignment = ALIGN_RIGHT
+        ws.cell(row=current_row, column=10, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
+
+        status_raw = str(r.get("status") or "absent").lower()
+        status_cell = ws.cell(row=current_row, column=11, value=status_raw.replace("_", " ").upper())
+        status_cell.alignment = ALIGN_CENTER
+
+        if status_raw in ("present", "wfh"):
+            status_fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
+            status_font = Font(name=FONT_NAME, size=10, bold=True, color="065F46")
+        elif status_raw in ("late", "half_day", "halfday"):
+            status_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
+            status_font = Font(name=FONT_NAME, size=10, bold=True, color="92400E")
+        elif status_raw == "leave":
+            status_fill = PatternFill(start_color="EDE9FE", end_color="EDE9FE", fill_type="solid")
+            status_font = Font(name=FONT_NAME, size=10, bold=True, color="6D28D9")
+        else:
+            status_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+            status_font = Font(name=FONT_NAME, size=10, bold=True, color="991B1B")
+
+        status_cell.fill = status_fill
+        status_cell.font = status_font
+
+        ws.cell(row=current_row, column=12, value=str(r.get("source") or "biometric").capitalize()).alignment = ALIGN_CENTER
+
+        for col_idx in range(2, 13):
+            c = ws.cell(row=current_row, column=col_idx)
+            if col_idx != 11:
+                c.font = REGULAR_FONT
+            c.border = THIN_BORDER
+
+        current_row += 1
+
+    _autofit_columns(ws)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    excel_bytes = buffer.getvalue()
+    buffer.close()
+    return excel_bytes
+

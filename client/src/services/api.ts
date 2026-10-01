@@ -67,16 +67,25 @@ export const employeesApi = {
 };
 
 // ─── Attendance ────────────────────────────────────────────────────────────────
+// ─── Attendance ────────────────────────────────────────────────────────────────
 export const attendanceApi = {
-  list: (date?: string, params?: Record<string, string>) =>
-    api.get("/api/attendance", { params: { date, ...params } }),
+  list: (dateOrParams?: string | Record<string, any>, extraParams?: Record<string, any>) => {
+    if (typeof dateOrParams === "string") {
+      return api.get("/api/attendance", { params: { date: dateOrParams, ...extraParams } });
+    }
+    return api.get("/api/attendance", { params: { ...dateOrParams, ...extraParams } });
+  },
   live: () => api.get("/api/attendance/live"),
   stats: () => api.get("/api/attendance/stats/today"),
   analytics: () => api.get("/api/attendance/analytics"),
   create: (data: unknown) => api.post("/api/attendance", data),
   update: (id: string, data: unknown) => api.put(`/api/attendance/${id}`, data),
-  export: (date: string, format: "excel" | "pdf") =>
-    api.get("/api/reports/attendance/daily", { params: { date, format }, responseType: "blob" }),
+  export: (paramsOrDate: string | Record<string, any>, format: "excel" | "pdf" = "excel") => {
+    if (typeof paramsOrDate === "string") {
+      return api.get("/api/attendance/export", { params: { date: paramsOrDate, format }, responseType: "blob" });
+    }
+    return api.get("/api/attendance/export", { params: { ...paramsOrDate, format: paramsOrDate.format || format }, responseType: "blob" });
+  },
 };
 
 // ─── Leave ────────────────────────────────────────────────────────────────────
@@ -112,14 +121,23 @@ export const reportsApi = {
     api.get("/api/reports/attendance/daily", { params }),
   monthlyAttendance: (params: Record<string, string>) =>
     api.get("/api/reports/attendance/monthly", { params }),
+  detailedAttendanceLogs: (params: Record<string, any>) =>
+    api.get("/api/reports/attendance/detailed-logs", { params }),
   payroll: (params: Record<string, string>) =>
     api.get("/api/reports/payroll", { params }),
   exportDailyAttendance: (params: Record<string, string>, format: "pdf" | "excel") =>
     api.get("/api/reports/attendance/daily", { params: { ...params, format }, responseType: "blob" }),
   exportMonthlyAttendance: (params: Record<string, string>, format: "pdf" | "excel") =>
     api.get("/api/reports/attendance/monthly", { params: { ...params, format }, responseType: "blob" }),
+  exportDetailedAttendanceLogs: (params: Record<string, any>, format: "pdf" | "excel") =>
+    api.get("/api/reports/attendance/detailed-logs", { params: { ...params, format }, responseType: "blob" }),
   exportPayroll: (params: Record<string, string>, format: "pdf" | "excel") =>
     api.get("/api/reports/payroll", { params: { ...params, format }, responseType: "blob" }),
+};
+
+// ─── Health & Keep-Alive ──────────────────────────────────────────────────────
+export const healthApi = {
+  check: () => api.get("/api/health"),
 };
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

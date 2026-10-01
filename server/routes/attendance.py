@@ -1,6 +1,7 @@
+import calendar
 from datetime import date, datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +11,17 @@ from server.dependencies.auth import get_current_user, require_admin
 from server.models import Attendance, AttendanceStatus, Employee
 from server.schemas.attendance import AttendanceOut, AttendanceManualEntry, AttendanceStats, AttendanceUpdate
 from server.utils.time_utils import get_current_local_date, get_current_local_time
+from server.services.excel_service import (
+    generate_daily_attendance_excel,
+    generate_historical_attendance_excel,
+)
+from server.services.pdf_service import (
+    generate_daily_attendance_pdf,
+    generate_historical_attendance_pdf,
+)
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
+
 
 @router.get("/my", response_model=List[AttendanceOut])
 async def my_attendance(
@@ -112,15 +122,21 @@ async def my_attendance_stats(
 @router.get("", response_model=List[AttendanceOut])
 async def list_attendance(
     attendance_date: Optional[date] = Query(None, alias="date"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2000),
+    department: Optional[str] = None,
     employee_id: Optional[int] = None,
     status_filter: Optional[AttendanceStatus] = Query(None, alias="status"),
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(50, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
 ):
     """
-    Lists attendance records with filters for date, employee_id, and status.
+    Lists attendance records with filters for date, date range (start_date to end_date),
+    month/year (from day 1 to end of month), employee_id, department, and status.
     Employees can only view their own history unless they are an admin.
     """
     # Enforce access control
@@ -129,14 +145,29 @@ async def list_attendance(
 
     stmt = select(Attendance).options(joinedload(Attendance.employee))
     
+    # If month and year are specified without explicit dates, calculate full month range
+    if month and year and not attendance_date and not start_date:
+        start_date = date(year, month, 1)
+        _, last_day = calendar.monthrange(year, month)
+        end_date = date(year, month, last_day)
+
     if attendance_date:
         stmt = stmt.where(Attendance.date == attendance_date)
+    elif start_date and end_date:
+        stmt = stmt.where(and_(Attendance.date >= start_date, Attendance.date <= end_date))
+    elif start_date:
+        stmt = stmt.where(Attendance.date >= start_date)
+    elif end_date:
+        stmt = stmt.where(Attendance.date <= end_date)
+
     if employee_id:
         stmt = stmt.where(Attendance.employee_id == employee_id)
     if status_filter:
         stmt = stmt.where(Attendance.status == status_filter)
+    if department:
+        stmt = stmt.join(Attendance.employee).where(Employee.department == department)
         
-    stmt = stmt.order_by(Attendance.date.desc(), Attendance.check_in.desc())
+    stmt = stmt.order_by(Attendance.date.desc(), Attendance.check_in.desc(), Attendance.employee_id.asc())
     
     # Pagination
     offset = (page - 1) * size
@@ -145,7 +176,7 @@ async def list_attendance(
     res = await db.execute(stmt)
     records = res.scalars().all()
     
-    # Map to schema output (include employee name)
+    # Map to schema output (include employee name, dept, and late_minutes)
     out_records = []
     for r in records:
         out_records.append(AttendanceOut(
@@ -156,6 +187,7 @@ async def list_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
             status=r.status,
             source=r.source,
             created_at=r.created_at,
@@ -163,6 +195,105 @@ async def list_attendance(
             employee_dept=r.employee.department if r.employee else "N/A"
         ))
     return out_records
+
+
+@router.get("/export")
+async def export_attendance(
+    attendance_date: Optional[date] = Query(None, alias="date"),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2000),
+    department: Optional[str] = None,
+    export_format: str = Query("excel", alias="format", pattern="^(excel|pdf)$"),
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """
+    Exports daily or historical attendance data (from day 1 to end of month, or date range)
+    complete with exact check-in / check-out timestamps and hours into Excel (.xlsx) or PDF (.pdf).
+    """
+    # Resolve date range
+    if month and year and not attendance_date and not start_date:
+        start_date = date(year, month, 1)
+        _, last_day = calendar.monthrange(year, month)
+        end_date = date(year, month, last_day)
+    elif attendance_date and not start_date:
+        start_date = attendance_date
+        end_date = attendance_date
+    elif not start_date:
+        # Default to current month from day 1 to today
+        today = get_current_local_date()
+        start_date = date(today.year, today.month, 1)
+        end_date = today
+
+    if not end_date:
+        end_date = start_date
+
+    stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
+        and_(Attendance.date >= start_date, Attendance.date <= end_date)
+    )
+
+    if department:
+        stmt = stmt.join(Attendance.employee).where(Employee.department == department)
+
+    stmt = stmt.order_by(Attendance.date.desc(), Attendance.check_in.desc(), Attendance.employee_id.asc())
+
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    mapped_records = []
+    for r in records:
+        mapped_records.append({
+            "date": r.date,
+            "employee_id": r.employee_id,
+            "employee_name": r.employee.name if r.employee else "Unknown",
+            "department": r.employee.department if r.employee else "N/A",
+            "check_in": r.check_in,
+            "check_out": r.check_out,
+            "working_hours": r.working_hours,
+            "late_minutes": r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
+            "overtime_hours": r.overtime_hours,
+            "status": r.status,
+            "source": r.source
+        })
+
+    is_single_day = (start_date == end_date)
+
+    if is_single_day:
+        date_str = start_date.strftime("%Y-%m-%d")
+        if export_format == "excel":
+            excel_bytes = generate_daily_attendance_excel(start_date, mapped_records)
+            return Response(
+                content=excel_bytes,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename=Daily_Attendance_{date_str}.xlsx"}
+            )
+        else:
+            pdf_bytes = generate_daily_attendance_pdf(start_date, mapped_records)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename=Daily_Attendance_{date_str}.pdf"}
+            )
+    else:
+        period_str = f"{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}"
+        title = f"HISTORICAL ATTENDANCE REPORT ({start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')})"
+        if export_format == "excel":
+            excel_bytes = generate_historical_attendance_excel(start_date, end_date, mapped_records, title=title)
+            return Response(
+                content=excel_bytes,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename=Historical_Attendance_{period_str}.xlsx"}
+            )
+        else:
+            pdf_bytes = generate_historical_attendance_pdf(start_date, end_date, mapped_records, title=title)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename=Historical_Attendance_{period_str}.pdf"}
+            )
+
 
 @router.get("/today", response_model=List[AttendanceOut])
 async def today_attendance(

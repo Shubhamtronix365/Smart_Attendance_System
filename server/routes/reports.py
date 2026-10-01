@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -12,15 +13,18 @@ from server.services.excel_service import (
     generate_daily_attendance_excel,
     generate_monthly_attendance_excel,
     generate_payroll_report_excel,
+    generate_historical_attendance_excel,
 )
 from server.services.pdf_service import (
     generate_daily_attendance_pdf,
     generate_monthly_attendance_pdf,
     generate_payroll_report_pdf,
+    generate_historical_attendance_pdf,
 )
 from server.utils.time_utils import get_working_days_in_month
 
 router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[Depends(require_admin)])
+
 
 @router.get("/attendance/daily")
 async def get_daily_attendance_report(
@@ -105,6 +109,94 @@ async def get_daily_attendance_report(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
         
+    return mapped_records
+
+
+@router.get("/attendance/detailed-logs")
+async def get_detailed_attendance_logs_report(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2000),
+    department: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    export_format: str = Query("json", alias="format", pattern="^(json|pdf|excel)$"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns time-by-time attendance records for each punch / day across a month or date range.
+    Shows exact date, check-in time, check-out time, hours, late minutes, status for each employee.
+    Supports JSON, Excel, and PDF downloads.
+    """
+    if month and year and not start_date:
+        start_date = date(year, month, 1)
+        _, last_day = calendar.monthrange(year, month)
+        end_date = date(year, month, last_day)
+    elif not start_date:
+        today = date.today()
+        start_date = date(today.year, today.month, 1)
+        end_date = today
+
+    if not end_date:
+        end_date = start_date
+
+    stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
+        and_(Attendance.date >= start_date, Attendance.date <= end_date)
+    )
+
+    if department:
+        stmt = stmt.join(Attendance.employee).where(Employee.department == department)
+    if employee_id:
+        stmt = stmt.where(Attendance.employee_id == employee_id)
+
+    stmt = stmt.order_by(Attendance.date.desc(), Attendance.check_in.desc(), Attendance.employee_id.asc())
+
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    mapped_records = []
+    for r in records:
+        cin = r.check_in
+        cout = r.check_out
+        cin_fmt = cin.strftime("%I:%M %p") if cin else "--:--"
+        cout_fmt = cout.strftime("%I:%M %p") if cout else "--:--"
+
+        mapped_records.append({
+            "id": r.attendance_id,
+            "date": r.date.strftime("%Y-%m-%d"),
+            "employee_id": r.employee_id,
+            "employee_name": r.employee.name if r.employee else "Unknown",
+            "department": r.employee.department if r.employee else "N/A",
+            "check_in": r.check_in.isoformat() if r.check_in else None,
+            "check_out": r.check_out.isoformat() if r.check_out else None,
+            "check_in_formatted": cin_fmt,
+            "check_out_formatted": cout_fmt,
+            "working_hours": float(r.working_hours or 0.0),
+            "late_minutes": r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
+            "overtime_hours": float(r.overtime_hours or 0.0),
+            "status": r.status,
+            "source": r.source
+        })
+
+    if export_format == "excel":
+        period_str = f"{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}"
+        title = f"DETAILED ATTENDANCE LOGS ({start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')})"
+        excel_bytes = generate_historical_attendance_excel(start_date, end_date, mapped_records, title=title)
+        return Response(
+            content=excel_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Detailed_Attendance_{period_str}.xlsx"}
+        )
+    elif export_format == "pdf":
+        period_str = f"{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}"
+        title = f"DETAILED ATTENDANCE LOGS ({start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')})"
+        pdf_bytes = generate_historical_attendance_pdf(start_date, end_date, mapped_records, title=title)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=Detailed_Attendance_{period_str}.pdf"}
+        )
+
     return mapped_records
 
 

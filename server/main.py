@@ -147,6 +147,37 @@ async def root():
         "redoc_url": "/redoc"
     }
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 async def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
+    """
+    Health check & keep-alive wake-up endpoint.
+    Designed for periodic cron jobs (e.g. cron-job.org, UptimeRobot, Render pinger)
+    to keep the backend server and PostgreSQL connection pool alive.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import text
+    from server.database.connection import async_session_maker
+
+    db_status = "connected"
+    db_latency_ms = None
+    try:
+        start_t = datetime.now(timezone.utc)
+        async with async_session_maker() as session:
+            await session.execute(text("SELECT 1"))
+        db_latency_ms = round((datetime.now(timezone.utc) - start_t).total_seconds() * 1000, 2)
+    except Exception as e:
+        logger.warning(f"Health check DB ping warning: {str(e)}")
+        db_status = f"unreachable: {str(e)}"
+
+    return {
+        "status": "healthy" if "unreachable" not in db_status else "degraded",
+        "server": "online",
+        "database": db_status,
+        "db_latency_ms": db_latency_ms,
+        "version": "1.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_message": "Smart Attendance System is awake and operational",
+        "cron_wakeup": True
+    }
+
