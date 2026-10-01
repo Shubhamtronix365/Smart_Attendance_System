@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, ChevronDown, Search, Fingerprint, LogOut, User, Settings } from "lucide-react";
+import { Bell, ChevronDown, Search, Fingerprint, LogOut, User, Settings, Archive, CheckCheck, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
@@ -50,8 +50,37 @@ export default function AdminTopBar({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [sessionArchive, setSessionArchive] = useState<NotificationItem[]>([]);
+  const [activeTab, setActiveTab] = useState<"live" | "session">("live");
 
-  // Load real recent live events as notifications
+  // Load persistent notification session history from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const savedSession = localStorage.getItem("smart_attendance_notif_session");
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (Array.isArray(parsed)) setSessionArchive(parsed);
+        }
+      } catch (e) {
+        console.warn("Could not load notification session archive", e);
+      }
+    }
+  }, []);
+
+  // Save persistent notification session history to localStorage whenever updated
+  const saveSessionArchive = (items: NotificationItem[]) => {
+    setSessionArchive(items);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("smart_attendance_notif_session", JSON.stringify(items.slice(0, 50)));
+      } catch (e) {
+        console.warn("Could not save notification session archive", e);
+      }
+    }
+  };
+
+  // Load real recent live events as initial notifications
   useEffect(() => {
     let isMounted = true;
     const loadRecentEvents = async () => {
@@ -68,7 +97,6 @@ export default function AdminTopBar({
           setNotifications(items);
         }
       } catch (err) {
-        // Fallback default
         if (isMounted) {
           setNotifications([
             { id: "1", text: "Biometric system online and listening for events", time: "Just now", unread: false, link: "/admin/attendance" }
@@ -79,40 +107,54 @@ export default function AdminTopBar({
 
     loadRecentEvents();
 
-    // Listen to real-time WebSocket events
+    // Listen to real-time WebSocket events with reliable multi-env fallback
     let ws: WebSocket | null = null;
     try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
-      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-      ws = new WebSocket(wsUrl);
+      let wsUrl = "";
+      if (typeof window !== "undefined") {
+        if (process.env.NEXT_PUBLIC_WS_URL) {
+          wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+        } else if (process.env.NEXT_PUBLIC_API_URL) {
+          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
+          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+        } else {
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const host = window.location.hostname || "localhost";
+          const port = window.location.protocol === "https:" ? "" : ":8000";
+          wsUrl = `${protocol}//${host}${port}/ws/client`;
+        }
+        ws = new WebSocket(wsUrl);
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.event === "live_attendance" || data.event === "attendance_updated") {
-            const empName = data.employee_name || data.data?.employee_name || "Employee";
-            const punchStatus = data.status || data.data?.status || "checked in";
-            const newNotif: NotificationItem = {
-              id: `ws-${Date.now()}-${Math.random()}`,
-              text: `${empName} ${punchStatus} via biometric hardware`,
-              time: "Just now",
-              unread: true,
-              link: "/admin/attendance",
-            };
-            setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
-          } else if (data.event === "leave_created") {
-            const newNotif: NotificationItem = {
-              id: `ws-leave-${Date.now()}`,
-              text: `New leave request submitted`,
-              time: "Just now",
-              unread: true,
-              link: "/admin/leave",
-            };
-            setNotifications((prev) => [newNotif, ...prev.slice(0, 9)]);
-          }
-        } catch {}
-      };
-    } catch {}
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === "live_attendance" || data.event === "attendance_updated") {
+              const empName = data.employee_name || data.data?.employee_name || "Employee";
+              const punchStatus = data.status || data.data?.status || "checked in";
+              const newNotif: NotificationItem = {
+                id: `ws-${Date.now()}-${Math.random()}`,
+                text: `${empName} ${punchStatus} via biometric hardware`,
+                time: "Just now",
+                unread: true,
+                link: "/admin/attendance",
+              };
+              setNotifications((prev) => [newNotif, ...prev.slice(0, 14)]);
+            } else if (data.event === "leave_created") {
+              const newNotif: NotificationItem = {
+                id: `ws-leave-${Date.now()}`,
+                text: `New leave request submitted`,
+                time: "Just now",
+                unread: true,
+                link: "/admin/leave",
+              };
+              setNotifications((prev) => [newNotif, ...prev.slice(0, 14)]);
+            }
+          } catch {}
+        };
+      }
+    } catch (err) {
+      console.warn("WebSocket init error in top bar", err);
+    }
 
     return () => {
       isMounted = false;
@@ -122,8 +164,18 @@ export default function AdminTopBar({
 
   const unreadCount = notifications.filter((n) => n.unread).length;
 
+  // When Mark all read is clicked: archive read notifications into the persistent session history
   const markAllRead = () => {
+    // 1. Move current unread items into persistent session history
+    const readItems = notifications.map((n) => ({ ...n, unread: false }));
+    const combinedSession = [...readItems, ...sessionArchive.filter((s) => !readItems.some((r) => r.id === s.id))];
+    saveSessionArchive(combinedSession.slice(0, 50));
+    // 2. Clear unread badge in live feed
     setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const clearSessionArchive = () => {
+    saveSessionArchive([]);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -220,7 +272,7 @@ export default function AdminTopBar({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.97 }}
               transition={{ duration: 0.18 }}
-              className="absolute right-0 top-12 w-80 max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden z-50"
+              className="absolute right-0 top-12 w-88 max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden z-50"
               style={{
                 background: "rgba(10,15,30,0.98)",
                 border: "1px solid rgba(255,255,255,0.1)",
@@ -228,53 +280,133 @@ export default function AdminTopBar({
                 boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
               }}
             >
+              {/* Header with Title and Tabs */}
               <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <p className="text-white text-sm font-semibold">Notifications</p>
-                {unreadCount > 0 && (
+                <div>
+                  <p className="text-white text-sm font-semibold">Notifications</p>
+                  <p className="text-white/40 text-[10px]">Real-time hardware & session feed</p>
+                </div>
+                {unreadCount > 0 && activeTab === "live" && (
                   <button
                     onClick={markAllRead}
-                    className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors"
                   >
+                    <CheckCheck size={12} />
                     Mark all read
                   </button>
                 )}
-              </div>
-              {notifications.length === 0 ? (
-                <div className="p-6 text-center text-white/30 text-xs">
-                  No notifications
-                </div>
-              ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => {
-                      setNotifications((prev) =>
-                        prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
-                      );
-                      setShowNotifications(false);
-                      if (n.link) router.push(n.link);
-                    }}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                {activeTab === "session" && sessionArchive.length > 0 && (
+                  <button
+                    onClick={clearSessionArchive}
+                    className="flex items-center gap-1 text-[11px] text-red-400/80 hover:text-red-400 transition-colors"
                   >
-                    <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${n.unread ? "bg-cyan-400" : "bg-white/20"}`}
-                      style={n.unread ? { boxShadow: "0 0 6px #00f5ff" } : {}} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white/80 text-xs leading-relaxed">{n.text}</p>
-                      <p className="text-white/30 text-xs mt-0.5">{n.time}</p>
+                    <Trash2 size={12} />
+                    Clear archive
+                  </button>
+                )}
+              </div>
+
+              {/* Sub-tabs: Live vs Session History */}
+              <div className="flex border-b border-white/[0.06] bg-white/[0.02]">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("live")}
+                  className={`flex-1 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    activeTab === "live" ? "text-cyan-400 border-b-2 border-cyan-400 bg-white/[0.04]" : "text-white/40 hover:text-white"
+                  }`}
+                >
+                  <Bell size={12} />
+                  Live Feed {unreadCount > 0 && `(${unreadCount})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("session")}
+                  className={`flex-1 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    activeTab === "session" ? "text-purple-400 border-b-2 border-purple-400 bg-white/[0.04]" : "text-white/40 hover:text-white"
+                  }`}
+                >
+                  <Archive size={12} />
+                  Session History {sessionArchive.length > 0 && `(${sessionArchive.length})`}
+                </button>
+              </div>
+
+              {/* List Content */}
+              <div className="max-h-72 overflow-y-auto">
+                {activeTab === "live" ? (
+                  notifications.length === 0 ? (
+                    <div className="p-6 text-center text-white/30 text-xs">
+                      No new live notifications
                     </div>
-                  </div>
-                ))
-              )}
-              <div className="px-4 py-3 text-center" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                  ) : (
+                    notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => {
+                          setNotifications((prev) =>
+                            prev.map((item) => (item.id === n.id ? { ...item, unread: false } : item))
+                          );
+                          // Archive read item into session
+                          saveSessionArchive([{ ...n, unread: false }, ...sessionArchive.filter((s) => s.id !== n.id)].slice(0, 50));
+                          setShowNotifications(false);
+                          if (n.link) router.push(n.link);
+                        }}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-white/5 transition-colors cursor-pointer"
+                        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      >
+                        <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${n.unread ? "bg-cyan-400" : "bg-white/20"}`}
+                          style={n.unread ? { boxShadow: "0 0 6px #00f5ff" } : {}} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white/80 text-xs leading-relaxed">{n.text}</p>
+                          <p className="text-white/30 text-xs mt-0.5">{n.time}</p>
+                        </div>
+                      </div>
+                    ))
+                  )
+                ) : (
+                  sessionArchive.length === 0 ? (
+                    <div className="p-6 text-center text-white/30 text-xs">
+                      No archived session notifications yet.<br />Read live notifications will be saved here.
+                    </div>
+                  ) : (
+                    sessionArchive.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => {
+                          setShowNotifications(false);
+                          if (n.link) router.push(n.link);
+                        }}
+                        className="flex items-start gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors cursor-pointer"
+                        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                      >
+                        <div className="w-1.5 h-1.5 rounded-full mt-2 shrink-0 bg-purple-400/60" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white/70 text-xs leading-relaxed">{n.text}</p>
+                          <p className="text-white/30 text-[10px] mt-0.5">{n.time} • Session Archive</p>
+                        </div>
+                      </div>
+                    ))
+                  )
+                )}
+              </div>
+
+              <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                 <button
                   onClick={() => {
                     setShowNotifications(false);
                     router.push("/admin/attendance");
                   }}
-                  className="text-cyan-400/70 hover:text-cyan-400 text-xs transition-colors"
+                  className="text-cyan-400/80 hover:text-cyan-400 text-xs transition-colors"
                 >
-                  View live attendance feed &rarr;
+                  Today Live Attendance &rarr;
+                </button>
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    router.push("/admin/attendance");
+                  }}
+                  className="text-purple-400/80 hover:text-purple-400 text-xs transition-colors"
+                >
+                  Session Logs &rarr;
                 </button>
               </div>
             </motion.div>

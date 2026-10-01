@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Fingerprint, Mail, Lock, Loader2, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, Fingerprint, Mail, Lock, Loader2, AlertCircle, ShieldCheck, Users, KeyRound, CheckCircle2 } from "lucide-react";
 
 // Inline OAuth provider icons
 const GoogleIcon = () => (
@@ -195,13 +195,35 @@ function OAuthButton({ icon, label, onClick }: { icon: React.ReactNode; label: s
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [portalMode, setPortalMode] = useState<"admin" | "employee">("admin");
+  const [email, setEmail] = useState("admin@system.com");
+  const [password, setPassword] = useState("admin123");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Forgot / Reset Password Modal State
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSecretKey, setResetSecretKey] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+  const [resetErrorMsg, setResetErrorMsg] = useState<string | null>(null);
+
+  const handlePortalSwitch = (mode: "admin" | "employee") => {
+    setPortalMode(mode);
+    setError(null);
+    if (mode === "admin") {
+      setEmail("admin@system.com");
+      setPassword("admin123");
+    } else {
+      setEmail("bhavesh@system.com");
+      setPassword("bhavesh123");
+    }
+  };
 
   const handleLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,6 +256,31 @@ export default function LoginPage() {
       setIsLoading(false);
     }
   }, [email, password, rememberMe, router, login]);
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail || !resetSecretKey || !resetNewPassword) {
+      setResetErrorMsg("Please fill in all reset fields.");
+      return;
+    }
+    setResetLoading(true);
+    setResetErrorMsg(null);
+    setResetSuccessMsg(null);
+    try {
+      await authApi.resetPassword({
+        email: resetEmail,
+        secret_key: resetSecretKey,
+        new_password: resetNewPassword,
+      });
+      setResetSuccessMsg("Password reset successfully! You can now log in with your new credentials.");
+      setEmail(resetEmail);
+      setPassword(resetNewPassword);
+    } catch (err: any) {
+      setResetErrorMsg(err.response?.data?.detail || "Password reset failed. Verify your secret key or current password.");
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleOAuth = useCallback((provider: string) => {
     window.location.href = `/api/auth/oauth/${provider}`;
@@ -271,58 +318,72 @@ export default function LoginPage() {
             }}
           >
             {/* Header */}
-            <div className="mb-8">
-              <div className="flex items-center gap-3 mb-6 lg:hidden">
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-5 lg:hidden">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center"
                   style={{ background: "linear-gradient(135deg, rgba(0,245,255,0.2), rgba(124,58,237,0.2))", border: "1px solid rgba(0,245,255,0.3)" }}>
                   <Fingerprint size={22} className="text-cyan-400" />
                 </div>
                 <span className="text-white font-bold text-lg">SmartAttend</span>
               </div>
-              <h2 className="text-2xl font-black text-white mb-1">Welcome back</h2>
-              <p className="text-white/40 text-sm">Sign in to your account to continue</p>
+              <h2 className="text-2xl font-black text-white mb-1">
+                {portalMode === "admin" ? "System Admin Portal" : "Employee Portal"}
+              </h2>
+              <p className="text-white/40 text-xs">
+                {portalMode === "admin" 
+                  ? "Root administrative access • System administrators are not roster punch accounts" 
+                  : "Employee self-service dashboard & personal attendance tracker"}
+              </p>
             </div>
 
-            {/* OAuth2 Buttons */}
-            <div className="flex gap-3 mb-6">
-              <OAuthButton
-                icon={<GoogleIcon />}
-                label="Google"
-                onClick={() => handleOAuth("google")}
-              />
-              <OAuthButton
-                icon={<GithubIcon />}
-                label="GitHub"
-                onClick={() => handleOAuth("github")}
-              />
+            {/* Portal Role Switcher */}
+            <div className="flex rounded-2xl p-1 bg-white/[0.04] border border-white/[0.08] mb-6">
+              <button
+                type="button"
+                onClick={() => handlePortalSwitch("admin")}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all"
+                style={{
+                  background: portalMode === "admin" ? "linear-gradient(135deg, #00f5ff, #7c3aed)" : "transparent",
+                  color: portalMode === "admin" ? "#000" : "rgba(255,255,255,0.6)",
+                  boxShadow: portalMode === "admin" ? "0 4px 12px rgba(0,245,255,0.25)" : "none",
+                }}
+              >
+                <ShieldCheck size={14} />
+                System Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePortalSwitch("employee")}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all"
+                style={{
+                  background: portalMode === "employee" ? "linear-gradient(135deg, #7c3aed, #a855f7)" : "transparent",
+                  color: portalMode === "employee" ? "#fff" : "rgba(255,255,255,0.6)",
+                  boxShadow: portalMode === "employee" ? "0 4px 12px rgba(124,58,237,0.3)" : "none",
+                }}
+              >
+                <Users size={14} />
+                Employee Login
+              </button>
             </div>
 
-            {/* Quick Demo Credentials */}
-            <div className="mb-5 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.08]">
-              <span className="text-[11px] text-white/40 block mb-2 font-medium">⚡ Quick Demo Login (Click to fill):</span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setEmail("admin@system.com"); setPassword("admin123"); }}
-                  className="flex-1 py-1.5 px-2.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold border border-cyan-500/20 transition-all text-center"
-                >
-                  🛡️ Admin Demo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmail("bhavesh@system.com"); setPassword("bhavesh123"); }}
-                  className="flex-1 py-1.5 px-2.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-xs font-semibold border border-purple-500/20 transition-all text-center"
-                >
-                  👤 Employee Demo
-                </button>
+            {/* Role Notice */}
+            {portalMode === "admin" ? (
+              <div className="mb-5 p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-200">
+                <span className="font-semibold text-white">Root System Administrator:</span> Manages company settings, payroll rates, reports, and devices. Not tracked as a roster employee.
               </div>
-            </div>
+            ) : (
+              <div className="mb-5 p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200">
+                <span className="font-semibold text-white">Staff Account:</span> Access your personal attendance logs, leave balances, and salary pay slips.
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
               {/* Email */}
               <div>
-                <label className="text-white/50 text-xs font-medium mb-2 block">Email Address</label>
+                <label className="text-white/50 text-xs font-medium mb-2 block">
+                  {portalMode === "admin" ? "Admin Login Email" : "Employee Email"}
+                </label>
                 <motion.div
                   animate={focusedField === "email" ? "focused" : "unfocused"}
                   variants={inputVariants}
@@ -338,7 +399,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     onFocus={() => setFocusedField("email")}
                     onBlur={() => setFocusedField(null)}
-                    placeholder="you@example.com"
+                    placeholder={portalMode === "admin" ? "admin@system.com" : "employee@system.com"}
                     autoComplete="email"
                     className="w-full pl-10 pr-4 py-3.5 text-white text-sm outline-none rounded-xl transition-all"
                     style={{
@@ -353,9 +414,18 @@ export default function LoginPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-white/50 text-xs font-medium">Password</label>
-                  <a href="/auth/forgot-password" className="text-cyan-400/70 text-xs hover:text-cyan-400 transition-colors">
-                    Forgot password?
-                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetEmail(email);
+                      setResetSuccessMsg(null);
+                      setResetErrorMsg(null);
+                      setShowResetModal(true);
+                    }}
+                    className="text-cyan-400/80 text-xs hover:text-cyan-400 transition-colors"
+                  >
+                    Reset password?
+                  </button>
                 </div>
                 <motion.div
                   animate={focusedField === "password" ? "focused" : "unfocused"}
@@ -463,6 +533,128 @@ export default function LoginPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* Reset Password Modal */}
+      <AnimatePresence>
+        {showResetModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 15 }}
+              className="w-full max-w-md rounded-3xl p-6 sm:p-8"
+              style={{
+                background: "rgba(10,15,30,0.98)",
+                border: "1px solid rgba(0,245,255,0.25)",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.6), 0 0 40px rgba(0,245,255,0.1)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.08]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                    <KeyRound size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-base">Reset Account Password</h3>
+                    <p className="text-white/40 text-[11px]">Direct credential reset authorization</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="text-white/40 hover:text-white transition-colors text-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {resetSuccessMsg ? (
+                <div className="py-6 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <p className="text-emerald-300 text-sm font-medium">{resetSuccessMsg}</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetModal(false)}
+                    className="w-full py-3 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-xs hover:bg-emerald-500/30 transition-all"
+                  >
+                    Return to Login
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  {resetErrorMsg && (
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs">
+                      {resetErrorMsg}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-white/50 text-xs font-semibold block mb-1.5">Account Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="admin@system.com"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-white/50 text-xs font-semibold block mb-1.5">
+                      Verification Secret or Current Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={resetSecretKey}
+                      onChange={(e) => setResetSecretKey(e.target.value)}
+                      placeholder="Enter current password or master JWT secret"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-cyan-400"
+                    />
+                    <span className="text-white/30 text-[10px] mt-1 block">
+                      Tip: Admins can verify using their current password or the system master secret key.
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="text-white/50 text-xs font-semibold block mb-1.5">New Password</label>
+                    <input
+                      type="password"
+                      required
+                      minLength={4}
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      placeholder="Enter at least 4 characters"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowResetModal(false)}
+                      className="flex-1 py-2.5 rounded-xl border border-white/10 text-white/50 hover:text-white text-xs font-semibold transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={resetLoading}
+                      className="flex-1 py-2.5 rounded-xl text-black font-bold text-xs transition-all disabled:opacity-50"
+                      style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+                    >
+                      {resetLoading ? "Updating..." : "Confirm Reset"}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

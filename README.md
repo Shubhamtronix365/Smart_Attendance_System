@@ -194,10 +194,23 @@ Smart_Attendance_System/
 
 ## API Details
 
-### Authentication
-- `POST /api/auth/login` — Log in employee and set HTTPOnly token cookie.
+### Authentication & Admin Credentials Management
+- `POST /api/auth/login` — Log in employee or admin and set HTTPOnly token cookie.
 - `POST /api/auth/logout` — Clear session token.
-- `GET /api/auth/me` — Return current logged-in employee profile (JWT required).
+- `GET /api/auth/me` — Return current logged-in employee or admin profile (JWT required).
+- `PUT /api/auth/credentials` — Allows authenticated administrator to update their email address and/or reset their password, verified against their current password.
+- `PUT /api/auth/change-password` — Change password for currently authenticated user.
+- `POST /api/auth/reset-password` — Unauthenticated/emergency password reset verified by current password or master JWT secret key.
+
+### Real-Time Notifications & Session Archiving
+- Real-time hardware punch, check-in/out, and leave events streamed over WebSocket (`/ws/client`).
+- Notification popover includes **Live Feed** and persistent **Session History Archive** tabs.
+- Clicking "Mark all read" removes notifications from the active badge and archives them into persistent session storage (`localStorage`), preserving audit records across reloads.
+
+### System Administrator vs Employee Separation
+- Dedicated **System Admin Portal** vs **Employee Portal** toggle in the login panel.
+- System Administrator is an administrative root account and is **not treated as a roster punch employee**.
+- Admin credential management in **Settings** allows changing login email and updating the administrator password directly.
 
 ### Employees (Admin only)
 - `GET /api/employees` — List all active employees (supports pagination, search, and department filters).

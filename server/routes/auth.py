@@ -12,13 +12,24 @@ from server.dependencies.auth import (
 )
 from server.models import Employee
 from server.schemas.employee import LoginRequest, TokenSchema, EmployeeOut
-from pydantic import BaseModel, Field
+from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=4)
     new_password: str = Field(..., min_length=4)
+
+class UpdateCredentialsRequest(BaseModel):
+    current_password: str = Field(..., min_length=4, description="Current password for verification")
+    new_email: Optional[EmailStr] = Field(None, description="New email address")
+    new_password: Optional[str] = Field(None, min_length=4, description="New password")
+
+class AdminResetPasswordRequest(BaseModel):
+    email: EmailStr = Field(..., description="Administrator or employee email to reset")
+    secret_key: str = Field(..., min_length=4, description="Admin master secret key or current password")
+    new_password: str = Field(..., min_length=4, description="New password to set")
 
 @router.post("/login", response_model=TokenSchema)
 async def login(
@@ -94,5 +105,99 @@ async def change_password(
             detail="Incorrect current password"
         )
     current_user.hashed_password = get_password_hash(payload.new_password)
+    current_user.plain_password = payload.new_password
     await db.commit()
     return {"message": "Password updated successfully"}
+
+@router.put("/credentials")
+async def update_credentials(
+    payload: UpdateCredentialsRequest,
+    current_user: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Allows a logged-in administrator (or employee) to update their email address
+    and/or password, verified by their current password.
+    """
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password"
+        )
+    
+    email_updated = False
+    if payload.new_email and payload.new_email.lower() != current_user.email.lower():
+        # Check if email is already taken by another active user
+        chk_stmt = select(Employee).where(
+            Employee.email == payload.new_email,
+            Employee.employee_id != current_user.employee_id,
+            Employee.is_active == True
+        )
+        chk_res = await db.execute(chk_stmt)
+        if chk_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email address is already in use by another account"
+            )
+        current_user.email = payload.new_email
+        email_updated = True
+
+    pwd_updated = False
+    if payload.new_password:
+        current_user.hashed_password = get_password_hash(payload.new_password)
+        current_user.plain_password = payload.new_password
+        pwd_updated = True
+
+    if not email_updated and not pwd_updated:
+        return {"message": "No credential changes were provided", "email": current_user.email}
+
+    await db.commit()
+    await db.refresh(current_user)
+
+    # Re-issue access token with new email if email changed
+    new_token = create_access_token(data={"sub": current_user.email})
+
+    return {
+        "message": "Credentials updated successfully",
+        "email": current_user.email,
+        "token": new_token,
+        "email_changed": email_updated,
+        "password_changed": pwd_updated
+    }
+
+@router.post("/reset-password")
+async def reset_password(
+    payload: AdminResetPasswordRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Emergency or unauthenticated password reset for administrator/staff.
+    Accepts the account email, verified against the current password or master JWT secret.
+    """
+    from server.config import settings
+    stmt = select(Employee).where(Employee.email == payload.email, Employee.is_active == True)
+    res = await db.execute(stmt)
+    user = res.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active account found with this email"
+        )
+
+    # Verify secret_key: either current password or the system master JWT secret
+    is_valid_key = (
+        payload.secret_key == settings.JWT_SECRET or
+        (user.hashed_password and verify_password(payload.secret_key, user.hashed_password))
+    )
+
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid authorization secret or current password"
+        )
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    user.plain_password = payload.new_password
+    await db.commit()
+    return {"message": f"Password reset successfully for {user.email}"}

@@ -25,22 +25,31 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Admin password states
+  // Admin credentials states
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminNewEmail, setAdminNewEmail] = useState("");
   const [adminCurrentPassword, setAdminCurrentPassword] = useState("");
   const [adminNewPassword, setAdminNewPassword] = useState("");
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isChangingCredentials, setIsChangingCredentials] = useState(false);
 
   // Load active configurations from API
   useEffect(() => {
     async function loadSettings() {
       try {
         setIsLoading(true);
-        const data = await settingsApi.get();
-        setStandardWorkHours(data.standard_work_hours);
-        setLateThresholdMinutes(data.late_threshold_minutes);
-        setOtMultiplier(data.ot_multiplier);
-        setDeviceApiKey(data.device_api_key);
-        if (data.device_id) setDeviceId(data.device_id);
+        const [settingsData, meData] = await Promise.all([
+          settingsApi.get(),
+          authApi.me().then(r => r.data).catch(() => null)
+        ]);
+        setStandardWorkHours(settingsData.standard_work_hours);
+        setLateThresholdMinutes(settingsData.late_threshold_minutes);
+        setOtMultiplier(settingsData.ot_multiplier);
+        setDeviceApiKey(settingsData.device_api_key);
+        if (settingsData.device_id) setDeviceId(settingsData.device_id);
+        if (meData?.email) {
+          setAdminEmail(meData.email);
+          setAdminNewEmail(meData.email);
+        }
       } catch (err) {
         console.error("Failed to load settings:", err);
         error("Could not fetch system settings. Make sure backend is running.");
@@ -108,26 +117,42 @@ export default function SettingsPage() {
     success("Generated fresh Device ID & Security Key pair! Remember to Save.");
   };
 
-  const handleChangeAdminPassword = async () => {
-    if (!adminCurrentPassword || !adminNewPassword) {
-      error("Please enter both current and new passwords.");
+  const handleChangeAdminCredentials = async () => {
+    if (!adminCurrentPassword) {
+      error("Please enter your current password to verify your identity.");
       return;
     }
+    const hasEmailChange = adminNewEmail && adminNewEmail.trim().toLowerCase() !== adminEmail.trim().toLowerCase();
+    const hasPasswordChange = Boolean(adminNewPassword && adminNewPassword.trim().length >= 4);
+
+    if (!hasEmailChange && !hasPasswordChange) {
+      error("Please specify a new email or a new password (min 4 chars) to update.");
+      return;
+    }
+
     try {
-      setIsChangingPassword(true);
-      await authApi.changePassword({
+      setIsChangingCredentials(true);
+      const res = await authApi.updateCredentials({
         current_password: adminCurrentPassword,
-        new_password: adminNewPassword,
+        new_email: hasEmailChange ? adminNewEmail.trim() : undefined,
+        new_password: hasPasswordChange ? adminNewPassword.trim() : undefined,
       });
-      success("Admin password changed successfully.");
+
+      if (res.data?.token) {
+        localStorage.setItem("access_token", res.data.token);
+      }
+      if (res.data?.email) {
+        setAdminEmail(res.data.email);
+        setAdminNewEmail(res.data.email);
+      }
+      success("Admin credentials updated successfully!");
       setAdminCurrentPassword("");
       setAdminNewPassword("");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      const errAny = err as any;
-      error(errAny.response?.data?.detail || "Failed to update admin password.");
+      error(err.response?.data?.detail || "Failed to update admin credentials.");
     } finally {
-      setIsChangingPassword(false);
+      setIsChangingCredentials(false);
     }
   };
 
@@ -432,38 +457,75 @@ const bool  USE_SSL = true;`}
                     </div>
                   </form>
 
-                  {/* Change Admin Password Card */}
+                  {/* Admin Credentials & Login Management Card */}
                   <div className="neo-card p-6 mt-6">
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)" }}>
-                        <ShieldAlert className="text-red-400" size={20} />
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(0, 245, 255, 0.1)", border: "1px solid rgba(0, 245, 255, 0.25)" }}>
+                        <ShieldAlert className="text-cyan-400" size={20} />
                       </div>
                       <div>
-                        <h3 className="text-white font-bold text-lg">Change Admin Password</h3>
-                        <p className="text-white/30 text-xs">Update your personal administrator account credentials</p>
+                        <h3 className="text-white font-bold text-lg">System Administrator Credentials</h3>
+                        <p className="text-white/40 text-xs">Update your root login email and secure administrator password</p>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-200 mb-5 flex items-start gap-2">
+                      <Info size={16} className="text-cyan-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-white">System Admin Isolation:</span> As a System Administrator, your account has root administrative access. Changing your email or password updates your portal login credentials immediately without affecting biometric terminals.
                       </div>
                     </div>
 
                     <div className="space-y-4">
+                      {/* Current email & new email */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">Current Password</label>
+                          <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">Current Admin Email</label>
+                          <input
+                            type="email"
+                            disabled
+                            value={adminEmail || "admin@system.com"}
+                            className="w-full px-4 py-3 text-white/50 text-sm outline-none rounded-xl cursor-not-allowed"
+                            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">New Admin Email</label>
+                          <input
+                            type="email"
+                            value={adminNewEmail}
+                            onChange={(e) => setAdminNewEmail(e.target.value)}
+                            placeholder="admin@yourdomain.com"
+                            className="w-full px-4 py-3 text-white text-sm outline-none rounded-xl"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Current password & new password */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">
+                            Current Password <span className="text-red-400">*</span>
+                          </label>
                           <input
                             type="password"
                             required
                             value={adminCurrentPassword}
                             onChange={(e) => setAdminCurrentPassword(e.target.value)}
-                            placeholder="••••••••"
+                            placeholder="Required for verification"
                             className="w-full px-4 py-3 text-white text-sm outline-none rounded-xl"
                             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
                           />
                         </div>
 
                         <div>
-                          <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">New Password</label>
+                          <label className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2 block">
+                            New Password <span className="text-white/30 text-[10px] lowercase">(leave blank to keep current)</span>
+                          </label>
                           <input
                             type="password"
-                            required
                             value={adminNewPassword}
                             onChange={(e) => setAdminNewPassword(e.target.value)}
                             placeholder="Min 4 characters"
@@ -476,12 +538,12 @@ const bool  USE_SSL = true;`}
                       <div className="flex justify-end pt-2">
                         <button
                           type="button"
-                          onClick={handleChangeAdminPassword}
-                          disabled={isChangingPassword}
-                          className="px-5 py-2.5 rounded-xl text-xs font-bold text-white/80 hover:text-white border border-white/10 hover:bg-white/5 transition-all flex items-center gap-1.5"
-                          style={{ background: "rgba(255,255,255,0.03)" }}
+                          onClick={handleChangeAdminCredentials}
+                          disabled={isChangingCredentials}
+                          className="px-6 py-2.5 rounded-xl text-xs font-bold text-black shadow-lg shadow-cyan-500/20 hover:opacity-90 transition-all flex items-center gap-1.5"
+                          style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
                         >
-                          {isChangingPassword ? "Updating..." : "Update Admin Password"}
+                          {isChangingCredentials ? "Saving Credentials..." : "Update Admin Email & Password"}
                         </button>
                       </div>
                     </div>

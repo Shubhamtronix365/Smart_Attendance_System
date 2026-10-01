@@ -54,6 +54,10 @@ export const authApi = {
   logout: () => api.post("/api/auth/logout"),
   me: () => api.get("/api/auth/me"),
   changePassword: (data: unknown) => api.put("/api/auth/change-password", data),
+  updateCredentials: (data: { current_password: string; new_email?: string; new_password?: string }) =>
+    api.put("/api/auth/credentials", data),
+  resetPassword: (data: { email: string; secret_key: string; new_password: string }) =>
+    api.post("/api/auth/reset-password", data),
 };
 
 // ─── Employees ─────────────────────────────────────────────────────────────────
