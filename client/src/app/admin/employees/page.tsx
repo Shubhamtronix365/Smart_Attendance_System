@@ -540,14 +540,14 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
       </td>
       <td className="px-4 py-3.5">
         <div className="relative flex items-center justify-end">
-          <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
             <button onClick={onEdit}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all">
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 sm:text-white/40 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all">
               <Pencil size={13} />
             </button>
             <button onClick={onDelete}
               title={emp.fingerprintId ? `Delete from Database and erase Slot #${emp.fingerprintId} from R307 sensor` : "Delete employee"}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all">
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 sm:text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all">
               <Trash2 size={13} />
             </button>
           </div>
@@ -849,42 +849,43 @@ export default function EmployeesPage() {
             </div>
 
             {/* Buttons */}
-            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 sm:ml-auto w-full sm:w-auto">
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-300" title="Occupied slots in physical R307 fingerprint sensor">
+            <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 sm:ml-auto w-full sm:w-auto">
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-300" title="Occupied slots in physical R307 fingerprint sensor">
                 <Fingerprint size={13} className="text-cyan-400" />
                 <span>Sensor: {employees.filter(e => e.fingerprintId).length}/127 Slots</span>
               </div>
 
-              <motion.button
-                id="delete-all-btn"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setShowDeleteAllModal(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all"
-                title="Wipe all fingerprints from hardware sensor and database"
-              >
-                <Trash2 size={14} />
-                <span>Wipe All / Sensor</span>
-              </motion.button>
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+                <motion.button
+                  id="delete-all-btn"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowDeleteAllModal(true)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all text-center"
+                  title="Wipe all fingerprints from hardware sensor and database"
+                >
+                  <Trash2 size={14} />
+                  <span>Wipe All</span>
+                </motion.button>
 
-
-              <motion.button
-                id="smart-enroll-btn"
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setShowHardwareModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/10 transition-all shadow-[0_0_15px_rgba(0,245,255,0.15)]"
-              >
-                <Cpu size={15} className="text-cyan-400 animate-pulse" />
-                <span>⚡ Smart Enroll (ESP32 Tronix)</span>
-              </motion.button>
+                <motion.button
+                  id="smart-enroll-btn"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowHardwareModal(true)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/10 transition-all shadow-[0_0_15px_rgba(0,245,255,0.15)] text-center"
+                >
+                  <Cpu size={14} className="text-cyan-400 animate-pulse" />
+                  <span>⚡ Smart Enroll</span>
+                </motion.button>
+              </div>
 
               <motion.button
                 id="add-employee-btn"
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black w-full sm:w-auto"
                 style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
               >
                 <Plus size={15} />

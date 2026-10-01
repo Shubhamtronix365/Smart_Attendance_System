@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database.connection import get_db
 from server.dependencies.auth import get_current_user, require_admin
-from server.models import Leave, LeaveStatus, LeaveType, Employee
-from server.schemas.leave import LeaveOut, LeaveCreate, LeaveApproval, LeaveBalance
+from server.models import Leave, LeaveStatus, LeaveType, Employee, Attendance, AttendanceStatus
+from server.schemas.leave import LeaveOut, LeaveCreate, LeaveRejection, LeaveBalance
+from server.routes.websocket import ws_manager
 
 router = APIRouter(prefix="/leave", tags=["Leaves"])
 
@@ -49,6 +50,8 @@ async def list_leaves(
             reason=r.reason,
             approval_status=r.approval_status,
             approved_by=r.approved_by,
+            rejection_reason=r.rejection_reason,
+            user_notified=bool(r.user_notified),
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
             approver_name=r.approver.name if r.approver else None,
@@ -87,6 +90,21 @@ async def submit_leave_request(
     stmt = select(Leave).options(joinedload(Leave.employee)).where(Leave.leave_id == db_leave.leave_id)
     res = await db.execute(stmt)
     r = res.scalar_one()
+
+    # Broadcast real-time websocket event
+    try:
+        await ws_manager.broadcast_to_clients({
+            "event": "leave_created",
+            "leave_id": r.leave_id,
+            "employee_id": r.employee_id,
+            "employee_name": r.employee.name if r.employee else "Unknown",
+            "leave_type": r.leave_type,
+            "start_date": str(r.start_date),
+            "end_date": str(r.end_date),
+            "status": "pending"
+        })
+    except Exception:
+        pass
     
     return LeaveOut(
         leave_id=r.leave_id,
@@ -97,9 +115,12 @@ async def submit_leave_request(
         reason=r.reason,
         approval_status=r.approval_status,
         approved_by=r.approved_by,
+        rejection_reason=r.rejection_reason,
+        user_notified=bool(r.user_notified),
         created_at=r.created_at,
         employee_name=r.employee.name if r.employee else "Unknown",
-        approver_name=None
+        approver_name=None,
+        employee_dept=r.employee.department if r.employee else "General"
     )
 
 @router.get("/my-balance")
@@ -243,6 +264,22 @@ async def approve_leave(
     app_stmt = select(Employee.name).where(Employee.employee_id == admin.employee_id)
     app_res = await db.execute(app_stmt)
     approver_name = app_res.scalar()
+
+    # Broadcast real-time websocket event for instant UI sync
+    try:
+        await ws_manager.broadcast_to_clients({
+            "event": "leave_approved",
+            "leave_id": r.leave_id,
+            "employee_id": r.employee_id,
+            "employee_name": r.employee.name if r.employee else "Unknown",
+            "approver_name": approver_name,
+            "status": "approved",
+            "leave_type": r.leave_type,
+            "start_date": str(r.start_date),
+            "end_date": str(r.end_date)
+        })
+    except Exception:
+        pass
     
     return LeaveOut(
         leave_id=r.leave_id,
@@ -253,18 +290,22 @@ async def approve_leave(
         reason=r.reason,
         approval_status=r.approval_status,
         approved_by=r.approved_by,
+        rejection_reason=r.rejection_reason,
+        user_notified=bool(r.user_notified),
         created_at=r.created_at,
         employee_name=r.employee.name if r.employee else "Unknown",
-        approver_name=approver_name
+        approver_name=approver_name,
+        employee_dept=r.employee.department if r.employee else "General"
     )
 
 @router.put("/{leave_id}/reject", response_model=LeaveOut)
 async def reject_leave(
     leave_id: int,
+    rejection_data: Optional[LeaveRejection] = None,
     db: AsyncSession = Depends(get_db),
     admin: Employee = Depends(require_admin)
 ):
-    """Rejects a pending leave request (Admin only)."""
+    """Rejects a pending leave request with optional reason (Admin only)."""
     stmt = select(Leave).options(joinedload(Leave.employee)).where(Leave.leave_id == leave_id)
     res = await db.execute(stmt)
     r = res.scalar_one_or_none()
@@ -277,6 +318,8 @@ async def reject_leave(
         
     r.approval_status = LeaveStatus.REJECTED
     r.approved_by = admin.employee_id
+    if rejection_data and rejection_data.rejection_reason:
+        r.rejection_reason = rejection_data.rejection_reason.strip()
     
     await db.commit()
     await db.refresh(r)
@@ -284,6 +327,23 @@ async def reject_leave(
     app_stmt = select(Employee.name).where(Employee.employee_id == admin.employee_id)
     app_res = await db.execute(app_stmt)
     approver_name = app_res.scalar()
+
+    # Broadcast real-time websocket event for instant UI sync
+    try:
+        await ws_manager.broadcast_to_clients({
+            "event": "leave_rejected",
+            "leave_id": r.leave_id,
+            "employee_id": r.employee_id,
+            "employee_name": r.employee.name if r.employee else "Unknown",
+            "approver_name": approver_name,
+            "status": "rejected",
+            "rejection_reason": r.rejection_reason,
+            "leave_type": r.leave_type,
+            "start_date": str(r.start_date),
+            "end_date": str(r.end_date)
+        })
+    except Exception:
+        pass
     
     return LeaveOut(
         leave_id=r.leave_id,
@@ -294,10 +354,37 @@ async def reject_leave(
         reason=r.reason,
         approval_status=r.approval_status,
         approved_by=r.approved_by,
+        rejection_reason=r.rejection_reason,
+        user_notified=bool(r.user_notified),
         created_at=r.created_at,
         employee_name=r.employee.name if r.employee else "Unknown",
-        approver_name=approver_name
+        approver_name=approver_name,
+        employee_dept=r.employee.department if r.employee else "General"
     )
+
+@router.put("/{leave_id}/acknowledge-alert")
+async def acknowledge_leave_alert(
+    leave_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """
+    Marks a leave approval alert as acknowledged by the employee.
+    Ensures the notification dialog/alert only shows once for this specific approval.
+    """
+    stmt = select(Leave).where(Leave.leave_id == leave_id)
+    res = await db.execute(stmt)
+    leave_obj = res.scalar_one_or_none()
+
+    if not leave_obj:
+        raise HTTPException(status_code=404, detail="Leave request not found")
+
+    if current_user.role != "admin" and leave_obj.employee_id != current_user.employee_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    leave_obj.user_notified = True
+    await db.commit()
+    return {"message": "Leave approval acknowledged successfully", "leave_id": leave_id}
 
 @router.get("/balance/{employee_id}", response_model=LeaveBalance)
 async def get_leave_balance(

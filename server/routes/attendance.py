@@ -616,12 +616,14 @@ async def update_attendance(
     for field, value in updates.model_dump(exclude_unset=True).items():
         setattr(record, field, value)
         
-    # Recalculate hours if check_in/check_out changed
+    # Recalculate hours and late minutes if check_in/check_out changed
     if updates.check_in or updates.check_out:
-        from server.services.attendance_service import calculate_hours
+        from server.services.attendance_service import calculate_hours, calculate_late_minutes
         working_hours, overtime_hours = calculate_hours(record.check_in, record.check_out)
         record.working_hours = working_hours
         record.overtime_hours = overtime_hours
+        if record.check_in:
+            record.late_minutes = calculate_late_minutes(record.check_in.time())
         
     await db.commit()
     await db.refresh(record)
@@ -640,6 +642,23 @@ async def update_attendance(
         employee_name=record.employee.name if record.employee else "Unknown",
         employee_dept=record.employee.department if record.employee else "N/A"
     )
+
+@router.delete("/{attendance_id}")
+async def delete_attendance(
+    attendance_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """Allows admin to delete an attendance record."""
+    stmt = select(Attendance).where(Attendance.attendance_id == attendance_id)
+    res = await db.execute(stmt)
+    record = res.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance record not found")
+        
+    await db.delete(record)
+    await db.commit()
+    return {"message": "Attendance record deleted successfully"}
 
 @router.get("/{employee_id}/history", response_model=List[AttendanceOut])
 async def get_history(

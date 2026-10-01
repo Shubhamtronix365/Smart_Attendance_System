@@ -935,68 +935,72 @@ export default function PayrollPage() {
           </motion.div>
 
           {/* Controls row */}
-          <div className="flex flex-wrap items-center gap-4 mb-6">
-            {/* Month selector */}
-            <div className="relative">
-              <select value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setGenerated(false); }}
-                className="pl-4 pr-10 py-2.5 text-white text-sm outline-none rounded-xl appearance-none font-semibold"
-                style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }}>
-                {MONTHS.map(m => <option key={m} value={m} className="bg-[#0a0f1e]">{m}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:flex sm:items-center gap-3 w-full sm:w-auto">
+              {/* Month selector */}
+              <div className="relative w-full sm:w-auto">
+                <select value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setGenerated(false); }}
+                  className="w-full sm:w-auto pl-4 pr-10 py-2.5 text-white text-sm outline-none rounded-xl appearance-none font-semibold"
+                  style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }}>
+                  {MONTHS.map(m => <option key={m} value={m} className="bg-[#0a0f1e]">{m}</option>)}
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+              </div>
+
+              {/* Generate button */}
+              <motion.button
+                whileHover={{ scale: isGenerating ? 1 : 1.03 }}
+                whileTap={{ scale: isGenerating ? 1 : 0.97 }}
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-70 w-full sm:w-auto text-center"
+                style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}
+              >
+                {isGenerating ? (
+                  <>
+                    <motion.div animate={{ rotate:360 }} transition={{ duration:0.8, repeat:Infinity, ease:"linear" }}>
+                      <Loader2 size={15} />
+                    </motion.div>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Zap size={15} />
+                    Generate Payroll
+                  </>
+                )}
+              </motion.button>
             </div>
 
-            {/* Generate button */}
-            <motion.button
-              whileHover={{ scale: isGenerating ? 1 : 1.03 }}
-              whileTap={{ scale: isGenerating ? 1 : 0.97 }}
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-70"
-              style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}
-            >
-              {isGenerating ? (
-                <>
-                  <motion.div animate={{ rotate:360 }} transition={{ duration:0.8, repeat:Infinity, ease:"linear" }}>
-                    <Loader2 size={15} />
-                  </motion.div>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Zap size={15} />
-                  Generate Payroll
-                </>
-              )}
-            </motion.button>
-
-            {/* Manual Calculator button */}
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => {
-                setSelectedCalcEmployeeId(undefined);
-                setShowManualCalc(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/10 transition-all"
-              style={{ background: "rgba(245, 158, 11, 0.05)" }}
-            >
-              <Calculator size={15} />
-              Manual Calculator
-            </motion.button>
-
-            {generated && (
-              <motion.button initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }}
-                whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}
-                onClick={handleBulkDownload}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all"
-                style={{ background:"rgba(255,255,255,0.03)" }}>
-                <Download size={14} />All Payslips (ZIP)
+            <div className="grid grid-cols-1 sm:flex sm:items-center gap-3 w-full sm:w-auto">
+              {/* Manual Calculator button */}
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => {
+                  setSelectedCalcEmployeeId(undefined);
+                  setShowManualCalc(true);
+                }}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/10 transition-all w-full sm:w-auto text-center"
+                style={{ background: "rgba(245, 158, 11, 0.05)" }}
+              >
+                <Calculator size={15} />
+                Manual Calculator
               </motion.button>
-            )}
+
+              {generated && (
+                <motion.button initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }}
+                  whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}
+                  onClick={handleBulkDownload}
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all w-full sm:w-auto text-center"
+                  style={{ background:"rgba(255,255,255,0.03)" }}>
+                  <Download size={14} />All Payslips (ZIP)
+                </motion.button>
+              )}
+            </div>
 
             {/* Summary */}
-            <div className="ml-auto flex items-center gap-6 text-right">
+            <div className="w-full sm:w-auto sm:ml-auto flex items-center justify-between sm:justify-end gap-6 text-left sm:text-right pt-2 sm:pt-0 border-t border-white/10 sm:border-t-0">
               <div>
                 <p className="text-white/30 text-xs">Total Payroll</p>
                 <p className="text-white font-black text-lg">₹{totalPayroll.toLocaleString("en-IN")}</p>

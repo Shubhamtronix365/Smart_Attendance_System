@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar, Download, Plus, Pencil, RefreshCw,
   Clock, Radio, History, FileText,
-  Search, ChevronDown, X, Check,
+  Search, ChevronDown, X, Check, Trash2, Edit3, AlertTriangle,
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -27,6 +27,8 @@ interface AttendanceRecord {
   avatar: string;
   checkIn: string;
   checkOut: string;
+  rawCheckIn?: string;
+  rawCheckOut?: string;
   workingHours: string;
   status: AttendanceStatus;
   otHours: string;
@@ -148,46 +150,185 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   );
 }
 
-// ─── Edit Inline Popover ──────────────────────────────────────────────────────
-function EditCell({ record, onSave }: { record: AttendanceRecord; onSave: (updated: AttendanceRecord) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState({ checkIn: record.checkIn, checkOut: record.checkOut, status: record.status });
-
-  if (!editing) return (
-    <button onClick={() => setEditing(true)} className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all opacity-0 group-hover:opacity-100">
-      <Pencil size={12} />
-    </button>
-  );
+// ─── Edit Attendance Modal ───────────────────────────────────────────────────
+function EditAttendanceModal({
+  record,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  record: AttendanceRecord;
+  onClose: () => void;
+  onSave: (updated: AttendanceRecord) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [val, setVal] = useState({
+    date: record.date || new Date().toISOString().split("T")[0],
+    checkIn: record.rawCheckIn || (record.checkIn && record.checkIn !== "—" ? record.checkIn.slice(0, 5) : "09:00"),
+    checkOut: record.rawCheckOut || (record.checkOut && record.checkOut !== "—" ? record.checkOut.slice(0, 5) : "17:00"),
+    status: record.status,
+  });
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
-    <motion.div initial={{ opacity:0, scale:0.9 }} animate={{ opacity:1, scale:1 }}
-      className="absolute right-0 top-full z-20 w-56 rounded-2xl p-4 mt-1"
-      style={{ background:"rgba(10,15,30,0.98)", border:"1px solid rgba(0,245,255,0.2)", boxShadow:"0 16px 40px rgba(0,0,0,0.5)", backdropFilter:"blur(20px)" }}>
-      <p className="text-white/50 text-xs mb-3">Edit — {record.name}</p>
-      {(["checkIn","checkOut"] as const).map((k) => (
-        <div key={k} className="mb-2">
-          <label className="text-white/30 text-[10px] mb-1 block capitalize">{k === "checkIn" ? "Check-In" : "Check-Out"}</label>
-          <input type="time" value={val[k]} onChange={(e) => setVal(v => ({ ...v, [k]: e.target.value }))}
-            className="w-full px-3 py-1.5 text-white text-xs outline-none rounded-lg"
-            style={{ background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)" }} />
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <motion.div
+        initial={{ y: 20, opacity: 0, scale: 0.95 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 20, opacity: 0, scale: 0.95 }}
+        className="w-full max-w-md rounded-3xl overflow-hidden"
+        style={{
+          background: "rgba(10,15,30,0.98)",
+          border: "1px solid rgba(0,245,255,0.2)",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.6)",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-6 py-4"
+          style={{
+            background: "linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <div>
+            <span className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider font-semibold">
+              Admin Override
+            </span>
+            <h3 className="text-white font-bold text-lg">Edit Attendance Record</h3>
+            <p className="text-white/40 text-xs">
+              {record.name} ({record.empId}) · {record.department}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <X size={16} />
+          </button>
         </div>
-      ))}
-      <div className="mb-3">
-        <label className="text-white/30 text-[10px] mb-1 block">Status</label>
-        <select value={val.status} onChange={(e) => setVal(v => ({ ...v, status: e.target.value as AttendanceStatus }))}
-          className="w-full px-3 py-1.5 text-white text-xs outline-none rounded-lg appearance-none"
-          style={{ background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)" }}>
-          {(["present","absent","late","halfday","leave","wfh"] as AttendanceStatus[]).map((s) => (
-            <option key={s} value={s} className="bg-[#0a0f1e]">{s}</option>
-          ))}
-        </select>
-      </div>
-      <div className="flex gap-2">
-        <button onClick={() => setEditing(false)} className="flex-1 py-1.5 rounded-lg text-xs text-white/40 hover:bg-white/5 border border-white/10 transition-all">Cancel</button>
-        <button onClick={() => { onSave({ ...record, ...val }); setEditing(false); }}
-          className="flex-1 py-1.5 rounded-lg text-xs font-bold text-black"
-          style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>Save</button>
-      </div>
+
+        {/* Form Body */}
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="text-white/50 text-xs font-medium mb-1.5 block">Record Date</label>
+            <input
+              type="date"
+              value={val.date}
+              onChange={(e) => setVal((v) => ({ ...v, date: e.target.value }))}
+              className="w-full px-3.5 py-2.5 text-white text-xs outline-none rounded-xl"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-white/50 text-xs font-medium mb-1.5 block">Check-In Time</label>
+              <input
+                type="time"
+                value={val.checkIn}
+                onChange={(e) => setVal((v) => ({ ...v, checkIn: e.target.value }))}
+                className="w-full px-3 py-2 text-white text-xs font-mono outline-none rounded-xl"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(0,245,255,0.2)" }}
+              />
+            </div>
+            <div>
+              <label className="text-white/50 text-xs font-medium mb-1.5 block">Check-Out Time</label>
+              <input
+                type="time"
+                value={val.checkOut}
+                onChange={(e) => setVal((v) => ({ ...v, checkOut: e.target.value }))}
+                className="w-full px-3 py-2 text-white text-xs font-mono outline-none rounded-xl"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(124,58,237,0.2)" }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-white/50 text-xs font-medium mb-1.5 block">Attendance Status</label>
+            <select
+              value={val.status}
+              onChange={(e) => setVal((v) => ({ ...v, status: e.target.value as AttendanceStatus }))}
+              className="w-full px-3.5 py-2.5 text-white text-xs outline-none rounded-xl appearance-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              {(["present", "absent", "late", "halfday", "leave", "wfh"] as AttendanceStatus[]).map((s) => (
+                <option key={s} value={s} className="bg-[#0a0f1e] capitalize">
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[11px] text-cyan-300">
+            <strong>Automatic Shift Re-computation:</strong> Changing check-in/out times will automatically
+            recalculate working hours, subtract the 1-hour lunch break policy, and recompute overtime and late minutes.
+          </div>
+
+          {confirmDelete && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 flex items-center justify-between gap-2">
+              <span>Are you sure you want to permanently delete this attendance record?</span>
+              <button
+                type="button"
+                onClick={() => onDelete(record.id)}
+                className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-xs"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-between gap-2 px-6 py-4"
+          style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <button
+            type="button"
+            onClick={() => setConfirmDelete((c) => !c)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-all"
+          >
+            <Trash2 size={13} />
+            {confirmDelete ? "Cancel Delete" : "Delete"}
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs text-white/50 hover:text-white hover:bg-white/5 transition-all border border-white/10"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onSave({
+                  ...record,
+                  date: val.date,
+                  checkIn: val.checkIn,
+                  checkOut: val.checkOut,
+                  rawCheckIn: val.checkIn,
+                  rawCheckOut: val.checkOut,
+                  status: val.status,
+                });
+              }}
+              className="px-5 py-2 rounded-xl text-xs font-bold text-black"
+              style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+            >
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
@@ -204,6 +345,7 @@ export default function AttendancePage() {
   const [viewMode, setViewMode] = useState<"live" | "historical">("live");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [showModal, setShowModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -245,6 +387,15 @@ export default function AttendancePage() {
         const mappedStatus = r.status === "half_day" ? "halfday" : r.status;
         const dateStr = r.date ? (typeof r.date === "string" ? r.date.split("T")[0] : String(r.date)) : "";
         
+        const extractHHMM = (val: any) => {
+          if (!val) return "";
+          if (typeof val === "string") {
+            const match = val.match(/(\d{2}):(\d{2})/);
+            if (match) return `${match[1]}:${match[2]}`;
+          }
+          return "";
+        };
+
         return {
           id: String(r.attendance_id),
           date: dateStr,
@@ -254,6 +405,8 @@ export default function AttendancePage() {
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
           checkIn: formatTime(r.check_in, true),
           checkOut: formatTime(r.check_out, true),
+          rawCheckIn: extractHHMM(r.check_in),
+          rawCheckOut: extractHHMM(r.check_out),
           workingHours: r.working_hours ? `${r.working_hours}h` : "—",
           status: mappedStatus as AttendanceStatus,
           otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
@@ -357,6 +510,7 @@ export default function AttendancePage() {
   };
 
   const handleEditSave = useCallback(async (updated: AttendanceRecord) => {
+    setEditingRecord(null);
     // Instant optimistic update in local table state
     setRecords((prev) =>
       prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
@@ -365,22 +519,40 @@ export default function AttendancePage() {
 
     try {
       const cleanTime = (t: string) => (t && t !== "—") ? t : null;
-      const cIn = cleanTime(updated.checkIn);
-      const cOut = cleanTime(updated.checkOut);
+      const cIn = cleanTime(updated.rawCheckIn || updated.checkIn);
+      const cOut = cleanTime(updated.rawCheckOut || updated.checkOut);
       const targetDate = updated.date || todayIso;
       
       const backendData = {
-        check_in: cIn ? `${targetDate}T${cIn}:00` : null,
-        check_out: cOut ? `${targetDate}T${cOut}:00` : null,
+        date: targetDate,
+        check_in: cIn ? `${targetDate}T${cIn.length === 5 ? cIn + ":00" : cIn}` : null,
+        check_out: cOut ? `${targetDate}T${cOut.length === 5 ? cOut + ":00" : cOut}` : null,
         status: updated.status === "halfday" ? "half_day" : updated.status,
       };
       await attendanceApi.update(updated.id, backendData);
+      fetchAttendance();
     } catch (err: any) {
       console.error("Error updating attendance", err);
       error(err.response?.data?.detail || "Failed to update attendance.");
       fetchAttendance();
     }
   }, [todayIso, fetchAttendance, success, error]);
+
+  const handleDeleteAttendance = useCallback(async (id: string) => {
+    setEditingRecord(null);
+    // Optimistic removal
+    setRecords((prev) => prev.filter((r) => r.id !== id));
+    success("Attendance record deleted.");
+
+    try {
+      await attendanceApi.delete(id);
+      fetchAttendance();
+    } catch (err: any) {
+      console.error("Error deleting attendance", err);
+      error(err.response?.data?.detail || "Failed to delete record.");
+      fetchAttendance();
+    }
+  }, [fetchAttendance, success, error]);
 
   // Summary counters from liveStats (when live) or records (historical)
   const summary = viewMode === "live" && liveStats.total > 0
@@ -483,33 +655,35 @@ export default function AttendancePage() {
                 onBlur={(e)=>(e.currentTarget.style.borderColor="rgba(255,255,255,0.1)")} />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
+            <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
               {/* Manual entry */}
               <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
                 onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all w-full sm:w-auto"
                 style={{ background:"rgba(255,255,255,0.03)" }}>
                 <Plus size={14} />
                 Manual Entry
               </motion.button>
 
-              {/* Export Excel */}
-              <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
-                onClick={() => handleExport("excel")}
-                title={viewMode === "live" ? "Download today's attendance Excel" : `Download full month (${getMonthDateRange(selectedMonth).startDate} to ${getMonthDateRange(selectedMonth).endDate}) Excel`}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all"
-                style={{ background:"rgba(255,255,255,0.03)" }}>
-                <Download size={14} />
-                Excel {viewMode === "historical" ? "(Month)" : "(Today)"}
-              </motion.button>
-              <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
-                onClick={() => handleExport("pdf")}
-                title={viewMode === "live" ? "Download today's attendance PDF" : `Download full month (${getMonthDateRange(selectedMonth).startDate} to ${getMonthDateRange(selectedMonth).endDate}) PDF`}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-black"
-                style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>
-                <FileText size={14} />
-                PDF {viewMode === "historical" ? "(Month)" : "(Today)"}
-              </motion.button>
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+                {/* Export Excel */}
+                <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
+                  onClick={() => handleExport("excel")}
+                  title={viewMode === "live" ? "Download today's attendance Excel" : `Download full month (${getMonthDateRange(selectedMonth).startDate} to ${getMonthDateRange(selectedMonth).endDate}) Excel`}
+                  className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all text-center"
+                  style={{ background:"rgba(255,255,255,0.03)" }}>
+                  <Download size={14} />
+                  Excel {viewMode === "historical" ? "(Month)" : "(Today)"}
+                </motion.button>
+                <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
+                  onClick={() => handleExport("pdf")}
+                  title={viewMode === "live" ? "Download today's attendance PDF" : `Download full month (${getMonthDateRange(selectedMonth).startDate} to ${getMonthDateRange(selectedMonth).endDate}) PDF`}
+                  className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-black text-center"
+                  style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>
+                  <FileText size={14} />
+                  PDF {viewMode === "historical" ? "(Month)" : "(Today)"}
+                </motion.button>
+              </div>
             </div>
           </div>
 
@@ -594,7 +768,22 @@ export default function AttendancePage() {
                         ) : <span className="text-white/20 text-sm">—</span>}
                       </td>
                       <td className="px-4 py-3.5 relative">
-                        <EditCell record={r} onSave={handleEditSave} />
+                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setEditingRecord(r)}
+                            title="Edit attendance details"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAttendance(r.id)}
+                            title="Delete attendance record"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/50 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </motion.tr>
                   )))}
@@ -607,6 +796,14 @@ export default function AttendancePage() {
 
       <AnimatePresence>
         {showModal && <ManualEntryModal onClose={() => setShowModal(false)} onSave={handleSaveManual} />}
+        {editingRecord && (
+          <EditAttendanceModal
+            record={editingRecord}
+            onClose={() => setEditingRecord(null)}
+            onSave={handleEditSave}
+            onDelete={handleDeleteAttendance}
+          />
+        )}
       </AnimatePresence>
     </div>
   );

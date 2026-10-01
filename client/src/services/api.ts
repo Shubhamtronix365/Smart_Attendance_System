@@ -83,7 +83,8 @@ export const attendanceApi = {
   stats: () => api.get("/api/attendance/stats/today"),
   analytics: () => api.get("/api/attendance/analytics"),
   create: (data: unknown) => api.post("/api/attendance", data),
-  update: (id: string, data: unknown) => api.put(`/api/attendance/${id}`, data),
+  update: (id: string | number, data: unknown) => api.put(`/api/attendance/${id}`, data),
+  delete: (id: string | number) => api.delete(`/api/attendance/${id}`),
   export: (paramsOrDate: string | Record<string, any>, format: "excel" | "pdf" = "excel") => {
     if (typeof paramsOrDate === "string") {
       return api.get("/api/attendance/export", { params: { date: paramsOrDate, format }, responseType: "blob" });
@@ -97,7 +98,10 @@ export const leaveApi = {
   list: (status?: string) => api.get("/api/leave", { params: { status } }),
   request: (data: unknown) => api.post("/api/leave/request", data),
   approve: (id: string | number) => api.put(`/api/leave/${id}/approve`),
-  reject: (id: string | number, reason?: string) => api.put(`/api/leave/${id}/reject`, { reason }),
+  reject: (id: string | number, reason?: string) =>
+    api.put(`/api/leave/${id}/reject`, reason ? { rejection_reason: reason } : {}),
+  acknowledgeAlert: (id: string | number) =>
+    api.put(`/api/leave/${id}/acknowledge-alert`),
   cancel: (id: string | number) => api.delete(`/api/leave/${id}`),
 };
 

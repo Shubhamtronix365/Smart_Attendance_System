@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from sqlalchemy import Column, Integer, ForeignKey, Date, DateTime, Text, Enum
+from sqlalchemy import Column, Integer, ForeignKey, Date, DateTime, Text, Enum, Boolean
 from sqlalchemy.orm import relationship
 from server.database.connection import Base
 
@@ -34,6 +34,8 @@ class Leave(Base):
     )
 
     approved_by = Column(Integer, ForeignKey("employees.employee_id", ondelete="SET NULL"), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    user_notified = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

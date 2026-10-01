@@ -40,6 +40,7 @@ export default function EmployeeLeavePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
+  const [oneTimeApprovalAlert, setOneTimeApprovalAlert] = useState<any | null>(null);
 
   // Form State
   const [formType, setFormType] = useState("casual");
@@ -61,8 +62,15 @@ export default function EmployeeLeavePage() {
         leaveApi.list(),
         employeeSelfApi.myLeaveBalance(),
       ]);
-      setLeaveHistory(historyRes.data || []);
+      const list = historyRes.data || [];
+      setLeaveHistory(list);
       setBalance(balanceRes.data || null);
+
+      // Check for unacknowledged approved leaves to show one-time alert on login/visit
+      const pendingAlert = list.find((item: any) => item.approval_status === "approved" && !item.user_notified);
+      if (pendingAlert) {
+        setOneTimeApprovalAlert(pendingAlert);
+      }
     } catch (err) {
       console.error("Failed to load leave records", err);
       error("Unable to load leave details.");
@@ -76,6 +84,55 @@ export default function EmployeeLeavePage() {
       loadData();
     }
   }, [user, loadData]);
+
+  // Real-time WebSocket connection for instant leave updates
+  useEffect(() => {
+    if (!user) return;
+
+    let ws: WebSocket | null = null;
+    try {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
+      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (["leave_approved", "leave_rejected", "leave_updated", "leave_created"].includes(data.event)) {
+            // Check if this event targets current user
+            if (data.employee_id && user.employee_id && Number(data.employee_id) === Number(user.employee_id)) {
+              if (data.event === "leave_approved") {
+                setOneTimeApprovalAlert({
+                  leave_id: data.leave_id,
+                  leave_type: data.leave_type,
+                  start_date: data.start_date,
+                  end_date: data.end_date,
+                  approver_name: data.approver_name,
+                });
+              }
+            }
+            loadData();
+          }
+        } catch {}
+      };
+      ws.onerror = () => {};
+    } catch {}
+
+    return () => {
+      if (ws) ws.close();
+    };
+  }, [user, loadData]);
+
+  const handleDismissApprovalAlert = async () => {
+    if (!oneTimeApprovalAlert) return;
+    const leaveId = oneTimeApprovalAlert.leave_id;
+    setOneTimeApprovalAlert(null);
+    try {
+      await leaveApi.acknowledgeAlert(leaveId);
+    } catch (err) {
+      console.warn("Could not acknowledge leave alert", err);
+    }
+  };
 
   // Duration in days calculator
   const durationDays = (() => {
@@ -304,9 +361,16 @@ export default function EmployeeLeavePage() {
                             </span>
                           )}
                           {l.approval_status === "rejected" && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
-                              <XCircle size={11} /> Rejected
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 w-fit">
+                                <XCircle size={11} /> Rejected
+                              </span>
+                              {l.rejection_reason && (
+                                <span className="text-[10px] text-rose-300/80 italic max-w-xs truncate" title={l.rejection_reason}>
+                                  Reason: {l.rejection_reason}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="py-4 px-6 text-white/40">
@@ -340,6 +404,66 @@ export default function EmployeeLeavePage() {
           </div>
         </div>
       </main>
+
+      {/* One-Time Approval Alert Modal (Shows only once upon login/approval) */}
+      <AnimatePresence>
+        {oneTimeApprovalAlert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl bg-[#0d1424] border border-emerald-500/30 p-6 shadow-2xl relative overflow-hidden"
+            >
+              <div
+                className="absolute -right-12 -top-12 w-36 h-36 rounded-full blur-3xl pointer-events-none"
+                style={{ background: "rgba(16, 185, 129, 0.25)" }}
+              />
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/10">
+                  <CheckCircle2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Leave Request Approved!</h3>
+                  <p className="text-xs text-white/50">Official Approval Notice</p>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 mb-5 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-white/40">Leave Type:</span>
+                  <span className="font-semibold text-white capitalize">{oneTimeApprovalAlert.leave_type} Leave</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-white/40">Duration / Dates:</span>
+                  <span className="font-mono text-cyan-300">
+                    {formatDate(oneTimeApprovalAlert.start_date)}
+                    {oneTimeApprovalAlert.start_date !== oneTimeApprovalAlert.end_date && ` → ${formatDate(oneTimeApprovalAlert.end_date)}`}
+                  </span>
+                </div>
+                {oneTimeApprovalAlert.approver_name && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/40">Approved By:</span>
+                    <span className="text-emerald-400 font-medium">{oneTimeApprovalAlert.approver_name}</span>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-white/5 text-[11px] text-white/40">
+                  ✓ Your attendance record and quota balance have been updated automatically.
+                </div>
+              </div>
+
+              <button
+                onClick={handleDismissApprovalAlert}
+                className="w-full py-2.5 rounded-xl font-bold text-xs text-black transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-500/20"
+                style={{ background: "linear-gradient(135deg, #10b981, #00f5ff)" }}
+              >
+                Acknowledge & Continue
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Apply Leave Modal */}
       <AnimatePresence>

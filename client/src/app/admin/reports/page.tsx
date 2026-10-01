@@ -465,20 +465,20 @@ export default function ReportsPage() {
             )}
 
             {/* Export buttons */}
-            <div className="ml-auto flex items-center gap-2">
+            <div className="w-full sm:w-auto sm:ml-auto grid grid-cols-3 sm:flex items-center gap-2 mt-2 sm:mt-0">
               <button onClick={handlePrint}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all">
+                className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all text-center">
                 <Printer size={13} />Print
               </button>
               <button onClick={() => handleExport("excel")}
                 title="Download report in Excel format"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-emerald-400 border border-emerald-400/20 hover:bg-emerald-400/10 transition-all">
+                className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold text-emerald-400 border border-emerald-400/20 hover:bg-emerald-400/10 transition-all text-center">
                 <FileSpreadsheet size={13} />Excel
               </button>
               <motion.button whileHover={{ scale:1.03 }} whileTap={{ scale:0.97 }}
                 onClick={() => handleExport("pdf")}
                 title="Download report in PDF format"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-black"
+                className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold text-black text-center"
                 style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>
                 <FileText size={13} />PDF
               </motion.button>

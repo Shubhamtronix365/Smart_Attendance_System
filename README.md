@@ -20,10 +20,20 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 - 🔒 **Secure JWT Authentication** stored in HTTPOnly cookies or Bearer tokens.
 - 📥 **Exports and Payslips** including professional PDF payslips generated via ReportLab and Excel sheet logs generated via openpyxl.
 - 🔄 **Keep-Alive & Health Check Endpoints (`/health` & `/api/health`):** Dedicated `GET` & `HEAD` keep-alive ping receiver for cron-job websites (e.g. cron-job.org, UptimeRobot, Render pingers) to maintain server uptime, warm up serverless connection pools (`SELECT 1`), and prevent cold-start spin-down delays.
-- 📅 **Dual-Mode Attendance Tracking (Today Live vs Historical Month-Wide):**
+- 📅 **Dual-Mode Attendance Tracking & Full Admin Override:**
   - **Today Live Mode:** Dedicated real-time feed showing today's attendance data with WebSocket sync, auto-refresh, live statistics counters, and downloadable daily Excel & PDF exports.
   - **Historical Month Mode:** Automatically loads and displays all attendance data from Day 1 of the chosen month to the end date of that month with check-in, check-out, working hours, status, and full-month downloadable Excel & PDF exports.
+  - **Admin Attendance Modifications & Record Management:**
+    - **Edit Any Attendance Log:** Admins can edit check-in time, check-out time, attendance status (Present, Late, Half Day, Absent, Leave, WFH), and date for any employee.
+    - **Automatic Shift & Hours Re-computation:** Editing punch times automatically recalculates worked duration, applies the 1-hour lunch break deduction, and updates late arrival minutes and overtime hours.
+    - **Delete Attendance Record:** Dedicated `DELETE /api/attendance/{id}` endpoint and deletion modal to remove erroneous or duplicate punch entries from database and live logs.
+    - **Manual Entry:** Insert new attendance entries for any employee and date.
 - ⏱️ **Detailed Time-by-Time Reports & Logs:** Complete punch-by-punch attendance logs displaying exact check-in and check-out timestamps, hours, late minutes, overtime, and status for each employee, filterable by month or custom date range, and downloadable in Excel (`.xlsx`) and PDF (`.pdf`).
+- 🏖️ **Real-Time Leave Management & One-Time Approval Alerts:**
+  - **Real-Time WebSocket Sync:** Live approval and rejection notifications broadcast over WebSocket (`/ws/client`) to dynamically refresh admin and employee leave pages without manual reloads.
+  - **Persistent Rejection Tracking:** Rejected leaves remain in the employee's history table with exact rejection reason and reviewer details.
+  - **One-Time Approval Alert:** When an employee's leave request is approved, a notification alert dialog is presented to that specific employee upon logging in or receiving approval in real time. Once acknowledged (`PUT /api/leave/{id}/acknowledge-alert`), it is permanently cleared so it never shows again.
+- 📱 **Full Mobile & Multi-Device Responsive Design:** Fully adaptive layout across smartphones (320px–480px), tablets (768px), and desktops. Includes sliding mobile sidebars with gesture/backdrop dismiss, responsive action toolbars, touch-friendly action buttons, fluid data tables with horizontal scroll wrappers, and auto-stacking form grids and modals.
 
 ---
 

@@ -26,6 +26,8 @@ interface LeaveRequest {
   reason: string;
   status: LeaveStatus;
   appliedOn: string;
+  rejectionReason?: string;
+  approverName?: string;
 }
 
 const LEAVE_TYPE_COLOR: Record<LeaveType, { color: string; bg: string }> = {
@@ -58,16 +60,16 @@ function LeaveCalendar({ leaves }: { leaves: LeaveRequest[] }) {
   };
 
   return (
-    <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.4 }} className="neo-card p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h3 className="text-white font-bold">Leave Calendar</h3>
-        <div className="flex items-center gap-2">
+    <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.4 }} className="neo-card p-4 sm:p-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-5">
+        <h3 className="text-white font-bold text-sm sm:text-base">Leave Calendar</h3>
+        <div className="flex items-center gap-1 sm:gap-2">
           <button onClick={() => setMonth(new Date(year, mon - 1, 1))}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all">
             <ChevronLeft size={14} />
           </button>
-          <span className="text-white/70 text-sm font-medium">
-            {month.toLocaleDateString("en-IN", { month:"long", year:"numeric" })}
+          <span className="text-white/80 text-xs sm:text-sm font-medium">
+            {month.toLocaleDateString("en-IN", { month:"short", year:"numeric" })}
           </span>
           <button onClick={() => setMonth(new Date(year, mon + 1, 1))}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/5 transition-all">
@@ -79,7 +81,7 @@ function LeaveCalendar({ leaves }: { leaves: LeaveRequest[] }) {
       {/* Day headers */}
       <div className="grid grid-cols-7 gap-1 mb-2">
         {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
-          <div key={d} className="text-center text-white/30 text-xs py-1">{d}</div>
+          <div key={d} className="text-center text-white/30 text-[10px] sm:text-xs py-1">{d}</div>
         ))}
       </div>
 
@@ -90,23 +92,23 @@ function LeaveCalendar({ leaves }: { leaves: LeaveRequest[] }) {
           const leavesOnDay = getLeavesOnDay(day);
           const isToday = day === new Date().getDate() && mon === new Date().getMonth() && year === new Date().getFullYear();
           return (
-            <div key={day} className="relative rounded-lg p-1 min-h-[40px] group"
+            <div key={day} className="relative rounded-lg p-1 min-h-[36px] sm:min-h-[44px] group"
               style={{
                 background: leavesOnDay.length > 0 ? "rgba(255,255,255,0.04)" : "transparent",
                 border: isToday ? "1px solid rgba(0,245,255,0.4)" : "1px solid transparent",
               }}>
-              <span className="text-xs font-medium" style={{ color: isToday ? "#00f5ff" : "rgba(255,255,255,0.5)" }}>{day}</span>
+              <span className="text-[10px] sm:text-xs font-medium" style={{ color: isToday ? "#00f5ff" : "rgba(255,255,255,0.5)" }}>{day}</span>
               {leavesOnDay.slice(0, 2).map((l, i) => {
                 const tc = LEAVE_TYPE_COLOR[l.leaveType];
                 return (
-                  <div key={i} className="mt-0.5 px-1 py-0.5 rounded text-[9px] font-semibold truncate"
+                  <div key={i} className="mt-0.5 px-0.5 sm:px-1 py-0.5 rounded text-[8px] sm:text-[9px] font-semibold truncate"
                     style={{ background: tc.bg, color: tc.color }}>
                     {l.name.split(" ")[0]}
                   </div>
                 );
               })}
               {leavesOnDay.length > 2 && (
-                <div className="text-[9px] text-white/30">+{leavesOnDay.length - 2}</div>
+                <div className="text-[8px] text-white/30">+{leavesOnDay.length - 2}</div>
               )}
             </div>
           );
@@ -114,11 +116,11 @@ function LeaveCalendar({ leaves }: { leaves: LeaveRequest[] }) {
       </div>
 
       {/* Legend */}
-      <div className="flex gap-4 mt-4 flex-wrap">
+      <div className="flex gap-2 sm:gap-4 mt-4 flex-wrap">
         {Object.entries(LEAVE_TYPE_COLOR).map(([type, { color }]) => (
           <div key={type} className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-sm" style={{ background: color }} />
-            <span className="text-white/30 text-xs capitalize">{type}</span>
+            <span className="text-white/40 text-[10px] sm:text-xs capitalize">{type}</span>
           </div>
         ))}
       </div>
@@ -129,9 +131,10 @@ function LeaveCalendar({ leaves }: { leaves: LeaveRequest[] }) {
 // ─── Leave Card ───────────────────────────────────────────────────────────────
 function LeaveCard({ leave, index, onApprove, onReject }: {
   leave: LeaveRequest; index: number;
-  onApprove: (id: string) => void; onReject: (id: string) => void;
+  onApprove: (id: string) => void; onReject: (id: string, reason?: string) => void;
 }) {
   const [confirming, setConfirming] = useState<"approve"|"reject"|null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const tc = LEAVE_TYPE_COLOR[leave.leaveType];
 
   return (
@@ -140,21 +143,28 @@ function LeaveCard({ leave, index, onApprove, onReject }: {
       initial={{ opacity:0, y:20 }}
       animate={{ opacity:1, y:0 }}
       exit={{ opacity:0, x:-30, scale:0.97 }}
-      transition={{ delay: index * 0.06, type:"spring", stiffness:200, damping:22 }}
-      className="neo-card p-5"
+      transition={{ delay: index * 0.04, type:"spring", stiffness:200, damping:22 }}
+      className="neo-card p-4 sm:p-5"
     >
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
         {/* Avatar */}
-        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-black shrink-0"
-          style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>{leave.avatar}</div>
+        <div className="flex items-center gap-3 sm:block w-full sm:w-auto justify-between sm:justify-start">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center text-xs sm:text-sm font-bold text-black shrink-0"
+            style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>{leave.avatar}</div>
+          <div className="sm:hidden flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize"
+              style={{ background: tc.bg, color: tc.color }}>{leave.leaveType}</span>
+            <StatusBadge status={leave.status} size="sm" />
+          </div>
+        </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 w-full">
           <div className="flex items-start justify-between gap-3 mb-2">
             <div>
-              <p className="text-white font-bold text-sm">{leave.name}</p>
+              <p className="text-white font-bold text-sm sm:text-base">{leave.name}</p>
               <p className="text-white/40 text-xs">{leave.department} · {leave.empId}</p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden sm:flex items-center gap-2 shrink-0">
               <span className="px-2.5 py-1 rounded-full text-xs font-semibold capitalize"
                 style={{ background: tc.bg, color: tc.color }}>{leave.leaveType}</span>
               <StatusBadge status={leave.status} size="sm" />
@@ -162,25 +172,52 @@ function LeaveCard({ leave, index, onApprove, onReject }: {
           </div>
 
           {/* Date range */}
-          <div className="flex items-center gap-4 mb-3 text-xs">
-            <div className="flex items-center gap-1.5 text-white/50">
-              <Calendar size={12} />
-              <span>{new Date(leave.fromDate).toLocaleDateString("en-IN", { day:"numeric", month:"short" })}</span>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-3 text-xs">
+            <div className="flex items-center gap-1.5 text-white/60">
+              <Calendar size={12} className="text-cyan-400" />
+              <span>{new Date(leave.fromDate).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}</span>
               {leave.fromDate !== leave.toDate && <>
                 <span className="text-white/20">→</span>
-                <span>{new Date(leave.toDate).toLocaleDateString("en-IN", { day:"numeric", month:"short" })}</span>
+                <span>{new Date(leave.toDate).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}</span>
               </>}
             </div>
-            <div className="flex items-center gap-1 text-white/50">
-              <Clock size={12} />
-              <span>{leave.days} day{leave.days > 1 ? "s" : ""}</span>
+            <div className="flex items-center gap-1 text-white/60">
+              <Clock size={12} className="text-cyan-400" />
+              <span className="font-semibold">{leave.days} day{leave.days > 1 ? "s" : ""}</span>
             </div>
+            {leave.appliedOn && (
+              <span className="text-white/30 text-[11px]">
+                Applied: {new Date(leave.appliedOn).toLocaleDateString("en-IN", { day:"numeric", month:"short" })}
+              </span>
+            )}
           </div>
 
           {/* Reason */}
-          <p className="text-white/50 text-xs bg-white/[0.03] rounded-xl px-3 py-2 border border-white/[0.06] mb-4">
-            &ldquo;{leave.reason}&rdquo;
-          </p>
+          <div className="text-xs bg-white/[0.03] rounded-xl px-3 py-2 border border-white/[0.06] mb-3">
+            <span className="text-white/40 font-medium">Reason: </span>
+            <span className="text-white/80">&ldquo;{leave.reason}&rdquo;</span>
+          </div>
+
+          {/* Rejection / Approver Info for History */}
+          {leave.status === "rejected" && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 mb-3 text-xs">
+              <div className="flex items-center gap-1.5 text-rose-400 font-semibold mb-1">
+                <AlertCircle size={13} />
+                <span>Rejected from records</span>
+                {leave.approverName && <span className="text-white/40 font-normal">by {leave.approverName}</span>}
+              </div>
+              <p className="text-rose-300/80">
+                Reason: {leave.rejectionReason || "No rejection reason specified"}
+              </p>
+            </div>
+          )}
+
+          {leave.status === "approved" && leave.approverName && (
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 mb-3 text-xs text-emerald-400 flex flex-wrap items-center justify-between gap-1">
+              <span>Approved by HR / Manager: {leave.approverName}</span>
+              <span className="text-emerald-500/60 text-[10px]">Active in Attendance</span>
+            </div>
+          )}
 
           {/* Actions (only for pending) */}
           {leave.status === "pending" && (
@@ -188,19 +225,44 @@ function LeaveCard({ leave, index, onApprove, onReject }: {
               {confirming ? (
                 <motion.div key="confirm"
                   initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }}
-                  className="flex items-center gap-3 p-3 rounded-xl"
+                  className="p-3 rounded-xl flex flex-col gap-2.5"
                   style={{ background: confirming === "approve" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", border:`1px solid ${confirming === "approve" ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
-                  <AlertCircle size={14} className={confirming === "approve" ? "text-green-400" : "text-red-400"} />
-                  <span className="text-white/70 text-xs flex-1">
-                    {confirming === "approve" ? "Approve this leave request?" : "Reject this leave request?"}
-                  </span>
-                  <button onClick={() => setConfirming(null)} className="text-white/30 hover:text-white/60 text-xs px-2 py-1">Cancel</button>
-                  <button
-                    onClick={() => { confirming === "approve" ? onApprove(leave.id) : onReject(leave.id); setConfirming(null); }}
-                    className="px-3 py-1 rounded-lg text-xs font-bold text-white"
-                    style={{ background: confirming === "approve" ? "#22c55e" : "#ef4444" }}>
-                    Confirm
-                  </button>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className={confirming === "approve" ? "text-green-400" : "text-red-400"} />
+                      <span className="text-white/80 text-xs font-semibold">
+                        {confirming === "approve" ? "Approve this leave request?" : "Reject this leave request?"}
+                      </span>
+                    </div>
+                    <button onClick={() => { setConfirming(null); setRejectReason(""); }} className="text-white/40 hover:text-white text-xs px-2 py-1">Cancel</button>
+                  </div>
+
+                  {confirming === "reject" && (
+                    <input
+                      type="text"
+                      placeholder="Optional reason for rejection (e.g. Project deliverable deadline)..."
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      className="w-full text-xs px-3 py-2 rounded-lg bg-black/40 border border-red-500/30 text-white placeholder-white/30 focus:outline-none focus:border-red-400"
+                    />
+                  )}
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        if (confirming === "approve") {
+                          onApprove(leave.id);
+                        } else {
+                          onReject(leave.id, rejectReason.trim());
+                        }
+                        setConfirming(null);
+                        setRejectReason("");
+                      }}
+                      className="px-4 py-1.5 rounded-lg text-xs font-bold text-white shadow-lg transition-transform active:scale-95"
+                      style={{ background: confirming === "approve" ? "#22c55e" : "#ef4444" }}>
+                      Confirm {confirming === "approve" ? "Approval" : "Rejection"}
+                    </button>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div key="buttons" initial={{ opacity:0 }} animate={{ opacity:1 }} className="flex gap-2">
@@ -253,6 +315,8 @@ export default function LeavePage() {
           reason: r.reason || "No reason specified",
           status: r.approval_status as LeaveStatus,
           appliedOn: r.created_at ? r.created_at.split("T")[0] : "",
+          rejectionReason: r.rejection_reason || undefined,
+          approverName: r.approver_name || undefined,
         };
       });
       setLeaves(mapped);
@@ -266,10 +330,10 @@ export default function LeavePage() {
 
   useEffect(() => {
     fetchLeaves();
-    // Poll every 30 seconds as a fallback
-    const interval = setInterval(fetchLeaves, 30000);
+    // Poll every 20 seconds as a fallback
+    const interval = setInterval(fetchLeaves, 20000);
 
-    // WebSocket for real-time leave updates
+    // WebSocket for real-time live leave updates
     let ws: WebSocket | null = null;
     try {
       const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
@@ -296,23 +360,30 @@ export default function LeavePage() {
   const count = (s: typeof activeTab) => s === "all" ? leaves.length : leaves.filter(l => l.status === s).length;
 
   const approve = async (id: string) => {
+    // Optimistic UI update
+    setLeaves(prev => prev.map(item => item.id === id ? { ...item, status: "approved" as LeaveStatus } : item));
     try {
       await leaveApi.approve(id);
-      success("Leave request approved.");
+      success("Leave request approved successfully.");
       fetchLeaves();
     } catch (err) {
       console.error("Error approving leave", err);
       error("Failed to approve leave request.");
+      fetchLeaves();
     }
   };
-  const reject = async (id: string) => {
+
+  const reject = async (id: string, reason?: string) => {
+    // Optimistic UI update
+    setLeaves(prev => prev.map(item => item.id === id ? { ...item, status: "rejected" as LeaveStatus, rejectionReason: reason } : item));
     try {
-      await leaveApi.reject(id);
-      success("Leave request rejected.");
+      await leaveApi.reject(id, reason);
+      success("Leave request rejected and recorded in history.");
       fetchLeaves();
     } catch (err) {
       console.error("Error rejecting leave", err);
       error("Failed to reject leave request.");
+      fetchLeaves();
     }
   };
 

@@ -17,12 +17,14 @@ class LeaveCreate(BaseModel):
     end_date: date
     reason: Optional[str] = None
 
-class LeaveApproval(BaseModel):
-    approval_status: LeaveStatus = LeaveStatus.APPROVED
+class LeaveRejection(BaseModel):
+    rejection_reason: Optional[str] = None
 
 class LeaveOut(LeaveBase):
     leave_id: int
     approved_by: Optional[int] = None
+    rejection_reason: Optional[str] = None
+    user_notified: bool = False
     created_at: datetime
     employee_name: Optional[str] = None
     approver_name: Optional[str] = None
