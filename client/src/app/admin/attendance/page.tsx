@@ -357,6 +357,12 @@ export default function AttendancePage() {
   };
 
   const handleEditSave = useCallback(async (updated: AttendanceRecord) => {
+    // Instant optimistic update in local table state
+    setRecords((prev) =>
+      prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+    );
+    success("Attendance record updated.");
+
     try {
       const cleanTime = (t: string) => (t && t !== "—") ? t : null;
       const cIn = cleanTime(updated.checkIn);
@@ -369,11 +375,10 @@ export default function AttendancePage() {
         status: updated.status === "halfday" ? "half_day" : updated.status,
       };
       await attendanceApi.update(updated.id, backendData);
-      success("Attendance record updated.");
-      fetchAttendance();
     } catch (err: any) {
       console.error("Error updating attendance", err);
       error(err.response?.data?.detail || "Failed to update attendance.");
+      fetchAttendance();
     }
   }, [todayIso, fetchAttendance, success, error]);
 

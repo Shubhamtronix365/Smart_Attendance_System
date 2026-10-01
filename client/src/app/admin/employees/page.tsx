@@ -663,6 +663,8 @@ export default function EmployeesPage() {
   useEffect(() => setPage(1), [debouncedSearch, deptFilter, statusFilter]);
 
   const handleAdd = useCallback(async (data: Partial<Employee>) => {
+    // Instant modal close for lightning-fast responsiveness
+    setShowModal(false);
     try {
       const backendData = {
         name: data.name,
@@ -680,16 +682,41 @@ export default function EmployeesPage() {
       };
       await employeesApi.create(backendData);
       success("Employee added successfully.");
-      setShowModal(false);
       fetchEmployees();
     } catch (err: any) {
       console.error("Error creating employee", err);
       error(err.response?.data?.detail || "Failed to create employee.");
+      fetchEmployees();
     }
   }, [fetchEmployees, success, error]);
 
   const handleEdit = useCallback(async (data: Partial<Employee>) => {
     if (!editEmployee) return;
+    const targetId = editEmployee.id;
+    // Instant optimistic update in local state for instantaneous feedback
+    setEmployees((prev) =>
+      prev.map((emp) =>
+        emp.id === targetId
+          ? {
+              ...emp,
+              name: data.name ?? emp.name,
+              email: data.email ?? emp.email,
+              phone: data.phone ?? emp.phone,
+              department: data.department ?? emp.department,
+              designation: data.designation ?? emp.designation,
+              basicSalary: data.basicSalary !== undefined ? Number(data.basicSalary) : emp.basicSalary,
+              overtimeRate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : emp.overtimeRate,
+              lateDeductionRate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : emp.lateDeductionRate,
+              lateDeductionType: data.lateDeductionType ?? emp.lateDeductionType,
+              fingerprintId: data.fingerprintId !== undefined ? String(data.fingerprintId) : emp.fingerprintId,
+              avatar: (data.name || emp.name).split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
+            }
+          : emp
+      )
+    );
+    setEditEmployee(null);
+    success("Employee details updated.");
+
     try {
       const backendData: Record<string, any> = {
         name: data.name,
@@ -707,13 +734,11 @@ export default function EmployeesPage() {
       if (data.rfidUid) backendData.rfid_uid = data.rfidUid;
       if (data.password && data.password.trim()) backendData.password = data.password.trim();
 
-      await employeesApi.update(editEmployee.id, backendData);
-      success("Employee details updated.");
-      setEditEmployee(null);
-      fetchEmployees();
+      await employeesApi.update(targetId, backendData);
     } catch (err: any) {
       console.error("Error updating employee", err);
       error(err.response?.data?.detail || "Failed to update employee.");
+      fetchEmployees();
     }
   }, [editEmployee, fetchEmployees, success, error]);
 

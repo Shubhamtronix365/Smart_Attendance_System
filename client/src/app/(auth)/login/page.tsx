@@ -196,8 +196,8 @@ export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
   const [portalMode, setPortalMode] = useState<"admin" | "employee">("admin");
-  const [email, setEmail] = useState("admin@system.com");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -216,13 +216,6 @@ export default function LoginPage() {
   const handlePortalSwitch = (mode: "admin" | "employee") => {
     setPortalMode(mode);
     setError(null);
-    if (mode === "admin") {
-      setEmail("admin@system.com");
-      setPassword("admin123");
-    } else {
-      setEmail("bhavesh@system.com");
-      setPassword("bhavesh123");
-    }
   };
 
   const handleLogin = useCallback(async (e: React.FormEvent) => {
@@ -399,7 +392,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     onFocus={() => setFocusedField("email")}
                     onBlur={() => setFocusedField(null)}
-                    placeholder={portalMode === "admin" ? "admin@system.com" : "employee@system.com"}
+                    placeholder="Enter your email address"
                     autoComplete="email"
                     className="w-full pl-10 pr-4 py-3.5 text-white text-sm outline-none rounded-xl transition-all"
                     style={{
@@ -597,7 +590,7 @@ export default function LoginPage() {
                       required
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
-                      placeholder="admin@system.com"
+                      placeholder="your-email@domain.com"
                       className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs outline-none focus:border-cyan-400"
                     />
                   </div>

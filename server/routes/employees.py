@@ -157,19 +157,27 @@ async def update_employee(
             detail="Employee not found"
         )
         
-    # Release conflicting slots, codes, or RFIDs held by soft-deleted/inactive records
-    await db.execute(
-        update(Employee)
-        .where(Employee.is_active == False)
-        .where(
-            or_(
-                Employee.fingerprint_id == emp_data.fingerprint_id if emp_data.fingerprint_id else False,
-                Employee.rfid_uid == emp_data.rfid_uid if emp_data.rfid_uid else False,
-                Employee.employee_code == emp_data.employee_code if emp_data.employee_code else False
+    # Only release conflicting slots if changing fingerprint_id, rfid_uid, or employee_code
+    is_fp_changing = emp_data.fingerprint_id is not None and emp_data.fingerprint_id != employee.fingerprint_id
+    is_rfid_changing = emp_data.rfid_uid is not None and emp_data.rfid_uid != employee.rfid_uid
+    is_code_changing = emp_data.employee_code is not None and emp_data.employee_code != employee.employee_code
+
+    if is_fp_changing or is_rfid_changing or is_code_changing:
+        conflict_conditions = []
+        if is_fp_changing and emp_data.fingerprint_id:
+            conflict_conditions.append(Employee.fingerprint_id == emp_data.fingerprint_id)
+        if is_rfid_changing and emp_data.rfid_uid:
+            conflict_conditions.append(Employee.rfid_uid == emp_data.rfid_uid)
+        if is_code_changing and emp_data.employee_code:
+            conflict_conditions.append(Employee.employee_code == emp_data.employee_code)
+
+        if conflict_conditions:
+            await db.execute(
+                update(Employee)
+                .where(Employee.is_active == False)
+                .where(or_(*conflict_conditions))
+                .values(fingerprint_id=None, rfid_uid=None, employee_code=None)
             )
-        )
-        .values(fingerprint_id=None, rfid_uid=None, employee_code=None)
-    )
 
     # If an inactive employee has this new email, archive it
     if emp_data.email and emp_data.email != employee.email:
