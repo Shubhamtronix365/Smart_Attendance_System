@@ -235,7 +235,7 @@ def _add_report_header(story, title, subtitle, styles):
     story.append(Paragraph(title, title_style))
     story.append(Paragraph(subtitle, sub_style))
 
-def generate_daily_attendance_pdf(report_date: date, records: list) -> bytes:
+def generate_daily_attendance_pdf(report_date: date, records: list, title: str = "DAILY ATTENDANCE REPORT", subtitle: str = None) -> bytes:
     """Generates PDF for Daily Attendance Report."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -249,10 +249,11 @@ def generate_daily_attendance_pdf(report_date: date, records: list) -> bytes:
     story = []
     styles = getSampleStyleSheet()
     
+    sub = subtitle or f"Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')} | Report Date: {report_date.strftime('%B %d, %Y')}"
     _add_report_header(
         story, 
-        "DAILY ATTENDANCE REPORT", 
-        f"Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')} | Report Date: {report_date.strftime('%B %d, %Y')}", 
+        title, 
+        sub, 
         styles
     )
     
@@ -302,7 +303,7 @@ def generate_daily_attendance_pdf(report_date: date, records: list) -> bytes:
     buffer.close()
     return pdf_bytes
 
-def generate_monthly_attendance_pdf(year: int, month: int, summaries: list) -> bytes:
+def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, title: str = "MONTHLY ATTENDANCE SUMMARY", subtitle: str = None) -> bytes:
     """Generates PDF for Monthly Attendance Summary."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -317,10 +318,11 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list) -> b
     styles = getSampleStyleSheet()
     
     month_name = calendar.month_name[month]
+    sub = subtitle or f"Period: {month_name} {year} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
     _add_report_header(
         story, 
-        "MONTHLY ATTENDANCE SUMMARY", 
-        f"Period: {month_name} {year} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}", 
+        title, 
+        sub, 
         styles
     )
     
@@ -462,7 +464,7 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
     return pdf_bytes
 
 
-def generate_historical_attendance_pdf(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT") -> bytes:
+def generate_historical_attendance_pdf(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT", subtitle: str = None) -> bytes:
     """
     Generates a PDF for historical attendance with full timestamps (check-in, check-out)
     for each employee over a date range or full month.
@@ -479,10 +481,11 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
     story = []
     styles = getSampleStyleSheet()
 
+    sub = subtitle or f"Period: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
     _add_report_header(
         story,
         title,
-        f"Period: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}",
+        sub,
         styles
     )
 

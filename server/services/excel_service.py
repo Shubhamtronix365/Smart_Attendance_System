@@ -41,7 +41,7 @@ def _autofit_columns(ws):
                 max_len = max(max_len, len(str(cell.value)))
         ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
-def generate_daily_attendance_excel(report_date: date, records: list) -> bytes:
+def generate_daily_attendance_excel(report_date: date, records: list, title: str = "DAILY ATTENDANCE REPORT", subtitle: str = None) -> bytes:
     """
     Generates a daily attendance report Excel.
     records is a list of dictionaries/objects containing:
@@ -53,8 +53,9 @@ def generate_daily_attendance_excel(report_date: date, records: list) -> bytes:
     ws.views.sheetView[0].showGridLines = True
     
     # Title Block
-    ws.cell(row=2, column=2, value="DAILY ATTENDANCE REPORT").font = TITLE_FONT
-    ws.cell(row=3, column=2, value=f"Date: {report_date.strftime('%A, %d %B %Y')}").font = SUBTITLE_FONT
+    ws.cell(row=2, column=2, value=title).font = TITLE_FONT
+    sub = subtitle or f"Date: {report_date.strftime('%A, %d %B %Y')}"
+    ws.cell(row=3, column=2, value=sub).font = SUBTITLE_FONT
     
     # Headers
     headers = [
@@ -128,7 +129,7 @@ def generate_daily_attendance_excel(report_date: date, records: list) -> bytes:
     return excel_bytes
 
 
-def generate_monthly_attendance_excel(year: int, month: int, summaries: list) -> bytes:
+def generate_monthly_attendance_excel(year: int, month: int, summaries: list, title: str = "MONTHLY ATTENDANCE SUMMARY", subtitle: str = None) -> bytes:
     """
     Generates a monthly attendance summary report Excel.
     summaries is a list of dicts:
@@ -140,9 +141,10 @@ def generate_monthly_attendance_excel(year: int, month: int, summaries: list) ->
     ws.views.sheetView[0].showGridLines = True
     
     # Title Block
-    ws.cell(row=2, column=2, value="MONTHLY ATTENDANCE SUMMARY").font = TITLE_FONT
+    ws.cell(row=2, column=2, value=title).font = TITLE_FONT
     month_name = calendar.month_name[month]
-    ws.cell(row=3, column=2, value=f"Period: {month_name} {year}").font = SUBTITLE_FONT
+    sub = subtitle or f"Period: {month_name} {year}"
+    ws.cell(row=3, column=2, value=sub).font = SUBTITLE_FONT
     
     # Headers
     headers = [
@@ -300,7 +302,7 @@ def generate_payroll_report_excel(year: int, month: int, payrolls: list) -> byte
     return excel_bytes
 
 
-def generate_historical_attendance_excel(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT") -> bytes:
+def generate_historical_attendance_excel(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT", subtitle: str = None) -> bytes:
     """
     Generates a comprehensive historical attendance Excel report for a date range or full month.
     Each record contains detailed timestamps (check-in, check-out) and statistics.
@@ -314,7 +316,8 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
 
     # Title Block
     ws.cell(row=2, column=2, value=title).font = TITLE_FONT
-    ws.cell(row=3, column=2, value=f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')}").font = SUBTITLE_FONT
+    sub = subtitle or f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')}"
+    ws.cell(row=3, column=2, value=sub).font = SUBTITLE_FONT
 
     headers = [
         "Date", "Employee ID", "Employee Name", "Department",
