@@ -22,6 +22,7 @@ const GithubIcon = () => (
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { useAuth } from "@/context/AuthContext";
+import { authApi } from "@/services/api";
 
 // ─── Animation Variants ────────────────────────────────────────────────────────
 const cardVariants = {
