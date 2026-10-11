@@ -235,9 +235,9 @@ Smart_Attendance_System/
 - `GET /api/attendance/export` — Export attendance (single day or full month from day 1 to end date) into Excel (.xlsx) or PDF (.pdf) format with complete check-in / check-out timestamps.
 - `GET /api/attendance/today` — Active check-ins logged for the current date.
 - `GET /api/attendance/live` — Feed of the last 20 check-in/out events.
-- `POST /api/attendance/manual` — Manually insert attendance log (Admin only).
+- `POST /api/attendance` & `POST /api/attendance/manual` — Manually insert attendance log with automatic calculation of shift working hours, overtime hours, and late minutes past 9:00 AM (Admin only).
 - `PUT /api/attendance/{id}` — Override existing check-in/out entry (Admin only).
-- `GET /api/attendance/stats/today` — Metrics summary counts for today's logs (Admin only).
+- `GET /api/attendance/stats/today` — Metrics summary counts, today's overtime hours, today's late hours & minutes, and monthly cumulative overtime/late stats for dashboard command centers (Admin only).
 
 ### Health & Keep-Alive Wake-Up (Cron Jobs)
 - `GET, HEAD /health` — Keep-alive wake-up ping for cron jobs (e.g. cron-job.org, UptimeRobot, Render pinger). Executes a database ping (`SELECT 1`), keeps PostgreSQL connection pool active, and returns server uptime status and timestamp.
@@ -308,10 +308,13 @@ Smart_Attendance_System/
 - `GET /api/payroll/payslip/{payroll_id}` — Binary PDF payslip download.
 
 ### Reports (Admin only)
-- `GET /api/reports/attendance/detailed-logs` — Detailed time-by-time attendance records for each punch across any month or date range, including exact Check-In & Check-Out timestamps, working hours, late minutes, overtime, and status. (Supports JSON, Excel `.xlsx`, and PDF `.pdf` downloads).
-- `GET /api/reports/attendance/daily` — Daily attendance report (JSON, Excel, or PDF format).
-- `GET /api/reports/attendance/monthly` — Monthly attendance report summary (JSON, Excel, or PDF format).
-- `GET /api/reports/payroll` — Monthly payroll summary report (JSON, Excel, or PDF format).
+- `GET /api/reports/attendance/detailed-logs` — Detailed punch-by-punch attendance records across any date range or month.
+  - **Query Parameters:** `start_date`, `end_date`, `month`, `year`, `department`, `employee_id` (single employee filtering), `status` (`present`, `late`, `absent`, `half_day`, `leave`, `wfh`), `format` (`json`, `excel`, `pdf`).
+  - **Single Employee Mode:** When `employee_id` is supplied, dynamically generates an individual employee attendance report with customized document header, employee metadata subtitle (Name, ID, Department, Designation), and employee-specific file naming (e.g. `Attendance_Report_EMP001_John_Doe_20261001_to_20261031.xlsx` / `.pdf`).
+  - **All Employees Mode:** When no employee is selected, generates the company-wide attendance log roster.
+- `GET /api/reports/attendance/daily` — Daily attendance report with support for `department`, `employee_id`, and `status` filters. Outputs JSON or binary Excel/PDF downloads.
+- `GET /api/reports/attendance/monthly` — Monthly attendance report summary with support for `department` and `employee_id` filters. Outputs JSON or binary Excel/PDF downloads.
+- `GET /api/reports/payroll` — Monthly payroll summary report with support for `department` and `employee_id` filters. Outputs JSON or binary Excel/PDF downloads.
 
 
 ### System Settings (Admin only)
