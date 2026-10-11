@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Users, UserCheck, UserX, Clock, FileWarning,
-  IndianRupee, Activity, CalendarDays,
+  IndianRupee, Activity, CalendarDays, TrendingUp,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import AdminSidebar from "@/components/AdminSidebar";
@@ -79,10 +79,26 @@ export default function AdminDashboard() {
 
   const userName = user?.name || "Admin";
   const userRole = user?.role === "admin" ? "Administrator" : (user?.designation || "Employee");
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const [greeting, setGreeting] = useState("Welcome");
 
-  const [stats, setStats] = useState({ total: 0, present: 0, absent: 0, late: 0, leave: 0 });
+  useEffect(() => {
+    const hour = new Date().getHours();
+    setGreeting(hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening");
+  }, []);
+
+  const [stats, setStats] = useState({
+    total: 0,
+    present: 0,
+    absent: 0,
+    late: 0,
+    leave: 0,
+    overtime_hours: 0,
+    late_minutes: 0,
+    late_hours: 0,
+    month_overtime_hours: 0,
+    month_late_hours: 0,
+    month_late_minutes: 0,
+  });
   const [pendingLeavesCount, setPendingLeavesCount] = useState(0);
   const [payrollThisMonth, setPayrollThisMonth] = useState(0);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
@@ -96,7 +112,7 @@ export default function AdminDashboard() {
 
       // Fetch stats, leaves, payroll, and live checkins
       const [statsRes, leavesRes, payrollRes, liveRes] = await Promise.all([
-        attendanceApi.stats().catch(() => ({ data: { total: 0, present: 0, absent: 0, late: 0, leave: 0 } })),
+        attendanceApi.stats().catch(() => ({ data: { total: 0, present: 0, absent: 0, late: 0, leave: 0, overtime_hours: 0, late_minutes: 0, late_hours: 0 } })),
         leaveApi.list().catch(() => ({ data: [] })),
         payrollApi.list(month, year).catch(() => ({ data: [] })),
         attendanceApi.live().catch(() => ({ data: [] })),
@@ -120,12 +136,14 @@ export default function AdminDashboard() {
       const mappedActivity = liveRes.data.slice(0, 5).map((r: any) => {
         const hasCheckOut = !!r.check_out;
         const timeStr = hasCheckOut ? r.check_out : r.check_in;
-        const mappedStatus = hasCheckOut ? "overtime" : (r.status === "late" ? "late" : (r.status === "absent" ? "pending" : "on-time"));
+        const mappedStatus = hasCheckOut ? (Number(r.overtime_hours) > 0 ? "overtime" : "on-time") : (r.status === "late" ? "late" : (r.status === "absent" ? "pending" : "on-time"));
         const rawTime = timeStr || r.created_at;
+        const otText = Number(r.overtime_hours) > 0 ? ` · +${r.overtime_hours}h OT` : "";
+        const lateText = (r.late_minutes && Number(r.late_minutes) > 0) ? ` (${r.late_minutes}m late)` : "";
         return {
           id: r.attendance_id,
           name: r.employee_name || "Unknown",
-          action: hasCheckOut ? "Clocked Out" : "Clocked In",
+          action: hasCheckOut ? `Clocked Out (${r.working_hours || 0}h${otText})` : `Clocked In${lateText}`,
           time: formatTime(rawTime, true),
           status: mappedStatus,
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
@@ -168,7 +186,7 @@ export default function AdminDashboard() {
     };
   }, [fetchDashboardData]);
 
-  // Construct dynamic cards list
+  // Construct dynamic cards list with REAL overtime and late data
   const cards = [
     {
       title: "Total Employees",
@@ -203,15 +221,35 @@ export default function AdminDashboard() {
       icon: <Clock size={20} />,
       color: "#f59e0b",
       glowColor: "#f59e0b",
-      trend: "After office hours",
+      trend: `${stats.late_hours || 0}h (${stats.late_minutes || 0}m delay)`,
+      trendUp: false,
+    },
+    {
+      title: "Overtime (Over-working)",
+      value: Number(stats.overtime_hours || 0),
+      suffix: "h",
+      icon: <TrendingUp size={20} />,
+      color: "#a855f7",
+      glowColor: "#7c3aed",
+      trend: `Month total: ${stats.month_overtime_hours || 0}h`,
+      trendUp: true,
+    },
+    {
+      title: "Late Hours Today",
+      value: Number(stats.late_hours || 0),
+      suffix: "h",
+      icon: <Clock size={20} />,
+      color: "#f97316",
+      glowColor: "#ea580c",
+      trend: `Month total: ${stats.month_late_hours || 0}h (${stats.month_late_minutes || 0}m)`,
       trendUp: false,
     },
     {
       title: "Pending Leaves",
       value: pendingLeavesCount,
       icon: <FileWarning size={20} />,
-      color: "#f97316",
-      glowColor: "#f97316",
+      color: "#ec4899",
+      glowColor: "#ec4899",
       trend: "Awaiting review",
       trendUp: false,
     },
@@ -220,8 +258,8 @@ export default function AdminDashboard() {
       value: payrollThisMonth,
       prefix: "₹",
       icon: <IndianRupee size={20} />,
-      color: "#a78bfa",
-      glowColor: "#7c3aed",
+      color: "#00f5ff",
+      glowColor: "#00f5ff",
       trend: "Summed final salary",
       trendUp: true,
     },
@@ -276,13 +314,14 @@ export default function AdminDashboard() {
           </motion.div>
 
           {/* ── Stat Cards Grid ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {cards.map((card, i) => (
               <StatCard
                 key={card.title}
                 title={card.title}
                 value={card.value}
                 prefix={card.prefix}
+                suffix={card.suffix}
                 icon={card.icon}
                 color={card.color}
                 glowColor={card.glowColor}
@@ -305,14 +344,16 @@ export default function AdminDashboard() {
             >
               <div className="text-center mb-2">
                 <p className="text-white font-bold text-base">Today&apos;s Attendance</p>
-                <p className="text-white/40 text-xs">{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</p>
+                <p suppressHydrationWarning className="text-white/40 text-xs">{new Date().toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}</p>
               </div>
               <AttendanceRing present={stats.present} total={stats.total} />
-              <div className="grid grid-cols-2 gap-3 w-full mt-2">
+              <div className="grid grid-cols-2 gap-2.5 w-full mt-2">
                 {[
-                  { label: "On Time", value: String(stats.present - stats.late), color: "#22c55e" },
-                  { label: "Late", value: String(stats.late), color: "#f59e0b" },
-                  { label: "On Leave", value: String(stats.leave), color: "#a78bfa" },
+                  { label: "On Time", value: String(Math.max(stats.present - stats.late, 0)), color: "#22c55e" },
+                  { label: "Late Count", value: String(stats.late), color: "#f59e0b" },
+                  { label: "Overtime", value: `${stats.overtime_hours || 0}h`, color: "#a855f7" },
+                  { label: "Late Delay", value: `${stats.late_hours || 0}h`, color: "#f97316" },
+                  { label: "On Leave", value: String(stats.leave), color: "#38bdf8" },
                   { label: "Absent", value: String(stats.absent), color: "#ef4444" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="flex items-center gap-2 px-3 py-2 rounded-xl"

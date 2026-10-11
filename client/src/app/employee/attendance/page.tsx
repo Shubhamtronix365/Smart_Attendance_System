@@ -181,7 +181,9 @@ export default function EmployeeAttendancePage() {
               </div>
             </div>
             <p className="text-2xl font-black text-amber-400">{stats?.late_days ?? 0}</p>
-            <p className="text-[10px] text-white/40 mt-1">Punched after start threshold</p>
+            <p className="text-[10px] text-white/40 mt-1">
+              {stats?.late_hours ? `${stats.late_hours}h (${stats?.late_minutes ?? 0}m delay)` : "Punched after start threshold"}
+            </p>
           </motion.div>
 
           <motion.div

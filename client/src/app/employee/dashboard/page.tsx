@@ -75,7 +75,7 @@ function EmpStatCard({
       </div>
       <div>
         <p className="text-3xl font-black mb-1" style={{ color }}>
-          {prefix}{count.toLocaleString("en-IN")}{suffix}
+          {prefix}{typeof value === "number" && !Number.isInteger(value) ? Number(count).toFixed(1) : count.toLocaleString("en-IN")}{suffix}
         </p>
         {subtitle && <p className="text-[11px] text-white/40 leading-tight">{subtitle}</p>}
       </div>
@@ -292,7 +292,7 @@ export default function EmployeeDashboardPage() {
         </div>
 
         {/* Real Data Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <EmpStatCard
             title={`Present Days (${MONTH_NAMES[currentMonth - 1]})`}
             value={monthlyStats?.present_days ?? 0}
@@ -312,13 +312,31 @@ export default function EmployeeDashboardPage() {
             index={1}
           />
           <EmpStatCard
+            title="Overtime (Over-working)"
+            value={Number(monthlyStats?.overtime_hours ?? 0)}
+            suffix=" hrs"
+            subtitle="Recorded extra hours (1.5x pay rate)"
+            icon={<TrendingUp size={18} />}
+            color="#a855f7"
+            index={2}
+          />
+          <EmpStatCard
+            title="Late Hours"
+            value={Number(monthlyStats?.late_hours ?? 0)}
+            suffix=" hrs"
+            subtitle={`${monthlyStats?.late_minutes ?? 0} mins delay across ${monthlyStats?.late_days ?? 0} late days`}
+            icon={<Clock size={18} />}
+            color="#f59e0b"
+            index={3}
+          />
+          <EmpStatCard
             title="Annual Leave Balance"
             value={totalLeaveQuota}
             suffix=" days/yr"
             subtitle={leaveSubtitle}
-            icon={<TrendingUp size={18} />}
+            icon={<CalendarDays size={18} />}
             color="#00f5ff"
-            index={2}
+            index={4}
           />
           <EmpStatCard
             title={salaryLabel}
@@ -326,8 +344,8 @@ export default function EmployeeDashboardPage() {
             prefix="₹"
             subtitle={salarySubtitle}
             icon={<DollarSign size={18} />}
-            color="#a855f7"
-            index={3}
+            color="#38bdf8"
+            index={5}
           />
         </div>
 
@@ -368,7 +386,13 @@ export default function EmployeeDashboardPage() {
                       <> · Checked out at <span className="text-white font-mono">{formatTime(todayRecord.check_out)}</span></>
                     )}
                     {todayRecord.working_hours && (
-                      <> · Total: <span className="text-emerald-400 font-mono font-bold">{todayRecord.working_hours} hrs</span></>
+                      <> · Working: <span className="text-emerald-400 font-mono font-bold">{todayRecord.working_hours} hrs</span></>
+                    )}
+                    {todayRecord.overtime_hours && Number(todayRecord.overtime_hours) > 0 && (
+                      <> · Overtime: <span className="text-purple-400 font-mono font-bold">+{todayRecord.overtime_hours} hrs</span></>
+                    )}
+                    {((todayRecord.late_minutes && Number(todayRecord.late_minutes) > 0) || todayRecord.status === "late") && (
+                      <> · Late: <span className="text-amber-400 font-mono font-bold">{todayRecord.late_minutes ? `${todayRecord.late_minutes}m` : "Late"}</span></>
                     )}
                   </p>
                 ) : (
@@ -476,6 +500,12 @@ export default function EmployeeDashboardPage() {
                       <div className="flex items-center gap-2">
                         {r.working_hours && (
                           <span className="font-mono text-cyan-300 font-semibold">{r.working_hours}h</span>
+                        )}
+                        {r.overtime_hours && Number(r.overtime_hours) > 0 && (
+                          <span className="font-mono text-purple-400 text-[10px] font-bold">+{r.overtime_hours}h OT</span>
+                        )}
+                        {r.late_minutes && Number(r.late_minutes) > 0 && (
+                          <span className="font-mono text-amber-400 text-[10px] font-bold">{r.late_minutes}m late</span>
                         )}
                         <StatusBadge status={r.status} />
                       </div>
