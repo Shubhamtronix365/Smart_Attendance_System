@@ -116,8 +116,21 @@ async def startup_event():
                     await session.execute(text(col_sql))
                 except Exception:
                     pass
+
+            # Backfill late_minutes for any existing records where check_in was after 09:00:00 but late_minutes is 0 or null
+            try:
+                await session.execute(text("""
+                    UPDATE attendance 
+                    SET late_minutes = EXTRACT(EPOCH FROM (check_in::time - '09:00:00'::time)) / 60
+                    WHERE check_in IS NOT NULL 
+                      AND check_in::time > '09:00:00'::time 
+                      AND (late_minutes IS NULL OR late_minutes = 0);
+                """))
+            except Exception:
+                pass
+
             await session.commit()
-        logger.info("Successfully connected to database, verified columns, and released inactive sensor slots.")
+        logger.info("Successfully connected to database, verified columns, backfilled late minutes, and released inactive sensor slots.")
     except Exception as e:
         logger.critical(f"Database connection failed during startup: {str(e)}")
 
