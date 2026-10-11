@@ -19,6 +19,7 @@ class AttendanceCreate(AttendanceBase):
     pass
 
 class AttendanceUpdate(BaseModel):
+    date: Optional[date] = None
     check_in: Optional[datetime] = None
     check_out: Optional[datetime] = None
     working_hours: Optional[Decimal] = None
@@ -47,3 +48,9 @@ class AttendanceStats(BaseModel):
     absent: int
     late: int
     leave: int
+    overtime_hours: Optional[Decimal] = Decimal("0.00")
+    late_minutes: Optional[int] = 0
+    late_hours: Optional[Decimal] = Decimal("0.00")
+    month_overtime_hours: Optional[Decimal] = Decimal("0.00")
+    month_late_hours: Optional[Decimal] = Decimal("0.00")
+    month_late_minutes: Optional[int] = 0

@@ -47,6 +47,7 @@ async def my_attendance(
     res = await db.execute(stmt)
     records = res.scalars().all()
 
+    from server.services.attendance_service import calculate_late_minutes
     return [
         AttendanceOut(
             attendance_id=r.attendance_id,
@@ -56,6 +57,7 @@ async def my_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0),
             status=r.status,
             source=r.source,
             created_at=r.created_at,
@@ -75,6 +77,7 @@ async def my_attendance_stats(
     """Returns the logged-in employee's monthly attendance statistics for the given month and year."""
     from sqlalchemy import extract
     from server.utils.time_utils import get_working_days_in_month, get_elapsed_working_days, get_current_local_date
+    from server.services.attendance_service import calculate_late_minutes
 
     stmt = (
         select(Attendance)
@@ -100,6 +103,13 @@ async def my_attendance_stats(
     overtime_hours = sum(float(r.overtime_hours or 0) for r in records)
     total_working_hours = sum(float(r.working_hours or 0) for r in records)
 
+    total_late_minutes = sum(
+        (r.late_minutes if (hasattr(r, "late_minutes") and r.late_minutes and r.late_minutes > 0)
+         else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0))
+        for r in records
+    )
+    total_late_hours = round(total_late_minutes / 60.0, 2)
+
     total_working_days = get_working_days_in_month(year, month)
     today = get_current_local_date()
     working_days_elapsed = get_elapsed_working_days(year, month, as_of_date=today)
@@ -113,6 +123,8 @@ async def my_attendance_stats(
         "half_day_days": half_day_days,
         "absent_days": absent_days,
         "leave_days": leave_days,
+        "late_minutes": total_late_minutes,
+        "late_hours": total_late_hours,
         "overtime_hours": round(overtime_hours, 2),
         "total_working_hours": round(total_working_hours, 2),
         "working_days_total": total_working_days,
@@ -309,6 +321,7 @@ async def today_attendance(
     res = await db.execute(stmt)
     records = res.scalars().all()
     
+    from server.services.attendance_service import calculate_late_minutes
     return [
         AttendanceOut(
             attendance_id=r.attendance_id,
@@ -318,6 +331,7 @@ async def today_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0),
             status=r.status,
             source=r.source,
             created_at=r.created_at,
@@ -352,6 +366,7 @@ async def live_attendance(
         res_fb = await db.execute(stmt_fb)
         records = res_fb.scalars().all()
     
+    from server.services.attendance_service import calculate_late_minutes
     return [
         AttendanceOut(
             attendance_id=r.attendance_id,
@@ -361,6 +376,7 @@ async def live_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0),
             status=r.status,
             source=r.source,
             created_at=r.created_at,
@@ -375,11 +391,12 @@ async def get_today_stats(
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
 ):
-    """Returns attendance summary statistics for today (total active, present, absent, late, leave)."""
+    """Returns attendance summary statistics for today (total active, present, absent, late, leave, overtime, late hours)."""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin privilege required")
         
     today = get_current_local_date()
+    from server.services.attendance_service import calculate_late_minutes
     
     # Total active employees
     tot_stmt = select(func.count(Employee.employee_id)).where(Employee.is_active == True)
@@ -401,13 +418,47 @@ async def get_today_stats(
     
     # Absent count is active employees without check-in who aren't on leave
     absent = max(total_active - present_total - leave, 0)
+
+    # Today's overtime and late hours
+    today_overtime_hours = sum(float(r.overtime_hours or 0) for r in records)
+    today_late_minutes = sum(
+        (r.late_minutes if (hasattr(r, "late_minutes") and r.late_minutes and r.late_minutes > 0)
+         else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0))
+        for r in records
+    )
+    today_late_hours = round(today_late_minutes / 60.0, 2)
+
+    # Current month cumulative stats
+    first_of_month = date(today.year, today.month, 1)
+    month_stmt = select(Attendance).where(
+        and_(
+            Attendance.date >= first_of_month,
+            Attendance.date <= today
+        )
+    )
+    month_res = await db.execute(month_stmt)
+    month_records = month_res.scalars().all()
+
+    month_overtime_hours = sum(float(r.overtime_hours or 0) for r in month_records)
+    month_late_minutes = sum(
+        (r.late_minutes if (hasattr(r, "late_minutes") and r.late_minutes and r.late_minutes > 0)
+         else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0))
+        for r in month_records
+    )
+    month_late_hours = round(month_late_minutes / 60.0, 2)
     
     return {
         "total": total_active,
         "present": present_total,
         "absent": absent,
         "late": late,
-        "leave": leave
+        "leave": leave,
+        "overtime_hours": round(today_overtime_hours, 2),
+        "late_minutes": today_late_minutes,
+        "late_hours": today_late_hours,
+        "month_overtime_hours": round(month_overtime_hours, 2),
+        "month_late_hours": month_late_hours,
+        "month_late_minutes": month_late_minutes,
     }
 
 @router.get("/analytics")
@@ -526,6 +577,7 @@ async def get_attendance_analytics(
         "payroll_trend": payroll_trend
     }
 
+@router.post("", response_model=AttendanceOut)
 @router.post("/manual", response_model=AttendanceOut)
 async def manual_entry(
     entry: AttendanceManualEntry,
@@ -552,13 +604,22 @@ async def manual_entry(
     if existing:
         raise HTTPException(status_code=400, detail="Attendance record already exists for this date")
         
-    # Calculate hours if check-in and check-out are provided
+    # Calculate hours and late minutes if check-in and check-out are provided
     working_hours = None
     overtime_hours = 0.0
+    late_minutes = 0
     if entry.check_in and entry.check_out:
         from server.services.attendance_service import calculate_hours
         working_hours, overtime_hours = calculate_hours(entry.check_in, entry.check_out)
+
+    if entry.check_in:
+        from server.services.attendance_service import calculate_late_minutes
+        late_minutes = calculate_late_minutes(entry.check_in.time())
         
+    status_to_save = entry.status
+    if entry.status == AttendanceStatus.PRESENT and late_minutes > 0:
+        status_to_save = AttendanceStatus.LATE
+
     db_attendance = Attendance(
         employee_id=entry.employee_id,
         date=entry.date,
@@ -566,7 +627,8 @@ async def manual_entry(
         check_out=entry.check_out,
         working_hours=working_hours,
         overtime_hours=overtime_hours,
-        status=entry.status,
+        late_minutes=late_minutes,
+        status=status_to_save,
         source="manual",
         created_at=datetime.utcnow()
     )
@@ -589,6 +651,7 @@ async def manual_entry(
         check_out=record.check_out,
         working_hours=record.working_hours,
         overtime_hours=record.overtime_hours,
+        late_minutes=record.late_minutes if hasattr(record, "late_minutes") and record.late_minutes else late_minutes,
         status=record.status,
         source=record.source,
         created_at=record.created_at,
@@ -628,6 +691,7 @@ async def update_attendance(
     await db.commit()
     await db.refresh(record)
     
+    from server.services.attendance_service import calculate_late_minutes
     return AttendanceOut(
         attendance_id=record.attendance_id,
         employee_id=record.employee_id,
@@ -636,6 +700,7 @@ async def update_attendance(
         check_out=record.check_out,
         working_hours=record.working_hours,
         overtime_hours=record.overtime_hours,
+        late_minutes=record.late_minutes if hasattr(record, "late_minutes") and record.late_minutes else (calculate_late_minutes(record.check_in.time()) if (record.check_in and record.status == AttendanceStatus.LATE) else 0),
         status=record.status,
         source=record.source,
         created_at=record.created_at,
@@ -677,6 +742,7 @@ async def get_history(
     res = await db.execute(stmt)
     records = res.scalars().all()
     
+    from server.services.attendance_service import calculate_late_minutes
     return [
         AttendanceOut(
             attendance_id=r.attendance_id,
@@ -686,6 +752,7 @@ async def get_history(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0),
             status=r.status,
             source=r.source,
             created_at=r.created_at,

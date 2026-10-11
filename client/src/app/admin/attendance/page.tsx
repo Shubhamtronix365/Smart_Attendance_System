@@ -13,7 +13,7 @@ import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { attendanceApi, employeesApi } from "@/services/api";
-import { formatTime } from "@/utils/formatters";
+import { formatTime, getLocalDateString } from "@/utils/formatters";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AttendanceStatus = "present" | "absent" | "late" | "halfday" | "leave" | "wfh";
@@ -41,7 +41,7 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   const [employeesList, setEmployeesList] = useState<any[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState("");
   const [form, setForm] = useState({
-    date: new Date().toISOString().split("T")[0],
+    date: getLocalDateString(),
     checkIn: "09:00",
     checkOut: "18:00",
     status: "present" as AttendanceStatus
@@ -57,11 +57,13 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
 
   const handleSubmit = () => {
     if (!selectedEmpId) return;
+    const cIn = form.checkIn ? `${form.date}T${form.checkIn.length === 5 ? form.checkIn + ":00" : form.checkIn}` : null;
+    const cOut = form.checkOut ? `${form.date}T${form.checkOut.length === 5 ? form.checkOut + ":00" : form.checkOut}` : null;
     onSave({
       employee_id: Number(selectedEmpId),
       date: form.date,
-      check_in: form.checkIn ? `${form.date}T${form.checkIn}:00` : null,
-      check_out: form.checkOut ? `${form.date}T${form.checkOut}:00` : null,
+      check_in: cIn,
+      check_out: cOut,
       status: form.status === "halfday" ? "half_day" : form.status
     });
     onClose();
@@ -340,7 +342,7 @@ export default function AttendancePage() {
 
   const now = new Date();
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const todayIso = now.toISOString().split("T")[0];
+  const todayIso = getLocalDateString(now);
 
   const [viewMode, setViewMode] = useState<"live" | "historical">("live");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
@@ -371,7 +373,7 @@ export default function AttendancePage() {
     try {
       let res;
       if (viewMode === "live") {
-        const todayStr = new Date().toISOString().split("T")[0];
+        const todayStr = getLocalDateString();
         const [attRes, statsRes] = await Promise.all([
           attendanceApi.list(todayStr, { size: "500" }),
           attendanceApi.stats().catch(() => ({ data: { total: 0, present: 0, absent: 0, late: 0, leave: 0 } }))
@@ -624,7 +626,7 @@ export default function AttendancePage() {
                 style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)" }}>
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="text-green-400 font-semibold">Today:</span>
-                <span className="text-white/80 font-mono">{todayIso}</span>
+                <span suppressHydrationWarning className="text-white/80 font-mono">{todayIso}</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 flex-wrap">
