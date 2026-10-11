@@ -82,7 +82,8 @@ export const attendanceApi = {
   live: () => api.get("/api/attendance/live"),
   stats: () => api.get("/api/attendance/stats/today"),
   analytics: () => api.get("/api/attendance/analytics"),
-  create: (data: unknown) => api.post("/api/attendance", data),
+  create: (data: unknown) => api.post("/api/attendance/manual", data),
+  manualEntry: (data: unknown) => api.post("/api/attendance/manual", data),
   update: (id: string | number, data: unknown) => api.put(`/api/attendance/${id}`, data),
   delete: (id: string | number) => api.delete(`/api/attendance/${id}`),
   export: (paramsOrDate: string | Record<string, any>, format: "excel" | "pdf" = "excel") => {
@@ -125,21 +126,21 @@ export const payrollApi = {
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 export const reportsApi = {
-  dailyAttendance: (params: Record<string, string>) =>
+  dailyAttendance: (params: Record<string, any>) =>
     api.get("/api/reports/attendance/daily", { params }),
-  monthlyAttendance: (params: Record<string, string>) =>
+  monthlyAttendance: (params: Record<string, any>) =>
     api.get("/api/reports/attendance/monthly", { params }),
   detailedAttendanceLogs: (params: Record<string, any>) =>
     api.get("/api/reports/attendance/detailed-logs", { params }),
-  payroll: (params: Record<string, string>) =>
+  payroll: (params: Record<string, any>) =>
     api.get("/api/reports/payroll", { params }),
-  exportDailyAttendance: (params: Record<string, string>, format: "pdf" | "excel") =>
+  exportDailyAttendance: (params: Record<string, any>, format: "pdf" | "excel") =>
     api.get("/api/reports/attendance/daily", { params: { ...params, format }, responseType: "blob" }),
-  exportMonthlyAttendance: (params: Record<string, string>, format: "pdf" | "excel") =>
+  exportMonthlyAttendance: (params: Record<string, any>, format: "pdf" | "excel") =>
     api.get("/api/reports/attendance/monthly", { params: { ...params, format }, responseType: "blob" }),
   exportDetailedAttendanceLogs: (params: Record<string, any>, format: "pdf" | "excel") =>
     api.get("/api/reports/attendance/detailed-logs", { params: { ...params, format }, responseType: "blob" }),
-  exportPayroll: (params: Record<string, string>, format: "pdf" | "excel") =>
+  exportPayroll: (params: Record<string, any>, format: "pdf" | "excel") =>
     api.get("/api/reports/payroll", { params: { ...params, format }, responseType: "blob" }),
 };
 

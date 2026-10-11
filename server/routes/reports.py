@@ -30,11 +30,14 @@ router = APIRouter(prefix="/reports", tags=["Reports"], dependencies=[Depends(re
 async def get_daily_attendance_report(
     report_date: Optional[date] = Query(None, alias="date"),
     department: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    status: Optional[str] = None,
     export_format: str = Query("json", alias="format", pattern="^(json|pdf|excel)$"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns a daily attendance report.
+    Supports filtering by department, individual employee, and attendance status.
     Supports JSON output or PDF/Excel binary downloads.
     """
     if not report_date:
@@ -46,6 +49,8 @@ async def get_daily_attendance_report(
     
     if department:
         stmt = stmt.join(Employee).where(Employee.department == department)
+    if employee_id:
+        stmt = stmt.where(Attendance.employee_id == employee_id)
         
     res = await db.execute(stmt)
     records = res.scalars().all()
@@ -66,10 +71,11 @@ async def get_daily_attendance_report(
         })
         
     # Handle missing active employees for that day as absent
-    # Fetch all active employees
     emp_stmt = select(Employee).where(Employee.is_active == True)
     if department:
         emp_stmt = emp_stmt.where(Employee.department == department)
+    if employee_id:
+        emp_stmt = emp_stmt.where(Employee.employee_id == employee_id)
     emp_res = await db.execute(emp_stmt)
     active_employees = emp_res.scalars().all()
     
@@ -87,26 +93,50 @@ async def get_daily_attendance_report(
                 "status": "absent",
                 "source": "system"
             })
+
+    # Optional status filter
+    if status:
+        norm_status = status.lower()
+        if norm_status in ("halfday", "half_day"):
+            mapped_records = [r for r in mapped_records if str(r["status"]).lower() in ("half_day", "halfday")]
+        else:
+            mapped_records = [r for r in mapped_records if str(r["status"]).lower() == norm_status]
             
     # Sort by employee ID
     mapped_records.sort(key=lambda x: x["employee_id"])
+
+    # Determine individualized title & filename if single employee
+    emp_obj = None
+    if employee_id:
+        emp_obj = await db.get(Employee, employee_id)
+
+    if emp_obj:
+        emp_code = emp_obj.employee_code or f"EMP{emp_obj.employee_id:03d}"
+        clean_name = emp_obj.name.replace(" ", "_")
+        title = f"DAILY ATTENDANCE REPORT - {emp_obj.name} ({emp_code})"
+        subtitle = f"Employee: {emp_obj.name} | ID: {emp_code} | Department: {emp_obj.department or 'N/A'} | Date: {report_date.strftime('%A, %d %B %Y')}"
+        filename_prefix = f"Daily_Attendance_{emp_code}_{clean_name}"
+    else:
+        title = "DAILY ATTENDANCE REPORT"
+        subtitle = f"All Employees | Department: {department or 'All'} | Date: {report_date.strftime('%A, %d %B %Y')}"
+        filename_prefix = "Daily_Attendance"
     
     if export_format == "excel":
-        excel_bytes = generate_daily_attendance_excel(report_date, mapped_records)
-        filename = f"Daily_Attendance_{report_date.strftime('%Y-%m-%d')}.xlsx"
+        excel_bytes = generate_daily_attendance_excel(report_date, mapped_records, title=title, subtitle=subtitle)
+        filename = f"{filename_prefix}_{report_date.strftime('%Y-%m-%d')}.xlsx"
         return Response(
             content=excel_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
         
     elif export_format == "pdf":
-        pdf_bytes = generate_daily_attendance_pdf(report_date, mapped_records)
-        filename = f"Daily_Attendance_{report_date.strftime('%Y-%m-%d')}.pdf"
+        pdf_bytes = generate_daily_attendance_pdf(report_date, mapped_records, title=title, subtitle=subtitle)
+        filename = f"{filename_prefix}_{report_date.strftime('%Y-%m-%d')}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
         
     return mapped_records
@@ -120,12 +150,14 @@ async def get_detailed_attendance_logs_report(
     year: Optional[int] = Query(None, ge=2000),
     department: Optional[str] = None,
     employee_id: Optional[int] = None,
+    status: Optional[str] = None,
     export_format: str = Query("json", alias="format", pattern="^(json|pdf|excel)$"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns time-by-time attendance records for each punch / day across a month or date range.
     Shows exact date, check-in time, check-out time, hours, late minutes, status for each employee.
+    Supports filtering by department, single employee, status, and custom date range.
     Supports JSON, Excel, and PDF downloads.
     """
     if month and year and not start_date:
@@ -148,6 +180,22 @@ async def get_detailed_attendance_logs_report(
         stmt = stmt.join(Attendance.employee).where(Employee.department == department)
     if employee_id:
         stmt = stmt.where(Attendance.employee_id == employee_id)
+    if status:
+        norm_status = status.lower()
+        if norm_status in ("halfday", "half_day"):
+            stmt = stmt.where(Attendance.status.in_([AttendanceStatus.HALF_DAY, "half_day", "halfday"]))
+        elif norm_status == "present":
+            stmt = stmt.where(Attendance.status.in_([AttendanceStatus.PRESENT, "present"]))
+        elif norm_status == "late":
+            stmt = stmt.where(Attendance.status.in_([AttendanceStatus.LATE, "late"]))
+        elif norm_status == "absent":
+            stmt = stmt.where(Attendance.status.in_([AttendanceStatus.ABSENT, "absent"]))
+        elif norm_status == "leave":
+            stmt = stmt.where(Attendance.status.in_([AttendanceStatus.LEAVE, "leave"]))
+        elif norm_status == "wfh":
+            stmt = stmt.where(Attendance.status.in_([AttendanceStatus.WFH, "wfh"]))
+        else:
+            stmt = stmt.where(Attendance.status == norm_status)
 
     stmt = stmt.order_by(Attendance.date.desc(), Attendance.check_in.desc(), Attendance.employee_id.asc())
 
@@ -178,23 +226,43 @@ async def get_detailed_attendance_logs_report(
             "source": r.source
         })
 
-    if export_format == "excel":
-        period_str = f"{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}"
+    # Build individualized or all-employee titles & filenames
+    emp_obj = None
+    if employee_id:
+        emp_obj = await db.get(Employee, employee_id)
+
+    period_str = f"{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}"
+
+    if emp_obj:
+        emp_code = emp_obj.employee_code or f"EMP{emp_obj.employee_id:03d}"
+        clean_name = emp_obj.name.replace(" ", "_")
+        title = f"INDIVIDUAL ATTENDANCE REPORT - {emp_obj.name} ({emp_code})"
+        subtitle = (
+            f"Employee: {emp_obj.name} | ID: {emp_code} | Department: {emp_obj.department or 'N/A'} | "
+            f"Period: {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}"
+        )
+        filename_prefix = f"Attendance_Report_{emp_code}_{clean_name}"
+    else:
         title = f"DETAILED ATTENDANCE LOGS ({start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')})"
-        excel_bytes = generate_historical_attendance_excel(start_date, end_date, mapped_records, title=title)
+        subtitle = (
+            f"All Employees | Department: {department or 'All'} | "
+            f"Period: {start_date.strftime('%d %b %Y')} to {end_date.strftime('%d %b %Y')}"
+        )
+        filename_prefix = f"Detailed_Attendance"
+
+    if export_format == "excel":
+        excel_bytes = generate_historical_attendance_excel(start_date, end_date, mapped_records, title=title, subtitle=subtitle)
         return Response(
             content=excel_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=Detailed_Attendance_{period_str}.xlsx"}
+            headers={"Content-Disposition": f'attachment; filename="{filename_prefix}_{period_str}.xlsx"'}
         )
     elif export_format == "pdf":
-        period_str = f"{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}"
-        title = f"DETAILED ATTENDANCE LOGS ({start_date.strftime('%d %b %Y')} - {end_date.strftime('%d %b %Y')})"
-        pdf_bytes = generate_historical_attendance_pdf(start_date, end_date, mapped_records, title=title)
+        pdf_bytes = generate_historical_attendance_pdf(start_date, end_date, mapped_records, title=title, subtitle=subtitle)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=Detailed_Attendance_{period_str}.pdf"}
+            headers={"Content-Disposition": f'attachment; filename="{filename_prefix}_{period_str}.pdf"'}
         )
 
     return mapped_records
@@ -205,15 +273,18 @@ async def get_monthly_attendance_report(
     month: int = Query(..., ge=1, le=12),
     year: int = Query(...),
     employee_id: Optional[int] = None,
+    department: Optional[str] = None,
     export_format: str = Query("json", alias="format", pattern="^(json|pdf|excel)$"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns a monthly attendance summary.
+    Supports filtering by department and individual employee.
     Supports JSON output or PDF/Excel binary downloads.
     """
-    # Fetch target employee(s)
     emp_stmt = select(Employee).where(Employee.is_active == True)
+    if department:
+        emp_stmt = emp_stmt.where(Employee.department == department)
     if employee_id:
         emp_stmt = emp_stmt.where(Employee.employee_id == employee_id)
         
@@ -224,7 +295,6 @@ async def get_monthly_attendance_report(
     summaries = []
     
     for emp in employees:
-        # Fetch attendance logs
         att_stmt = select(Attendance).where(
             and_(
                 Attendance.employee_id == emp.employee_id,
@@ -253,23 +323,37 @@ async def get_monthly_attendance_report(
             "leave_days": leave_days_count,
             "overtime_hours": ot_hours
         })
+
+    emp_obj = None
+    if employee_id:
+        emp_obj = await db.get(Employee, employee_id)
+
+    month_name = calendar.month_name[month]
+    if emp_obj:
+        emp_code = emp_obj.employee_code or f"EMP{emp_obj.employee_id:03d}"
+        clean_name = emp_obj.name.replace(" ", "_")
+        title = f"MONTHLY ATTENDANCE SUMMARY - {emp_obj.name} ({emp_code})"
+        subtitle = f"Employee: {emp_obj.name} | ID: {emp_code} | Department: {emp_obj.department or 'N/A'} | Period: {month_name} {year}"
+        filename = f"Monthly_Attendance_{emp_code}_{clean_name}_{year}_{month}"
+    else:
+        title = "MONTHLY ATTENDANCE SUMMARY"
+        subtitle = f"All Employees | Department: {department or 'All'} | Period: {month_name} {year}"
+        filename = f"Monthly_Attendance_{year}_{month}"
         
     if export_format == "excel":
-        excel_bytes = generate_monthly_attendance_excel(year, month, summaries)
-        filename = f"Monthly_Attendance_{year}_{month}.xlsx"
+        excel_bytes = generate_monthly_attendance_excel(year, month, summaries, title=title, subtitle=subtitle)
         return Response(
             content=excel_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}.xlsx"'}
         )
         
     elif export_format == "pdf":
-        pdf_bytes = generate_monthly_attendance_pdf(year, month, summaries)
-        filename = f"Monthly_Attendance_{year}_{month}.pdf"
+        pdf_bytes = generate_monthly_attendance_pdf(year, month, summaries, title=title, subtitle=subtitle)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}.pdf"'}
         )
         
     return summaries
@@ -279,11 +363,14 @@ async def get_monthly_attendance_report(
 async def get_payroll_report(
     month: int = Query(..., ge=1, le=12),
     year: int = Query(...),
+    employee_id: Optional[int] = None,
+    department: Optional[str] = None,
     export_format: str = Query("json", alias="format", pattern="^(json|pdf|excel)$"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns a monthly payroll report summary.
+    Supports filtering by department and single employee.
     Supports JSON output or PDF/Excel binary downloads.
     """
     stmt = select(Payroll).options(joinedload(Payroll.employee)).where(
@@ -292,6 +379,11 @@ async def get_payroll_report(
             Payroll.year == year
         )
     )
+    if department:
+        stmt = stmt.join(Payroll.employee).where(Employee.department == department)
+    if employee_id:
+        stmt = stmt.where(Payroll.employee_id == employee_id)
+
     res = await db.execute(stmt)
     payrolls = res.scalars().all()
     
@@ -310,23 +402,32 @@ async def get_payroll_report(
             "final_salary": p.final_salary,
             "is_paid": p.is_paid
         })
+
+    emp_obj = None
+    if employee_id:
+        emp_obj = await db.get(Employee, employee_id)
+
+    if emp_obj:
+        emp_code = emp_obj.employee_code or f"EMP{emp_obj.employee_id:03d}"
+        clean_name = emp_obj.name.replace(" ", "_")
+        filename = f"Payroll_Report_{emp_code}_{clean_name}_{year}_{month}"
+    else:
+        filename = f"Payroll_Report_{year}_{month}"
         
     if export_format == "excel":
         excel_bytes = generate_payroll_report_excel(year, month, mapped_payrolls)
-        filename = f"Payroll_Report_{year}_{month}.xlsx"
         return Response(
             content=excel_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}.xlsx"'}
         )
         
     elif export_format == "pdf":
         pdf_bytes = generate_payroll_report_pdf(year, month, mapped_payrolls)
-        filename = f"Payroll_Report_{year}_{month}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f'attachment; filename="{filename}.pdf"'}
         )
         
     return mapped_payrolls
