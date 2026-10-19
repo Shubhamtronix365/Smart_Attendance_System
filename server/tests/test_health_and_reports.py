@@ -25,6 +25,31 @@ async def test_health_check_head():
         assert res.status_code == 200
 
 @pytest.mark.asyncio
+async def test_ping_endpoint_get():
+    """Verify /ping returns 200 with minimal 2-byte 'OK' payload for strict cron monitors."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/ping")
+        assert res.status_code == 200
+        assert res.text == "OK"
+        assert len(res.content) == 2
+
+@pytest.mark.asyncio
+async def test_ping_endpoint_head():
+    """Verify HEAD /ping returns 200 with empty body."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.head("/ping")
+        assert res.status_code == 200
+        assert len(res.content) == 0
+
+@pytest.mark.asyncio
+async def test_health_text_format():
+    """Verify /health?format=text returns minimal 'OK'."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/health?format=text")
+        assert res.status_code == 200
+        assert res.text == "OK"
+
+@pytest.mark.asyncio
 async def test_api_health_check_get():
     """Verify /api/health returns 200 and matches health contract."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

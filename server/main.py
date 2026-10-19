@@ -4,7 +4,7 @@ Main application entry point.
 """
 import logging
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -152,22 +152,42 @@ app.include_router(settings_router, prefix="/api")
 app.include_router(database_router, prefix="/api")
 app.include_router(websocket_router)
 
-@app.get("/")
-async def root():
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root(request: Request):
+    if request.method == "HEAD":
+        return Response(status_code=status.HTTP_200_OK)
     return {
         "message": "Smart Attendance System API is running",
         "docs_url": "/docs",
         "redoc_url": "/redoc"
     }
 
+@app.api_route("/ping", methods=["GET", "HEAD"])
+@app.api_route("/api/ping", methods=["GET", "HEAD"])
+async def ping(request: Request):
+    """
+    Ultra-lightweight ping endpoint returning a 2-byte plain text response ('OK').
+    Ideal for keep-alive services like cron-job.org, UptimeRobot, or ping monitors
+    that enforce strict response size limits.
+    """
+    if request.method == "HEAD":
+        return Response(status_code=status.HTTP_200_OK)
+    return PlainTextResponse("OK", status_code=status.HTTP_200_OK)
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 @app.api_route("/api/health", methods=["GET", "HEAD"])
-async def health_check():
+async def health_check(request: Request, format: str = None):
     """
     Health check & keep-alive wake-up endpoint.
     Designed for periodic cron jobs (e.g. cron-job.org, UptimeRobot, Render pinger)
     to keep the backend server and PostgreSQL connection pool alive.
     """
+    if request.method == "HEAD":
+        return Response(status_code=status.HTTP_200_OK)
+
+    if format in ("text", "plain", "raw"):
+        return PlainTextResponse("OK", status_code=status.HTTP_200_OK)
+
     from datetime import datetime, timezone
     from sqlalchemy import text
     from server.database.connection import async_session_maker
@@ -193,4 +213,5 @@ async def health_check():
         "uptime_message": "Smart Attendance System is awake and operational",
         "cron_wakeup": True
     }
+
 

@@ -239,8 +239,10 @@ Smart_Attendance_System/
 - `PUT /api/attendance/{id}` — Override existing check-in/out entry (Admin only).
 - `GET /api/attendance/stats/today` — Metrics summary counts, today's overtime hours, today's late hours & minutes, and monthly cumulative overtime/late stats for dashboard command centers (Admin only).
 
-### Health & Keep-Alive Wake-Up (Cron Jobs)
-- `GET, HEAD /health` — Keep-alive wake-up ping for cron jobs (e.g. cron-job.org, UptimeRobot, Render pinger). Executes a database ping (`SELECT 1`), keeps PostgreSQL connection pool active, and returns server uptime status and timestamp.
+### Health & Keep-Alive Wake-Up (Cron Jobs & Uptime Monitors)
+- `GET, HEAD /ping` — Ultra-lightweight keep-alive ping returning a 2-byte plain text response (`OK`). Designed specifically for **cron-job.org**, UptimeRobot, or pingers with strict response size limits to prevent "output too large" errors.
+- `GET, HEAD /api/ping` — Canonical API ping endpoint returning the same 2-byte `OK` response.
+- `GET, HEAD /health` — Keep-alive wake-up ping for cron jobs (e.g. cron-job.org, UptimeRobot, Render pinger). Executes a database ping (`SELECT 1`), keeps PostgreSQL connection pool active, and returns server uptime status and timestamp. Supports `?format=text` for a lightweight `OK` response and `HEAD` for 0-byte header responses.
 - `GET, HEAD /api/health` — Canonical API health check endpoint matching the same wake-up contract.
 
 ### Biometric & RFID ESP32 Tronix Device (WebSocket + REST)
