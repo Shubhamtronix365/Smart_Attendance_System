@@ -24,7 +24,7 @@ const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
 // Server WebSocket Connection Settings:
 // [Production on Render Cloud] (Connects from ANY Wi-Fi, Office, or Mobile Hotspot!)
-const char* WS_HOST       = "smart-attendance-backend-tzp4.onrender.com"; // Render backend domain (without https://)
+const char* WS_HOST       = "smart-attendance-system-x6wv.onrender.com"; // Render backend domain (without https://)
 const int   WS_PORT       = 443;                                          // Secure SSL WSS port
 const char* WS_PATH       = "/ws/device?device_id=ESP32_TRONIX_01&api_key=esp32_device_secret_key";
 const bool  USE_SSL       = true;                                         // true enables wss:// encryption

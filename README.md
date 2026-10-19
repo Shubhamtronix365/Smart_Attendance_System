@@ -387,8 +387,8 @@ This application is built for high-performance production hosting across:
      - **Build command:** `npm run build`
      - **Build output directory:** `out`
 3. Under **Environment variables**, add:
-   - `NEXT_PUBLIC_API_URL`: `https://smart-attendance-backend-tzp4.onrender.com`
-   - `NEXT_PUBLIC_WS_URL`: `wss://smart-attendance-backend-tzp4.onrender.com/ws/client`
+   - `NEXT_PUBLIC_API_URL`: `https://smart-attendance-system-x6wv.onrender.com`
+   - `NEXT_PUBLIC_WS_URL`: `wss://smart-attendance-system-x6wv.onrender.com/ws/client`
 4. Deploy! Your web application will be live across Cloudflare's global edge network.
 
 ### 4. ESP32 Tronix Firmware Configuration

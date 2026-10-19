@@ -31,6 +31,9 @@ export default function SettingsPage() {
   const [adminCurrentPassword, setAdminCurrentPassword] = useState("");
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [isChangingCredentials, setIsChangingCredentials] = useState(false);
+  const backendHost = (process.env.NEXT_PUBLIC_API_URL || "https://smart-attendance-system-x6wv.onrender.com")
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
 
   // Load active configurations from API
   useEffect(() => {
@@ -383,7 +386,7 @@ export default function SettingsPage() {
                               type="button"
                               onClick={() => {
                                 const snippet = `// Paste into firmware/attendace_device_tronix_ws.ino (lines 19-22):
-const char* WS_HOST = "smart-attendance-backend-tzp4.onrender.com";
+const char* WS_HOST = "${backendHost}";
 const int   WS_PORT = 443;
 const char* WS_PATH = "/ws/device?device_id=${deviceId || "ESP32_TRONIX_01"}&api_key=${deviceApiKey || "esp32_device_secret_key"}";
 const bool  USE_SSL = true;`;
@@ -405,10 +408,7 @@ const bool  USE_SSL = true;`;
                             </button>
                           </div>
                           <pre className="text-xs font-mono text-white/80 p-3 rounded-xl bg-black/50 overflow-x-auto select-all leading-relaxed">
-{`const char* WS_HOST = "smart-attendance-backend-tzp4.onrender.com";
-const int   WS_PORT = 443;
-const char* WS_PATH = "/ws/device?device_id=${deviceId || "ESP32_TRONIX_01"}&api_key=${deviceApiKey || "esp32_device_secret_key"}";
-const bool  USE_SSL = true;`}
+                            {`const char* WS_HOST = "${backendHost}";\nconst int   WS_PORT = 443;\nconst char* WS_PATH = "/ws/device?device_id=${deviceId || "ESP32_TRONIX_01"}&api_key=${deviceApiKey || "esp32_device_secret_key"}";\nconst bool  USE_SSL = true;`}
                           </pre>
                           <p className="text-white/30 text-[11px] mt-2">
                             💡 Copy and paste these lines into <span className="text-white/60 font-mono">attendace_device_tronix_ws.ino</span> (lines 19–22) in Arduino IDE.
@@ -419,11 +419,15 @@ const bool  USE_SSL = true;`}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
                             <span className="text-white/50 text-[10px] font-bold uppercase tracking-wider block mb-1">Cloud WebSocket Endpoint (WSS)</span>
-                            <span className="text-cyan-400 text-xs font-mono select-all block">wss://smart-attendance-backend-tzp4.onrender.com/ws/device</span>
+                            <span className="text-cyan-400 text-xs font-mono select-all block">
+                              wss://{backendHost}/ws/device
+                            </span>
                           </div>
                           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
                             <span className="text-white/50 text-[10px] font-bold uppercase tracking-wider block mb-1">REST Check-in Fallback Endpoint</span>
-                            <span className="text-violet-400 text-xs font-mono select-all block">https://smart-attendance-backend-tzp4.onrender.com/api/device/checkin</span>
+                            <span className="text-violet-400 text-xs font-mono select-all block">
+                              https://{backendHost}/api/device/checkin
+                            </span>
                           </div>
                         </div>
                       </div>
