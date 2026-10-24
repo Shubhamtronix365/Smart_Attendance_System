@@ -202,6 +202,8 @@ async def list_attendance(
             late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
             status=r.status,
             source=r.source,
+            checkout_count=getattr(r, "checkout_count", 0) or 0,
+            punches=getattr(r, "punches", "[]") or "[]",
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
             employee_dept=r.employee.department if r.employee else "N/A"
@@ -620,6 +622,18 @@ async def manual_entry(
     if entry.status == AttendanceStatus.PRESENT and late_minutes > 0:
         status_to_save = AttendanceStatus.LATE
 
+    manual_punches = []
+    checkout_cnt = 0
+    if entry.check_in:
+        manual_punches.append({
+            "session": 1,
+            "in": entry.check_in.strftime("%Y-%m-%d %H:%M:%S"),
+            "out": entry.check_out.strftime("%Y-%m-%d %H:%M:%S") if entry.check_out else None,
+            "hours": float(working_hours) if working_hours else 0.0
+        })
+        if entry.check_out:
+            checkout_cnt = 1
+
     db_attendance = Attendance(
         employee_id=entry.employee_id,
         date=entry.date,
@@ -630,6 +644,8 @@ async def manual_entry(
         late_minutes=late_minutes,
         status=status_to_save,
         source="manual",
+        punches=json.dumps(manual_punches),
+        checkout_count=checkout_cnt,
         created_at=datetime.utcnow()
     )
     

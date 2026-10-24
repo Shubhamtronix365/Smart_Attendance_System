@@ -140,10 +140,14 @@ export default function AdminDashboard() {
         const rawTime = timeStr || r.created_at;
         const otText = Number(r.overtime_hours) > 0 ? ` · +${r.overtime_hours}h OT` : "";
         const lateText = (r.late_minutes && Number(r.late_minutes) > 0) ? ` (${r.late_minutes}m late)` : "";
+        const chkCount = r.checkout_count || 0;
+        const actionLabel = hasCheckOut
+          ? `Clocked Out ${chkCount > 0 ? `#${chkCount}` : ""} (${r.working_hours || 0}h${otText})`
+          : (chkCount > 0 ? `Clocked In #${chkCount + 1}` : `Clocked In${lateText}`);
         return {
           id: r.attendance_id,
           name: r.employee_name || "Unknown",
-          action: hasCheckOut ? `Clocked Out (${r.working_hours || 0}h${otText})` : `Clocked In${lateText}`,
+          action: actionLabel,
           time: formatTime(rawTime, true),
           status: mappedStatus,
           avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),

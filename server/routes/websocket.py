@@ -9,7 +9,7 @@ from sqlalchemy import select, and_
 from server.config import settings
 from server.database.connection import async_session_maker
 from server.models import Employee, Attendance, AttendanceStatus
-from server.services.attendance_service import determine_status, calculate_hours
+from server.services.attendance_service import determine_status, calculate_hours, record_attendance_punch
 from server.routes.device import enrollment_session, get_next_free_fingerprint_id
 from server.utils.time_utils import get_current_local_time, get_current_local_date
 
@@ -158,77 +158,7 @@ async def process_attendance_punch(
         else:
             punch_dt = now
 
-        today = punch_dt.date()
-
-        att_stmt = select(Attendance).where(
-            and_(
-                Attendance.employee_id == employee.employee_id,
-                Attendance.date == today
-            )
-        )
-        att_res = await db.execute(att_stmt)
-        attendance = att_res.scalar_one_or_none()
-
-        if not attendance:
-            # Check-In
-            check_in_time = punch_dt.time()
-            attendance_status = determine_status(check_in_time)
-
-            attendance = Attendance(
-                employee_id=employee.employee_id,
-                date=today,
-                check_in=punch_dt,
-                check_out=None,
-                status=attendance_status,
-                source=scan_source,
-                created_at=now
-            )
-            db.add(attendance)
-            await db.commit()
-            status_msg = "check_in"
-            msg = f"Welcome {employee.name}!"
-        else:
-            if attendance.check_out is not None:
-                return {
-                    "success": True,
-                    "status": "already_done",
-                    "message": f"Already checked out today, {employee.name}.",
-                    "employee_name": employee.name,
-                    "method": scan_source,
-                    "time": punch_dt.strftime("%H:%M:%S")
-                }
-
-            # 1-Hour Rule: Check time elapsed since check_in
-            time_diff_sec = (punch_dt - attendance.check_in).total_seconds()
-            if time_diff_sec < 3600:
-                return {
-                    "success": True,
-                    "status": "already_marked",
-                    "message": f"In already marked! Try after 1 hr.",
-                    "employee_name": employee.name,
-                    "method": scan_source,
-                    "time": punch_dt.strftime("%H:%M:%S")
-                }
-
-            # Check-Out (After 1 hour)
-            attendance.check_out = punch_dt
-            working_hours, overtime_hours = calculate_hours(attendance.check_in, punch_dt)
-            attendance.working_hours = working_hours
-            attendance.overtime_hours = overtime_hours
-            if attendance.status == AttendanceStatus.ABSENT:
-                attendance.status = AttendanceStatus.PRESENT
-            await db.commit()
-            status_msg = "check_out"
-            msg = f"Goodbye {employee.name}! ({working_hours:.1f}h)"
-
-        return {
-            "success": True,
-            "status": status_msg,
-            "message": msg,
-            "employee_name": employee.name,
-            "method": scan_source,
-            "time": punch_dt.strftime("%H:%M:%S")
-        }
+        return await record_attendance_punch(employee, punch_dt, scan_source, db)
 
 # ─── Endpoint: Web Client WebSocket (/ws/client) ─────────────────────────────
 @router.websocket("/ws/client")
@@ -392,7 +322,11 @@ async def websocket_device_endpoint(
                     "message": result["message"],
                     "employee_name": result.get("employee_name", "Unknown"),
                     "punch_type": result.get("status", "PUNCH").upper(),
-                    "time": result.get("time", "")
+                    "time": result.get("time", ""),
+                    "checkout_count": result.get("checkout_count", 0),
+                    "session_number": result.get("session_number", 1),
+                    "working_hours": str(result.get("working_hours", "0.00")),
+                    "overtime_hours": str(result.get("overtime_hours", "0.00"))
                 }
                 await websocket.send_json(ack_payload)
 
@@ -408,7 +342,10 @@ async def websocket_device_endpoint(
                         "employee_name": result["employee_name"],
                         "punch_type": result["status"],
                         "method": result["method"],
-                        "time": result["time"]
+                        "time": result["time"],
+                        "checkout_count": result.get("checkout_count", 0),
+                        "working_hours": str(result.get("working_hours", "0.00")),
+                        "overtime_hours": str(result.get("overtime_hours", "0.00"))
                     })
                     await ws_manager.broadcast_to_clients({
                         "event": "attendance_updated"

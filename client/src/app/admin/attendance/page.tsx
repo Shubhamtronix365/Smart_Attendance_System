@@ -33,6 +33,8 @@ interface AttendanceRecord {
   status: AttendanceStatus;
   otHours: string;
   lateMinutes?: number;
+  checkoutCount?: number;
+  punches?: Array<{ session: number; in: string; out?: string; hours?: number }>;
 }
 
 
@@ -398,6 +400,13 @@ export default function AttendancePage() {
           return "";
         };
 
+        let parsedPunches = [];
+        try {
+          parsedPunches = r.punches ? (typeof r.punches === "string" ? JSON.parse(r.punches) : r.punches) : [];
+        } catch {
+          parsedPunches = [];
+        }
+
         return {
           id: String(r.attendance_id),
           date: dateStr,
@@ -413,6 +422,8 @@ export default function AttendancePage() {
           status: mappedStatus as AttendanceStatus,
           otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
           lateMinutes: r.late_minutes ? Number(r.late_minutes) : 0,
+          checkoutCount: r.checkout_count || (parsedPunches.filter((s: any) => s.out).length) || 0,
+          punches: parsedPunches,
         };
       });
       setRecords(mapped);
@@ -761,8 +772,26 @@ export default function AttendancePage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 text-white/70 text-sm font-mono">{r.checkOut}</td>
-                      <td className="px-4 py-3.5 text-white/60 text-sm">{r.workingHours}</td>
+                      <td className="px-4 py-3.5 text-white/70 text-sm font-mono">
+                        <div>
+                          <span>{r.checkOut}</span>
+                          {r.checkoutCount && r.checkoutCount > 0 ? (
+                            <span className="block text-[10px] text-cyan-400 font-sans font-medium mt-0.5">
+                              {r.checkoutCount} checkout{r.checkoutCount > 1 ? "s" : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-white/60 text-sm">
+                        <div>
+                          <span className="font-semibold text-white/90">{r.workingHours}</span>
+                          {r.punches && r.punches.length > 1 && (
+                            <span className="block text-[10px] text-purple-300 font-sans mt-0.5" title={`${r.punches.length} sessions recorded`}>
+                              {r.punches.length} sessions
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5"><StatusBadge status={r.status} /></td>
                       <td className="px-4 py-3.5">
                         {r.otHours !== "—" ? (

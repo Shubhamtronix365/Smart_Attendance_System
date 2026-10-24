@@ -30,6 +30,8 @@ class Attendance(Base):
     )
 
     source = Column(String(20), default="biometric")  # "biometric" | "manual"
+    punches = Column(String, default="[]", nullable=True)  # JSON array of session intervals [{"in": "...", "out": "...", "hours": ...}]
+    checkout_count = Column(Integer, default=0, nullable=True)  # Total completed checkouts in this workday
     created_at = Column(DateTime, default=datetime.utcnow)
 
     employee = relationship("Employee", back_populates="attendances")

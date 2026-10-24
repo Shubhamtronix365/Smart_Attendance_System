@@ -50,3 +50,37 @@ def test_attendance_stats_schema():
     assert dumped["late_minutes"] == 75
     assert dumped["late_hours"] == Decimal("1.25")
     assert dumped["month_overtime_hours"] == Decimal("22.00")
+
+def test_calculate_multi_session_totals_six_punches():
+    """Verify that multiple check-in/check-out sessions in a day sum accurately."""
+    from server.services.attendance_service import calculate_multi_session_totals
+    
+    # Simulate 3 complete sessions (6 total punches):
+    # Session 1: 09:00 to 12:00 (3.00 hrs)
+    # Session 2: 13:00 to 17:00 (4.00 hrs)
+    # Session 3: 18:00 to 22:00 (4.00 hrs)
+    sessions = [
+        {"session": 1, "in": "2026-10-23T09:00:00", "out": "2026-10-23T12:00:00", "hours": 3.0},
+        {"session": 2, "in": "2026-10-23T13:00:00", "out": "2026-10-23T17:00:00", "hours": 4.0},
+        {"session": 3, "in": "2026-10-23T18:00:00", "out": "2026-10-23T22:00:00", "hours": 4.0},
+    ]
+    working, ot, checkouts = calculate_multi_session_totals(sessions, standard_work_hours=8)
+    assert checkouts == 3
+    assert working == Decimal("11.00")
+    # standard_work_hours=8 with net standard 7 -> 11 - 7 = 4.00 hours overtime
+    assert ot == Decimal("4.00")
+
+def test_calculate_multi_session_totals_cross_midnight():
+    """Verify cross-midnight single long shift (e.g. 9 AM to 3 AM next day = 18 hrs)."""
+    from server.services.attendance_service import calculate_multi_session_totals
+    
+    sessions = [
+        {"session": 1, "in": "2026-10-23T09:00:00", "out": "2026-10-24T03:00:00", "hours": 18.0}
+    ]
+    working, ot, checkouts = calculate_multi_session_totals(sessions, standard_work_hours=8)
+    assert checkouts == 1
+    # 1 continuous session >= 5h -> 18.0 - 1.0 lunch = 17.00 hrs
+    assert working == Decimal("17.00")
+    # 17.0 - 7.0 standard = 10.00 hrs overtime
+    assert ot == Decimal("10.00")
+

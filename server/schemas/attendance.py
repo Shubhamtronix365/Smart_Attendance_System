@@ -14,6 +14,8 @@ class AttendanceBase(BaseModel):
     late_minutes: Optional[int] = 0
     status: AttendanceStatus = AttendanceStatus.ABSENT
     source: str = "biometric"  # "biometric" | "manual"
+    punches: Optional[str] = "[]"
+    checkout_count: Optional[int] = 0
 
 class AttendanceCreate(AttendanceBase):
     pass

@@ -9,7 +9,7 @@ from server.config import settings
 from server.database.connection import get_db
 from server.dependencies.auth import get_password_hash
 from server.models import Employee, Attendance, AttendanceStatus
-from server.services.attendance_service import determine_status, calculate_hours, calculate_late_minutes
+from server.services.attendance_service import determine_status, calculate_hours, calculate_late_minutes, record_attendance_punch
 
 router = APIRouter(prefix="/device", tags=["Device (ESP32 Tronix)"])
 
@@ -154,61 +154,18 @@ async def device_checkin(
 
     from server.utils.time_utils import get_current_local_time
     now = get_current_local_time()
-    today = now.date()
-
-    # 2. Check if attendance record exists for today
-    att_stmt = select(Attendance).where(
-        and_(
-            Attendance.employee_id == employee.employee_id,
-            Attendance.date == today
-        )
-    )
-    att_res = await db.execute(att_stmt)
-    attendance = att_res.scalar_one_or_none()
-
-    # 3. Create or update attendance
-    if not attendance:
-        check_in_time = now.time()
-        attendance_status = determine_status(check_in_time)
-        late_mins = calculate_late_minutes(check_in_time)
-
-        attendance = Attendance(
-            employee_id=employee.employee_id,
-            date=today,
-            check_in=now,
-            check_out=None,
-            late_minutes=late_mins,
-            status=attendance_status,
-            source=scan_source,
-            created_at=now
-        )
-        db.add(attendance)
-        await db.commit()
-
-        status_msg = "check_in"
-        late_str = f" (Late by {late_mins}m)" if late_mins > 0 else ""
-        msg = f"Check-in successful! Welcome {employee.name}.{late_str}"
+    if payload.timestamp:
+        try:
+            if "T" in payload.timestamp:
+                punch_dt = datetime.fromisoformat(payload.timestamp)
+            else:
+                punch_dt = datetime.strptime(payload.timestamp, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            punch_dt = now
     else:
-        if attendance.check_out is not None:
-            return {
-                "employee_name": employee.name,
-                "status": "already_done",
-                "message": f"Already checked out today, {employee.name}.",
-                "method": scan_source
-            }
+        punch_dt = now
 
-        attendance.check_out = now
-        working_hours, overtime_hours = calculate_hours(attendance.check_in, now)
-        attendance.working_hours = working_hours
-        attendance.overtime_hours = overtime_hours
-
-        if attendance.status == AttendanceStatus.ABSENT:
-            attendance.status = AttendanceStatus.PRESENT
-
-        await db.commit()
-
-        status_msg = "check_out"
-        msg = f"Check-out successful! Goodbye {employee.name}. Worked {working_hours:.2f} hrs."
+    result = await record_attendance_punch(employee, punch_dt, scan_source, db)
 
     try:
         from server.routes.websocket import ws_manager
@@ -216,9 +173,12 @@ async def device_checkin(
         asyncio.create_task(ws_manager.broadcast_to_clients({
             "event": "live_attendance",
             "employee_name": employee.name,
-            "punch_type": status_msg,
+            "punch_type": result["status"],
             "method": scan_source,
-            "time": now.strftime("%H:%M:%S")
+            "time": punch_dt.strftime("%H:%M:%S"),
+            "checkout_count": result.get("checkout_count", 0),
+            "working_hours": str(result.get("working_hours", "0.00")),
+            "overtime_hours": str(result.get("overtime_hours", "0.00"))
         }))
         asyncio.create_task(ws_manager.broadcast_to_clients({
             "event": "attendance_updated"
@@ -228,8 +188,8 @@ async def device_checkin(
 
     return {
         "employee_name": employee.name,
-        "status": status_msg,
-        "message": msg,
+        "status": result["status"],
+        "message": result["message"],
         "method": scan_source
     }
 

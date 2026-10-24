@@ -67,6 +67,7 @@ async def get_daily_attendance_report(
             "working_hours": r.working_hours,
             "overtime_hours": r.overtime_hours,
             "status": r.status,
+            "checkout_count": getattr(r, "checkout_count", 0) or 0,
             "source": r.source
         })
         

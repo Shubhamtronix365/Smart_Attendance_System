@@ -232,37 +232,31 @@ void clearLocalEmployees() {
 }
 
 // =====================================================
-//               1-HOUR ANTI-BOUNCE RULE
+//           15-SECOND ANTI-DOUBLE-SCAN GUARD
 // =====================================================
 // Returns:
-// 0: Blocked (< 3600s since last check-in) -> "Already Marked!"
-// 1: Check-In (first punch of the day)
-// 2: Check-Out (>= 3600s after check-in)
+// 0: Blocked (< 15s debounce) -> "Wait 15s"
+// 1: Valid punch (Session state managed by cloud backend)
 int checkAntiBounce(int fid, const String& rfid, uint32_t nowEpoch) {
   prefsDebounce.begin("punch_deb", false);
   String key = (fid > 0) ? ("df_" + String(fid)) : ("dr_" + rfid);
   key.replace(" ", "");
 
   uint32_t lastEpoch = prefsDebounce.getUInt(key.c_str(), 0);
-  int status = 1; // Default: Check-In
 
   if (lastEpoch > 0 && nowEpoch >= lastEpoch) {
     uint32_t diff = nowEpoch - lastEpoch;
-    if (diff < 3600) {
-      // Less than 1 hour -> Block duplicate punch!
+    if (diff < 15) {
+      // Less than 15 seconds -> Block accidental double tap!
       prefsDebounce.end();
       return 0;
-    } else if (diff < 54000) { // Within ~15 hours -> Mark as Check-Out
-      status = 2;
-    } else {
-      status = 1; // Fresh Day Check-In
     }
   }
 
   // Update last punch timestamp
   prefsDebounce.putUInt(key.c_str(), nowEpoch);
   prefsDebounce.end();
-  return status;
+  return 1;
 }
 
 // =====================================================
@@ -739,14 +733,23 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
         if (success) {
           if (strcmp(punchStatus, "check_out") == 0) {
-            updateLcd(empName, "Check-Out OK!");
+            int chkCount = doc["checkout_count"] | 1;
+            const char* totHrs = doc["working_hours"] | "0.0";
+            updateLcd(empName, "Out #" + String(chkCount) + " Tot:" + String(totHrs) + "h");
+            beepSuccess();
           } else if (strcmp(punchStatus, "already_done") == 0 || strcmp(punchStatus, "already_marked") == 0) {
-            updateLcd(empName, "Already Marked!");
+            updateLcd(empName, "Wait 15s...");
+            beepWarning();
           } else {
-            updateLcd(empName, "Check-In OK!");
+            int sessNum = doc["session_number"] | 1;
+            updateLcd(empName, "In #" + String(sessNum) + " OK");
+            beepSuccess();
           }
+          delay(1800);
         } else {
           updateLcd("Not Registered", "Access Denied");
+          beepError();
+          delay(1800);
         }
         showReady();
       }
@@ -780,30 +783,26 @@ void onAttendanceScanned(int fid, const String& rfidUid) {
     else empName = "Card " + rfidUid.substring(0, 8);
   }
 
-  // 3. 1-Hour Anti-Bounce Check
+  // 3. 15-Second Anti-Double-Scan Check
   int punchType = checkAntiBounce(fid, rfidUid, nowEpoch);
 
   if (punchType == 0) {
-    // Blocked: Within 1 hour!
-    Serial.printf("[ATTENDANCE] %s: Already marked within 1 hour. Blocked.\n", empName.c_str());
-    updateLcd(empName, "Already Marked!");
+    // Blocked: Within 15 seconds!
+    Serial.printf("[ATTENDANCE] %s: Scanned again within 15s. Ignored.\n", empName.c_str());
+    updateLcd(empName, "Wait 15s...");
     beepWarning();
-    delay(2000);
+    delay(1200);
     showReady();
     return;
   }
 
-  // 4. Punch is valid (Check-In or Check-Out)
-  String statusMsg = (punchType == 1) ? ("In OK " + String(shortTime)) : ("Out OK " + String(shortTime));
-  Serial.printf("[ATTENDANCE] %s -> %s at %s\n", empName.c_str(), statusMsg.c_str(), timeStr);
-  updateLcd(empName, statusMsg);
+  // 4. Punch is valid (Store and dispatch to cloud)
+  Serial.printf("[ATTENDANCE] %s scanned at %s\n", empName.c_str(), timeStr);
+  updateLcd(empName, "Scanning...");
   beepSuccess();
 
   // 5. Store punch in persistent Flash queue
   enqueuePunch(fid, rfidUid, String(timeStr));
-
-  delay(2000);
-  showReady();
 
   // 6. Trigger immediate sync if connected to Wi-Fi
   if (isWsConnected) {
