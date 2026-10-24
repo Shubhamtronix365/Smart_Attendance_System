@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown, FileText, Loader2, Download,
@@ -337,6 +337,19 @@ function ManualPayrollModal({
     }
   };
 
+  const isBackdropClickRef = useRef(false);
+
+  const handleOverlayMouseDown = (e: React.MouseEvent) => {
+    isBackdropClickRef.current = (e.target === e.currentTarget);
+  };
+
+  const handleOverlayMouseUp = (e: React.MouseEvent) => {
+    if (isBackdropClickRef.current && e.target === e.currentTarget) {
+      onClose();
+    }
+    isBackdropClickRef.current = false;
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -344,20 +357,32 @@ function ManualPayrollModal({
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
       style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onMouseDown={handleOverlayMouseDown}
+      onMouseUp={handleOverlayMouseUp}
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        className="w-full max-w-3xl my-4 sm:my-8 rounded-2xl sm:rounded-3xl overflow-hidden"
+        className="relative w-full max-w-3xl my-4 sm:my-8 rounded-2xl sm:rounded-3xl overflow-hidden"
         style={{
           background: "rgba(10,15,30,0.98)",
           border: "1px solid rgba(0,245,255,0.25)",
           boxShadow: "0 32px 90px rgba(0,0,0,0.8)",
         }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* Loading overlay when preview is loading */}
+        {isLoadingPreview && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm">
+            <Loader2 size={36} className="animate-spin text-cyan-400 mb-3" />
+            <p className="text-white text-sm font-semibold">Loading employee calculation details...</p>
+            <p className="text-white/40 text-xs mt-1">Please wait while data is retrieved</p>
+          </div>
+        )}
+
         {/* Header */}
         <div
           className="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between"
@@ -386,6 +411,7 @@ function ManualPayrollModal({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all shrink-0"
           >
@@ -394,7 +420,14 @@ function ManualPayrollModal({
         </div>
 
         {/* Content */}
-        <div className="p-4 sm:p-7 max-h-[75vh] overflow-y-auto space-y-4 sm:space-y-6">
+        <div
+          className="p-4 sm:p-7 max-h-[75vh] overflow-y-auto space-y-4 sm:space-y-6"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+            }
+          }}
+        >
           {/* Employee & Period Selector Row */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -468,8 +501,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Basic Salary (₹)</label>
                   <input
                     type="number"
-                    value={basicSalary}
-                    onChange={(e) => setBasicSalary(Number(e.target.value))}
+                    value={basicSalary || 0}
+                    onChange={(e) => setBasicSalary(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400 font-mono"
                   />
                 </div>
@@ -477,8 +510,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Working Days</label>
                   <input
                     type="number"
-                    value={workingDays}
-                    onChange={(e) => setWorkingDays(Number(e.target.value))}
+                    value={workingDays || 0}
+                    onChange={(e) => setWorkingDays(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400 font-mono"
                   />
                 </div>
@@ -488,8 +521,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Present Days</label>
                   <input
                     type="number"
-                    value={presentDays}
-                    onChange={(e) => setPresentDays(Number(e.target.value))}
+                    value={presentDays || 0}
+                    onChange={(e) => setPresentDays(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400 font-mono"
                   />
                 </div>
@@ -497,8 +530,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Absent Deduction (₹)</label>
                   <input
                     type="number"
-                    value={absentDeduction}
-                    onChange={(e) => setAbsentDeduction(Number(e.target.value))}
+                    value={absentDeduction || 0}
+                    onChange={(e) => setAbsentDeduction(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono"
                   />
                 </div>
@@ -520,8 +553,8 @@ function ManualPayrollModal({
                   <input
                     type="number"
                     placeholder="e.g. 300 or 500"
-                    value={lateDeductionRate}
-                    onChange={(e) => setLateDeductionRate(Number(e.target.value))}
+                    value={lateDeductionRate || 0}
+                    onChange={(e) => setLateDeductionRate(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-amber-300 bg-white/[0.04] border border-amber-500/30 rounded-xl outline-none focus:border-amber-400 font-mono"
                   />
                 </div>
@@ -542,8 +575,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[10px] font-medium mb-1 block">Late Days</label>
                   <input
                     type="number"
-                    value={lateDays}
-                    onChange={(e) => setLateDays(Number(e.target.value))}
+                    value={lateDays || 0}
+                    onChange={(e) => setLateDays(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-2.5 py-1.5 text-xs text-white bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
                   />
                 </div>
@@ -552,8 +585,8 @@ function ManualPayrollModal({
                   <input
                     type="number"
                     step="0.1"
-                    value={lateHours}
-                    onChange={(e) => setLateHours(Number(e.target.value))}
+                    value={lateHours || 0}
+                    onChange={(e) => setLateHours(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-2.5 py-1.5 text-xs text-white bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
                   />
                 </div>
@@ -561,8 +594,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[10px] font-medium mb-1 block">Late Deduction (₹)</label>
                   <input
                     type="number"
-                    value={lateDeduction}
-                    onChange={(e) => setLateDeduction(Number(e.target.value))}
+                    value={lateDeduction || 0}
+                    onChange={(e) => setLateDeduction(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-2.5 py-1.5 text-xs text-amber-300 font-bold bg-white/[0.04] border border-amber-500/40 rounded-lg outline-none font-mono"
                   />
                 </div>
@@ -584,8 +617,8 @@ function ManualPayrollModal({
                   <input
                     type="number"
                     step="0.5"
-                    value={otHours}
-                    onChange={(e) => setOtHours(Number(e.target.value))}
+                    value={otHours || 0}
+                    onChange={(e) => setOtHours(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono"
                   />
                 </div>
@@ -594,8 +627,8 @@ function ManualPayrollModal({
                   <input
                     type="number"
                     placeholder="0 for 1.5x"
-                    value={otRate}
-                    onChange={(e) => setOtRate(Number(e.target.value))}
+                    value={otRate || 0}
+                    onChange={(e) => setOtRate(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono"
                   />
                 </div>
@@ -603,8 +636,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">OT Pay (₹)</label>
                   <input
                     type="number"
-                    value={otPay}
-                    onChange={(e) => setOtPay(Number(e.target.value))}
+                    value={otPay || 0}
+                    onChange={(e) => setOtPay(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-green-400 font-bold bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-green-400 font-mono"
                   />
                 </div>
@@ -622,8 +655,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Bonus (+) (₹)</label>
                   <input
                     type="number"
-                    value={bonus}
-                    onChange={(e) => setBonus(Number(e.target.value))}
+                    value={bonus || 0}
+                    onChange={(e) => setBonus(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-green-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-green-400 font-mono"
                   />
                 </div>
@@ -631,8 +664,8 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Other Deductions (-) (₹)</label>
                   <input
                     type="number"
-                    value={otherDeductions}
-                    onChange={(e) => setOtherDeductions(Number(e.target.value))}
+                    value={otherDeductions || 0}
+                    onChange={(e) => setOtherDeductions(e.target.value === "" ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono"
                   />
                 </div>
@@ -1100,6 +1133,7 @@ export default function PayrollPage() {
         {previewRow && <PayslipModal row={previewRow} month={selectedMonth} onClose={() => setPreviewRow(null)} />}
         {showManualCalc && (
           <ManualPayrollModal
+            key={`manual-calc-${selectedCalcEmployeeId ?? "custom"}`}
             initialEmployeeId={selectedCalcEmployeeId}
             initialMonth={parsePeriod().month}
             initialYear={parsePeriod().year}
