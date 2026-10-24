@@ -335,6 +335,85 @@ Smart_Attendance_System/
 
 ---
 
+## Payroll Calculation Engine & Payslip Structure
+
+The system automatically calculates monthly payroll by bridging daily biometric attendance logs with contractual salary parameters, shift rules, and statutory deductions.
+
+---
+
+### 1. Calculation Logic & Mathematical Formulas
+
+1. **Standard Working Days ($W$):**  
+   Calculated based on calendar month days, counting Monday through Saturday (excluding Sundays). For example, a standard month has **26 working days**.
+
+2. **Daily & Hourly Rates:**  
+   $$\text{Daily Rate} = \frac{\text{Basic Salary}}{W}$$
+   $$\text{Hourly Rate} = \frac{\text{Daily Rate}}{8\text{ hours}}$$
+
+3. **Overtime Earnings ($\text{OT Pay}$):**  
+   Employees who work beyond standard shift hours accumulate overtime duration (after deducting a 1-hour lunch break).
+   - If an employee has a custom overtime rate configured in their profile, that rate is applied ($1.45\text{ hrs} \times \text{Rate}$).
+   - Otherwise, the standard multiplier formula applies:
+     $$\text{OT Pay} = \text{OT Hours} \times (\text{Hourly Rate} \times 1.5)$$
+
+4. **Absent Days & Unpaid Leave Deductions:**  
+   $$\text{Absent Days} = \max(0, W - \text{Present Days} - \text{Approved Leaves})$$
+   $$\text{Absent Deduction} = \text{Absent Days} \times \text{Daily Rate}$$
+
+5. **Late Arrival Deductions:**  
+   If the employee profile has a configured late penalty rate:
+   - **Per-day penalty:** $\text{Late Days} \times \text{Late Rate}$
+   - **Per-hour penalty:** $\text{Late Hours} \times \text{Late Rate}$
+
+6. **Statutory Deductions:**  
+   - **Provident Fund (PF):** Standard $6\%$ of Basic Salary ($\text{Basic Salary} \times 0.06$).
+   - **Professional Tax (PT):** Flat statutory state labor employment tax (e.g. ₹200/month).
+
+7. **Net Take-Home Salary:**  
+   $$\text{Total Earnings} = \text{Basic Salary} + \text{OT Pay} + \text{Bonus}$$
+   $$\text{Total Deductions} = \text{PF} + \text{Professional Tax} + \text{Other Deductions (Absenteeism + Late Penalties)}$$
+   $$\text{Net Salary} = \text{Total Earnings} - \text{Total Deductions}$$
+
+---
+
+### 2. Standard Payslip Modal Breakdown (Example: Generic Employee)
+
+The table below details every field displayed inside the interactive Payslip preview modal for a representative employee:
+
+| Field | Example Value | Category | Detailed Description |
+| :--- | :---: | :---: | :--- |
+| **Employee Header** | `Alex Taylor` <br> `EMP001 · Engineering · October 2026` | Header | Employee name, alphanumeric employee code, department, and pay period month. |
+| **Basic Salary** | **+ ₹12,000** | Earning | Fixed base monthly contract salary agreed for full monthly attendance. |
+| **OT Pay** | **+ ₹145** | Earning | Overtime compensation for approved extra hours worked ($1.45\text{ hrs} \times ₹100/\text{hr} = ₹145$). |
+| **PF Deduction** | **− ₹720** | Deduction | Employee Provident Fund statutory retirement contribution ($6\%$ of ₹12,000). |
+| **Professional Tax** | **− ₹200** | Deduction | Mandatory state employment tax standard deduction. |
+| **Other Deductions** | **− ₹4,499** | Deduction | Salary docked for unpaid absence ($10\text{ days}$) and any late arrival penalties. |
+| **Present Days** | **16 / 26** | Attendance | Attended 16 days out of 26 scheduled working days in the month ($10\text{ days absent}$). |
+| **OT Hours** | **1.45h** | Attendance | Cumulative overtime logged across all shifts. |
+| **Net Salary** | **₹6,726** | **Take-Home** | Final net payment transferred to employee's bank account. |
+
+#### Complete Mathematical Verification:
+1. **Total Earnings:**  
+   $$\text{Basic Salary (₹12,000)} + \text{OT Pay (₹145)} = \mathbf{₹12,145}$$
+2. **Total Deductions:**  
+   $$\text{PF (₹720)} + \text{PT (₹200)} + \text{Other Deductions (₹4,499)} = \mathbf{₹5,419}$$
+3. **Net Take-Home Salary:**  
+   $$\text{Total Earnings (₹12,145)} - \text{Total Deductions (₹5,419)} = \mathbf{₹6,726}$$
+
+---
+
+### 3. Admin Adjustment & Manual Override Workflow
+
+If special circumstances require adjustment (such as forgiving an absence, awarding a festival bonus, or modifying penalty deductions):
+1. Navigate to **Admin Portal $\rightarrow$ Payroll**.
+2. Locate the employee row and click the **Adjust** button.
+3. The **Manual Payroll Calculator** modal opens with safe backdrop event isolation and keyboard input guards.
+4. Admins can update **Present Days**, **Bonus**, **Deductions**, or **Overtime Rate**, view the live recalculated net salary, add an audit remark, and save directly to the database.
+5. Click **Download PDF** to export an official signed payslip voucher.
+
+---
+
+
 ## Production Cloud Deployment (Cloudflare + Render + Neon DB)
 
 This application is built for high-performance production hosting across:
