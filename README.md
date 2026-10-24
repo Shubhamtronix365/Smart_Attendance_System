@@ -307,7 +307,7 @@ Smart_Attendance_System/
 - `GET /api/payroll` — List payroll summary lines.
 - `GET /api/payroll/my` — List current employee's payslips.
 - `GET /api/payroll/preview/{employee_id}` — Preview individual employee's dynamic calculation breakdown (working days, present/late days, overtime pay, custom late deductions) for a specific year and month.
-- `POST /api/payroll/manual-save` — Save or override an individual employee's customized payroll line item with bonus, remarks, and net salary.
+- `POST /api/payroll/manual-save` — Save or override an individual employee's customized payroll line item with bonus, remarks, and net salary. Supports robust parameter aliases (`working_days`/`total_working_days`, `final_salary`/`net_salary`) and automatic calculation of absent days.
 - `PUT /api/payroll/{id}/mark_paid` — Mark payroll line item status as paid/unpaid (Admin only).
 - `GET /api/payroll/payslip/{payroll_id}` — Binary PDF payslip download.
 

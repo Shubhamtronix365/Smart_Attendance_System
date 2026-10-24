@@ -119,9 +119,9 @@ export const payrollApi = {
   markPaid: (id: string | number, isPaid: boolean) =>
     api.put(`/api/payroll/${id}/mark_paid`, { is_paid: isPaid }),
   previewIndividual: (employeeId: number, year: number, month: number) =>
-    api.get(`/api/payroll/preview/${employeeId}`, { params: { year, month } }).then((res) => res.data),
+    api.get(`/api/payroll/preview/${employeeId}`, { params: { year, month } }),
   saveManualPayroll: (data: unknown) =>
-    api.post("/api/payroll/manual-save", data).then((res) => res.data),
+    api.post("/api/payroll/manual-save", data),
 };
 
 // ─── Reports ──────────────────────────────────────────────────────────────────

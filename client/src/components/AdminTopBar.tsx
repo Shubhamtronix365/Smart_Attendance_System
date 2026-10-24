@@ -9,10 +9,11 @@ import { useAuth } from "@/context/AuthContext";
 import { attendanceApi } from "@/services/api";
 import { formatTime } from "@/utils/formatters";
 
-// Live clock hook
+// Live clock hook (SSR-safe to avoid hydration mismatches)
 function useLiveClock() {
-  const [time, setTime] = useState(new Date());
+  const [time, setTime] = useState<Date | null>(null);
   useEffect(() => {
+    setTime(new Date());
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
@@ -185,12 +186,16 @@ export default function AdminTopBar({
     }
   };
 
-  const dateStr = now.toLocaleDateString("en-IN", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
-  const timeStr = now.toLocaleTimeString("en-IN", {
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+  const dateStr = now
+    ? now.toLocaleDateString("en-IN", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      })
+    : "";
+  const timeStr = now
+    ? now.toLocaleTimeString("en-IN", {
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      })
+    : "--:--:--";
 
   return (
     <header
@@ -218,9 +223,9 @@ export default function AdminTopBar({
       <h2 className="text-white font-bold text-base sm:text-lg mr-auto truncate">{title}</h2>
 
       {/* Live date/time */}
-      <div className="hidden md:flex flex-col items-end">
-        <span className="text-white/70 text-xs font-mono tabular-nums">{timeStr}</span>
-        <span className="text-white/30 text-xs">{dateStr}</span>
+      <div className="hidden md:flex flex-col items-end" suppressHydrationWarning>
+        <span className="text-white/70 text-xs font-mono tabular-nums" suppressHydrationWarning>{timeStr}</span>
+        <span className="text-white/30 text-xs" suppressHydrationWarning>{dateStr}</span>
       </div>
 
       {/* Search bar */}

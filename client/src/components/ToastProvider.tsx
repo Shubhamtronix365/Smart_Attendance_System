@@ -4,6 +4,41 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 
+// Helper to safely stringify any message, including FastAPI 422 error arrays/objects
+function formatToastMessage(msg: unknown): string {
+  if (msg === null || msg === undefined) return "";
+  if (typeof msg === "string") return msg;
+  if (Array.isArray(msg)) {
+    return msg
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const loc = Array.isArray((item as any).loc)
+            ? (item as any).loc.filter((x: any) => x !== "body").join(".")
+            : "";
+          const detail = (item as any).msg || (item as any).message || JSON.stringify(item);
+          return loc ? `${loc}: ${detail}` : detail;
+        }
+        return String(item);
+      })
+      .join("; ");
+  }
+  if (typeof msg === "object") {
+    if ("detail" in (msg as any)) {
+      return formatToastMessage((msg as any).detail);
+    }
+    if ("message" in (msg as any)) {
+      return String((msg as any).message);
+    }
+    try {
+      return JSON.stringify(msg);
+    } catch {
+      return String(msg);
+    }
+  }
+  return String(msg);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ToastType = "success" | "error" | "info";
 
@@ -14,10 +49,10 @@ interface Toast {
 }
 
 interface ToastContextValue {
-  toast: (message: string, type?: ToastType) => void;
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
+  toast: (message: any, type?: ToastType) => void;
+  success: (message: any) => void;
+  error: (message: any) => void;
+  info: (message: any) => void;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -37,15 +72,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((t) => t.filter((x) => x.id !== id));
   }, []);
 
-  const toast = useCallback((message: string, type: ToastType = "info") => {
+  const toast = useCallback((message: any, type: ToastType = "info") => {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((t) => [...t, { id, type, message }]);
+    const safeMessage = formatToastMessage(message);
+    setToasts((t) => [...t, { id, type, message: safeMessage }]);
     setTimeout(() => dismiss(id), 4000);
   }, [dismiss]);
 
-  const success = useCallback((msg: string) => toast(msg, "success"), [toast]);
-  const error   = useCallback((msg: string) => toast(msg, "error"),   [toast]);
-  const info    = useCallback((msg: string) => toast(msg, "info"),    [toast]);
+  const success = useCallback((msg: any) => toast(msg, "success"), [toast]);
+  const error   = useCallback((msg: any) => toast(msg, "error"),   [toast]);
+  const info    = useCallback((msg: any) => toast(msg, "info"),    [toast]);
 
   return (
     <ToastContext.Provider value={{ toast, success, error, info }}>

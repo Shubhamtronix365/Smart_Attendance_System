@@ -343,9 +343,9 @@ async def save_manual_payroll(
     if payroll:
         payroll.working_days = payload.working_days
         payroll.present_days = payload.present_days
-        payroll.absent_days = payload.absent_days
+        payroll.absent_days = payload.absent_days if payload.absent_days is not None else max(0, payload.working_days - payload.present_days)
         payroll.late_days = payload.late_days or 0
-        payroll.leave_days = payload.leave_days
+        payroll.leave_days = payload.leave_days or 0
         payroll.overtime_hours = payload.overtime_hours
         payroll.basic_salary = payload.basic_salary
         payroll.overtime_pay = payload.overtime_pay
@@ -364,9 +364,9 @@ async def save_manual_payroll(
             year=payload.year,
             working_days=payload.working_days,
             present_days=payload.present_days,
-            absent_days=payload.absent_days,
+            absent_days=payload.absent_days if payload.absent_days is not None else max(0, payload.working_days - payload.present_days),
             late_days=payload.late_days or 0,
-            leave_days=payload.leave_days,
+            leave_days=payload.leave_days or 0,
             overtime_hours=payload.overtime_hours,
             basic_salary=payload.basic_salary,
             overtime_pay=payload.overtime_pay,

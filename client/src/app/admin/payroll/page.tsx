@@ -217,25 +217,41 @@ function ManualPayrollModal({
     setIsLoadingPreview(true);
     try {
       const res = await payrollApi.previewIndividual(empId, y, m);
-      const data = res.data;
+      const data = (res && typeof res === "object" && "data" in res && res.data) ? res.data : res;
+      if (!data) return;
+
       setBasicSalary(Number(data.basic_salary) || 0);
-      setWorkingDays(Number(data.total_working_days) || 26);
+      setWorkingDays(Number(data.working_days ?? data.total_working_days) || 26);
       setPresentDays(Number(data.present_days) || 0);
       setLateDays(Number(data.late_days) || 0);
-      setLateHours(Number(data.late_hours) || 0);
+      const computedLateHours = data.late_hours != null
+        ? Number(data.late_hours)
+        : data.late_minutes_total
+          ? Number((data.late_minutes_total / 60).toFixed(1))
+          : 0;
+      setLateHours(computedLateHours);
       setLateDeductionRate(Number(data.late_deduction_rate) || 0);
       setLateDeductionType(data.late_deduction_type || "per_day");
-      setLateDeduction(Number(data.calculated_late_deduction) || 0);
+      setLateDeduction(Number(data.late_deduction ?? data.calculated_late_deduction) || 0);
       setOtHours(Number(data.overtime_hours) || 0);
       setOtRate(Number(data.overtime_rate) || 0);
-      setOtPay(Number(data.calculated_ot_pay) || 0);
-      setAbsentDeduction(Number(data.calculated_absent_deduction) || 0);
-      setBonus(Number(data.calculated_bonus) || 0);
+      setOtPay(Number(data.overtime_pay ?? data.calculated_ot_pay) || 0);
+      setAbsentDeduction(Number(data.absent_deduction ?? data.calculated_absent_deduction) || 0);
+      setBonus(Number(data.bonus ?? data.calculated_bonus) || 0);
       setOtherDeductions(0);
-      setRemarks(data.already_saved ? "Manual override calculation" : "");
+      setRemarks(data.remarks || (data.is_saved || data.already_saved ? "Manual override calculation" : ""));
+      if (data.is_paid !== undefined) {
+        setIsPaid(Boolean(data.is_paid));
+      }
     } catch (err: any) {
       console.error("Error loading payroll preview", err);
-      error("Failed to load calculation preview.");
+      const detail = err.response?.data?.detail;
+      const errMsg = typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
+          : "Failed to load calculation preview.";
+      error(errMsg);
     } finally {
       setIsLoadingPreview(false);
     }
@@ -282,19 +298,24 @@ function ManualPayrollModal({
     }
     setIsSaving(true);
     try {
+      const absDays = Math.max(0, workingDays - presentDays);
       await payrollApi.saveManualPayroll({
         employee_id: selectedEmpId,
         month,
         year,
         basic_salary: basicSalary,
+        working_days: workingDays,
         total_working_days: workingDays,
         present_days: presentDays,
+        absent_days: absDays,
+        leave_days: 0,
         late_days: lateDays,
         overtime_hours: otHours,
         overtime_pay: otPay,
         late_deduction: lateDeduction,
         deductions: totalDeductions,
         bonus,
+        final_salary: netSalary,
         net_salary: netSalary,
         remarks,
         is_paid: isPaid,
@@ -304,7 +325,13 @@ function ManualPayrollModal({
       onClose();
     } catch (err: any) {
       console.error("Error saving manual payroll", err);
-      error(err.response?.data?.detail || "Failed to save payroll.");
+      const detail = err.response?.data?.detail;
+      const errorMsg = typeof detail === "string" 
+        ? detail 
+        : Array.isArray(detail)
+          ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
+          : "Failed to save payroll.";
+      error(errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -1016,9 +1043,9 @@ export default function PayrollPage() {
           <div className="mb-6 h-1.5 w-full rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.06)" }}>
             <motion.div className="h-full rounded-full"
               style={{ background:"linear-gradient(90deg,#22c55e,#00f5ff)" }}
-              initial={{ width:0 }}
-              animate={{ width:`${(paidCount / rows.length) * 100}%` }}
-              transition={{ duration:1, ease:"easeOut" }} />
+              initial={{ width: 0 }}
+              animate={{ width: `${rows.length > 0 ? Math.round((paidCount / rows.length) * 100) : 0}%` }}
+              transition={{ duration: 1, ease: "easeOut" }} />
           </div>
 
           {/* Payroll table */}
