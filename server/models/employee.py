@@ -14,7 +14,8 @@ class Employee(Base):
     department = Column(String(100), nullable=True)
     designation = Column(String(100), nullable=True)
     salary = Column(Numeric(12, 2), nullable=False)
-    overtime_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Custom OT rate per hour (e.g. 250, 400). If 0 or null, falls back to 1.5x hourly formula
+    overtime_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Custom OT rate (e.g. 250/hr or 1500/day). If 0 or null, falls back to 1.5x formula
+    overtime_type = Column(String(30), nullable=True, default="per_hour")  # "per_hour" (default) or "per_day"
     late_deduction_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Deduction amount per late instance/day (e.g. 300, 500)
     late_deduction_type = Column(String(30), nullable=True, default="per_day")  # "per_day" (flat penalty) or "per_hour" (penalty per late hour)
     fingerprint_id = Column(Integer, unique=True, nullable=True)  # ID stored in sensor (1-127)

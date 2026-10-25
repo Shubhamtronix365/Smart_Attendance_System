@@ -47,8 +47,18 @@ async def calculate_employee_payroll(employee: Employee, year: int, month: int, 
     daily_rate = employee.salary / Decimal(str(working_days)) if working_days > 0 else Decimal("0.00")
     hourly_rate = daily_rate / Decimal("8.0")
     
-    # 4. Overtime Calculation (Uses employee's custom overtime_rate if set > 0, else 1.5x hourly formula)
-    if employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
+    # 4. Overtime Calculation (Uses employee's custom overtime_rate if set > 0, else 1.5x formula)
+    ot_type = getattr(employee, "overtime_type", "per_hour") or "per_hour"
+    ot_days_count = sum(1 for r in records if (r.overtime_hours or Decimal("0.00")) > Decimal("0.00"))
+    if ot_type == "per_day":
+        if employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
+            overtime_pay = round(Decimal(str(ot_days_count)) * employee.overtime_rate, 2)
+            ot_rate_used = float(employee.overtime_rate)
+        else:
+            daily_ot_rate = daily_rate * Decimal(str(settings.OT_MULTIPLIER))
+            overtime_pay = round(Decimal(str(ot_days_count)) * daily_ot_rate, 2)
+            ot_rate_used = float(round(daily_ot_rate, 2))
+    elif employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
         overtime_pay = ot_hours * employee.overtime_rate
     else:
         ot_multiplier = Decimal(str(settings.OT_MULTIPLIER))
@@ -172,7 +182,17 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
     daily_rate = employee.salary / Decimal(str(working_days)) if working_days > 0 else Decimal("0.00")
     hourly_rate = daily_rate / Decimal("8.0")
     
-    if employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
+    ot_type = getattr(employee, "overtime_type", "per_hour") or "per_hour"
+    ot_days_count = sum(1 for r in records if (r.overtime_hours or Decimal("0.00")) > Decimal("0.00"))
+    if ot_type == "per_day":
+        if employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
+            overtime_pay = round(Decimal(str(ot_days_count)) * employee.overtime_rate, 2)
+            ot_rate_used = float(employee.overtime_rate)
+        else:
+            daily_ot_rate = daily_rate * Decimal(str(settings.OT_MULTIPLIER))
+            overtime_pay = round(Decimal(str(ot_days_count)) * daily_ot_rate, 2)
+            ot_rate_used = float(round(daily_ot_rate, 2))
+    elif employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
         overtime_pay = round(ot_hours * employee.overtime_rate, 2)
         ot_rate_used = float(employee.overtime_rate)
     else:
@@ -222,6 +242,8 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
         "late_minutes_total": late_minutes_total,
         "leave_days": int(leave_days_count),
         "overtime_hours": float(ot_hours),
+        "overtime_days": int(ot_days_count),
+        "overtime_type": ot_type,
         "basic_salary": float(employee.salary),
         "daily_rate": float(round(daily_rate, 2)),
         "hourly_rate": float(round(hourly_rate, 2)),

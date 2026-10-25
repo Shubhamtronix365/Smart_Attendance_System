@@ -107,6 +107,7 @@ async def create_employee(
         designation=emp_data.designation,
         salary=emp_data.salary,
         overtime_rate=emp_data.overtime_rate or 0,
+        overtime_type=emp_data.overtime_type or "per_hour",
         late_deduction_rate=emp_data.late_deduction_rate or 0,
         late_deduction_type=emp_data.late_deduction_type or "per_day",
         fingerprint_id=emp_data.fingerprint_id,

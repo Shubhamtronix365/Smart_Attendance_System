@@ -14,6 +14,8 @@ class PayrollBase(BaseModel):
     late_days: Optional[int] = 0
     leave_days: int = 0
     overtime_hours: Decimal = Decimal("0.00")
+    overtime_days: Optional[Decimal] = Decimal("0.00")
+    overtime_type: Optional[str] = "per_hour"
     basic_salary: Optional[Decimal] = None
     overtime_pay: Decimal = Decimal("0.00")
     late_deduction: Optional[Decimal] = Decimal("0.00")
@@ -33,6 +35,8 @@ class ManualPayrollSaveRequest(BaseModel):
     late_days: Optional[int] = 0
     leave_days: Optional[int] = 0
     overtime_hours: Decimal = Decimal("0.00")
+    overtime_days: Optional[Decimal] = Decimal("0.00")
+    overtime_type: Optional[str] = "per_hour"
     basic_salary: Decimal = Decimal("0.00")
     overtime_pay: Decimal = Decimal("0.00")
     late_deduction: Decimal = Decimal("0.00")

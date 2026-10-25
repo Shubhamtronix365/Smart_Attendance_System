@@ -191,6 +191,8 @@ function ManualPayrollModal({
   const [lateDeductionType, setLateDeductionType] = useState<"per_day" | "per_hour">("per_day");
   const [lateDeduction, setLateDeduction] = useState<number>(0);
   const [otHours, setOtHours] = useState<number>(0);
+  const [otDays, setOtDays] = useState<number>(0);
+  const [otType, setOtType] = useState<"per_hour" | "per_day">("per_hour");
   const [otRate, setOtRate] = useState<number>(0);
   const [otPay, setOtPay] = useState<number>(0);
   const [absentDeduction, setAbsentDeduction] = useState<number>(0);
@@ -233,7 +235,13 @@ function ManualPayrollModal({
       setLateDeductionRate(Number(data.late_deduction_rate) || 0);
       setLateDeductionType(data.late_deduction_type || "per_day");
       setLateDeduction(Number(data.late_deduction ?? data.calculated_late_deduction) || 0);
-      setOtHours(Number(data.overtime_hours) || 0);
+      const loadedOtHours = Number(data.overtime_hours) || 0;
+      setOtHours(loadedOtHours);
+      const loadedOtDays = data.overtime_days != null
+        ? Number(data.overtime_days)
+        : (loadedOtHours > 0 ? Math.max(1, Math.round((loadedOtHours / 8) * 10) / 10) : 0);
+      setOtDays(loadedOtDays);
+      setOtType(data.overtime_type === "per_day" ? "per_day" : "per_hour");
       setOtRate(Number(data.overtime_rate) || 0);
       setOtPay(Number(data.overtime_pay ?? data.calculated_ot_pay) || 0);
       setAbsentDeduction(Number(data.absent_deduction ?? data.calculated_absent_deduction) || 0);
@@ -263,6 +271,30 @@ function ManualPayrollModal({
     }
   }, [selectedEmpId, month, year, loadPreview]);
 
+  // Overtime type change helper
+  const handleOtTypeChange = (newType: "per_hour" | "per_day") => {
+    setOtType(newType);
+    const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
+    const hourlyRate = dailyRate / 8;
+    let payment = 0;
+    if (newType === "per_day") {
+      const activeDays = otDays > 0 ? otDays : (otHours > 0 ? Math.max(1, Math.round((otHours / 8) * 10) / 10) : 1);
+      if (otDays === 0) setOtDays(activeDays);
+      if (otRate > 0) {
+        payment = Math.round(activeDays * otRate);
+      } else {
+        payment = Math.round(activeDays * dailyRate * 1.5);
+      }
+    } else {
+      if (otRate > 0) {
+        payment = Math.round(otHours * otRate);
+      } else {
+        payment = Math.round(otHours * hourlyRate * 1.5);
+      }
+    }
+    setOtPay(payment);
+  };
+
   // Recalculate helper
   const handleRecalculate = () => {
     const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
@@ -279,10 +311,19 @@ function ManualPayrollModal({
     setLateDeduction(lateDed);
 
     let overtimePayment = 0;
-    if (otRate > 0) {
-      overtimePayment = Math.round(otHours * otRate);
+    if (otType === "per_day") {
+      const activeDays = otDays > 0 ? otDays : (otHours > 0 ? Math.max(1, Math.round((otHours / 8) * 10) / 10) : 1);
+      if (otRate > 0) {
+        overtimePayment = Math.round(activeDays * otRate);
+      } else {
+        overtimePayment = Math.round(activeDays * dailyRate * 1.5);
+      }
     } else {
-      overtimePayment = Math.round(otHours * (dailyRate / 8) * 1.5);
+      if (otRate > 0) {
+        overtimePayment = Math.round(otHours * otRate);
+      } else {
+        overtimePayment = Math.round(otHours * (dailyRate / 8) * 1.5);
+      }
     }
     setOtPay(overtimePayment);
     success("Recalculated values from inputs!");
@@ -294,7 +335,7 @@ function ManualPayrollModal({
   const handleSave = async () => {
     if (!selectedEmpId) {
       error("Please select an employee.");
-      return;
+  
     }
     setIsSaving(true);
     try {
@@ -311,6 +352,8 @@ function ManualPayrollModal({
         leave_days: 0,
         late_days: lateDays,
         overtime_hours: otHours,
+        overtime_days: otDays,
+        overtime_type: otType,
         overtime_pay: otPay,
         late_deduction: lateDeduction,
         deductions: totalDeductions,
@@ -611,34 +654,101 @@ function ManualPayrollModal({
                 </h4>
                 <span className="text-[10px] text-purple-400/80 font-mono">&gt; 7h Net Shift</span>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">OT Hours</label>
+                  <label className="text-white/40 text-[11px] font-medium mb-1 block">
+                    {otType === "per_day" ? "OT Rate (₹/day)" : "OT Rate (₹/h)"}
+                  </label>
+                  <input
+                    type="number"
+                    placeholder={otType === "per_day" ? "0 for 1.5x Daily" : "0 for 1.5x Hourly"}
+                    value={otRate || 0}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? 0 : Number(e.target.value);
+                      setOtRate(val);
+                      const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
+                      const hourlyRate = dailyRate / 8;
+                      if (otType === "per_day") {
+                        const activeDays = otDays > 0 ? otDays : (otHours > 0 ? Math.max(1, Math.round((otHours / 8) * 10) / 10) : 1);
+                        setOtPay(Math.round(activeDays * (val > 0 ? val : dailyRate * 1.5)));
+                      } else {
+                        setOtPay(Math.round(otHours * (val > 0 ? val : hourlyRate * 1.5)));
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Calculation Mode</label>
+                  <div className="grid grid-cols-2 gap-1 p-0.5 bg-white/[0.04] border border-purple-500/30 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => handleOtTypeChange("per_hour")}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
+                        otType === "per_hour"
+                          ? "bg-purple-600 text-white shadow-sm"
+                          : "text-white/50 hover:text-white hover:bg-white/[0.04]"
+                      }`}
+                    >
+                      As Per Hr
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOtTypeChange("per_day")}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
+                        otType === "per_day"
+                          ? "bg-purple-600 text-white shadow-sm"
+                          : "text-white/50 hover:text-white hover:bg-white/[0.04]"
+                      }`}
+                    >
+                      As Per Day
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="text-white/40 text-[10px] font-medium mb-1 block">OT Hours</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={otHours || 0}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? 0 : Number(e.target.value);
+                      setOtHours(val);
+                      if (otType === "per_hour") {
+                        const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
+                        const hourlyRate = dailyRate / 8;
+                        setOtPay(Math.round(val * (otRate > 0 ? otRate : hourlyRate * 1.5)));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs text-purple-300 bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-white/40 text-[10px] font-medium mb-1 block">OT Days</label>
                   <input
                     type="number"
                     step="0.5"
-                    value={otHours || 0}
-                    onChange={(e) => setOtHours(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono"
+                    value={otDays || 0}
+                    onChange={(e) => {
+                      const val = e.target.value === "" ? 0 : Number(e.target.value);
+                      setOtDays(val);
+                      if (otType === "per_day") {
+                        const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
+                        setOtPay(Math.round(val * (otRate > 0 ? otRate : dailyRate * 1.5)));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs text-purple-300 bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
                   />
                 </div>
                 <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">OT Rate (₹/h)</label>
-                  <input
-                    type="number"
-                    placeholder="0 for 1.5x"
-                    value={otRate || 0}
-                    onChange={(e) => setOtRate(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">OT Pay (₹)</label>
+                  <label className="text-white/40 text-[10px] font-medium mb-1 block">OT Pay (₹)</label>
                   <input
                     type="number"
                     value={otPay || 0}
                     onChange={(e) => setOtPay(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-green-400 font-bold bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-green-400 font-mono"
+                    className="w-full px-2.5 py-1.5 text-xs text-green-400 font-bold bg-white/[0.04] border border-purple-500/40 rounded-lg outline-none font-mono"
                   />
                 </div>
               </div>
@@ -697,7 +807,7 @@ function ManualPayrollModal({
               </span>
               <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
                 <span className="px-2 py-0.5 rounded bg-white/5 text-white/70">Base: ₹{basicSalary.toLocaleString("en-IN")}</span>
-                <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400">+OT: ₹{otPay.toLocaleString("en-IN")}</span>
+                <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400">+OT: ₹{otPay.toLocaleString("en-IN")} ({otType === "per_day" ? `${otDays}d` : `${otHours}h`})</span>
                 <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400">+Bonus: ₹{bonus.toLocaleString("en-IN")}</span>
                 <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400">-Absent: ₹{absentDeduction.toLocaleString("en-IN")}</span>
                 <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300">-Late: ₹{lateDeduction.toLocaleString("en-IN")}</span>

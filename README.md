@@ -13,7 +13,7 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 - 🌙 **Cross-Midnight Overtime & Overnight Shifts:** Scans past midnight (e.g., check-in at 09:00 AM on Oct 23 and work overtime until 03:00 AM on Oct 24) intelligently match and close the open Oct 23 shift as Check-Out, computing accurate total working hours (17.0h) and overtime (10.0h) without falsely starting a new day check-in.
 - 🕒 **Autonomous DS3231 RTC Clock & Local Name Display:** Employee roster is permanently cached in ESP32 Flash; scanning an employee displays their Name and accurate RTC time on the 16x2 LCD with **zero dependency on Wi-Fi or server**.
 - 📡 **Real-time Attendance Tracking & Shift Rules:** Standard 9:00 AM – 5:00 PM shift schedule. Any login after 9:00 AM is logged as `LATE` and displays exact elapsed late minutes/hours. Shifts automatically deduct a **1-hour free lunch break** from total duration (net 7h standard work day), computing overtime past 7 net hours.
-- ⚙️ **Per-Employee Custom Penalty & OT Rates:** Admin can configure individual overtime rates (₹/hr) and late arrival penalties (e.g. ₹300 or ₹500 per day or per hour) for each employee separately in their profile.
+- ⚙️ **Per-Employee Custom Penalty & OT Rates & Modes:** Admin can configure individual overtime rates and calculation modes (**As Per Day** vs **As Per Hr**) and late arrival penalties (e.g. ₹300 or ₹500 per day or per hour) for each employee separately in their profile.
 - 🧮 **Interactive Manual Payroll Calculator:** Dedicated admin modal allowing live calculation previews (`/preview/{id}`), manual adjustments of working/present/late days, overtime pay, bonuses, late deductions, and custom audit remarks with instant net salary recalculation and permanent saving (`/manual-save`). Built with safe backdrop event isolation and Enter-key guards to prevent accidental window dismissal while typing.
 - 🗑️ **Full Hardware & Cloud Sync Management:** Add, Edit, Delete specific employee, or **Delete All Employees** (bulk wipe) directly from the Web Admin GUI, propagating immediate sensor deletion commands to hardware.
 - 💰 **Auto & Manual Payroll Calculation** based on monthly attendance records, overtime allowances, deductions, and approved leaves.
@@ -352,9 +352,11 @@ The system automatically calculates monthly payroll by bridging daily biometric 
 
 3. **Overtime Earnings ($\text{OT Pay}$):**  
    Employees who work beyond standard shift hours accumulate overtime duration (after deducting a 1-hour lunch break).
-   - If an employee has a custom overtime rate configured in their profile, that rate is applied ($1.45\text{ hrs} \times \text{Rate}$).
-   - Otherwise, the standard multiplier formula applies:
-     $$\text{OT Pay} = \text{OT Hours} \times (\text{Hourly Rate} \times 1.5)$$
+   - **Mode Selection:** Supports dual calculation modes via interactive selection buttons — **As Per Hr** ($\text{₹/h}$) or **As Per Day** ($\text{₹/day}$).
+   - **As Per Hr Mode:** If custom OT rate is configured, $\text{OT Pay} = \text{OT Hours} \times \text{Custom Rate}$, otherwise $\text{OT Pay} = \text{OT Hours} \times (\text{Hourly Rate} \times 1.5)$.
+   - **As Per Day Mode:** If custom OT rate is configured, $\text{OT Pay} = \text{OT Days} \times \text{Custom Rate}$, otherwise $\text{OT Pay} = \text{OT Days} \times (\text{Daily Rate} \times 1.5)$.
+
+
 
 4. **Absent Days & Unpaid Leave Deductions:**  
    $$\text{Absent Days} = \max(0, W - \text{Present Days} - \text{Approved Leaves})$$

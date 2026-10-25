@@ -26,6 +26,7 @@ interface Employee {
   designation: string;
   basicSalary: number;
   overtimeRate?: number;
+  overtimeType?: "per_hour" | "per_day";
   lateDeductionRate?: number;
   lateDeductionType?: "per_day" | "per_hour";
   fingerprintId: string;
@@ -216,6 +217,9 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
               <FormField label="Overtime Rate (₹/hr) — Custom" id="emp-ot-rate" type="number"
                 value={String(form.overtimeRate ?? "")} onChange={(v) => set("overtimeRate")(v ? Number(v) : 0)}
                 placeholder="e.g. 250 (Leave 0 for default 1.5x)" icon={<TrendingUp size={14} />} />
+              <SelectField label="Overtime Mode" id="emp-ot-type"
+                value={form.overtimeType || "per_hour"} onChange={set("overtimeType")}
+                options={["per_hour", "per_day"]} icon={<TrendingUp size={14} />} />
               <FormField label="Late Penalty Rate (₹) — Custom" id="emp-late-rate" type="number"
                 value={String(form.lateDeductionRate ?? "")} onChange={(v) => set("lateDeductionRate")(v ? Number(v) : 0)}
                 placeholder="e.g. 300 or 500" icon={<Clock size={14} />} />
@@ -496,7 +500,7 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
                 <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded font-mono" title="Custom late penalty & overtime rates">
                   {emp.lateDeductionRate ? `Late: -₹${emp.lateDeductionRate}/${emp.lateDeductionType === "per_hour" ? "hr" : "day"}` : ""}
                   {emp.lateDeductionRate && emp.overtimeRate ? " • " : ""}
-                  {emp.overtimeRate ? `OT: ₹${emp.overtimeRate}/hr` : ""}
+                  {emp.overtimeRate ? `OT: ₹${emp.overtimeRate}/${emp.overtimeType === "per_day" ? "day" : "hr"}` : ""}
                 </span>
               )}
             </div>
@@ -587,6 +591,7 @@ export default function EmployeesPage() {
         designation: emp.designation || "",
         basicSalary: Number(emp.salary) || 0,
         overtimeRate: Number(emp.overtime_rate) || 0,
+        overtimeType: emp.overtime_type || "per_hour",
         lateDeductionRate: Number(emp.late_deduction_rate) || 0,
         lateDeductionType: emp.late_deduction_type || "per_day",
         fingerprintId: emp.fingerprint_id ? String(emp.fingerprint_id) : "",
@@ -674,6 +679,7 @@ export default function EmployeesPage() {
         designation: data.designation || "",
         salary: Number(data.basicSalary) || 0,
         overtime_rate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : 0,
+        overtime_type: data.overtimeType || "per_hour",
         late_deduction_rate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : 0,
         late_deduction_type: data.lateDeductionType || "per_day",
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,
@@ -706,6 +712,7 @@ export default function EmployeesPage() {
               designation: data.designation ?? emp.designation,
               basicSalary: data.basicSalary !== undefined ? Number(data.basicSalary) : emp.basicSalary,
               overtimeRate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : emp.overtimeRate,
+              overtimeType: data.overtimeType ?? emp.overtimeType,
               lateDeductionRate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : emp.lateDeductionRate,
               lateDeductionType: data.lateDeductionType ?? emp.lateDeductionType,
               fingerprintId: data.fingerprintId !== undefined ? String(data.fingerprintId) : emp.fingerprintId,
@@ -726,6 +733,7 @@ export default function EmployeesPage() {
         designation: data.designation || "",
         salary: Number(data.basicSalary) || 0,
         overtime_rate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : 0,
+        overtime_type: data.overtimeType || "per_hour",
         late_deduction_rate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : 0,
         late_deduction_type: data.lateDeductionType || "per_day",
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,

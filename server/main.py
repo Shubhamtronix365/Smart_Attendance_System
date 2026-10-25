@@ -110,6 +110,7 @@ async def startup_event():
                 "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS late_deduction NUMERIC(12,2) DEFAULT 0;",
                 "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS bonus NUMERIC(12,2) DEFAULT 0;",
                 "ALTER TABLE payroll ADD COLUMN IF NOT EXISTS remarks VARCHAR(255);",
+                "ALTER TABLE employees ADD COLUMN IF NOT EXISTS overtime_type VARCHAR(30) DEFAULT 'per_hour';",
             ]
             for col_sql in column_updates:
                 try:

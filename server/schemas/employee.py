@@ -12,6 +12,7 @@ class EmployeeBase(BaseModel):
     designation: Optional[str] = Field(None, max_length=100)
     salary: Decimal = Field(..., max_digits=12, decimal_places=2)
     overtime_rate: Optional[Decimal] = Field(Decimal("0.00"), max_digits=10, decimal_places=2)
+    overtime_type: Optional[str] = Field("per_hour", max_length=30)
     late_deduction_rate: Optional[Decimal] = Field(Decimal("0.00"), max_digits=10, decimal_places=2)
     late_deduction_type: Optional[str] = Field("per_day", max_length=30)
     fingerprint_id: Optional[int] = None
@@ -30,6 +31,7 @@ class EmployeeUpdate(BaseModel):
     designation: Optional[str] = Field(None, max_length=100)
     salary: Optional[Decimal] = Field(None, max_digits=12, decimal_places=2)
     overtime_rate: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    overtime_type: Optional[str] = Field(None, max_length=30)
     late_deduction_rate: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
     late_deduction_type: Optional[str] = Field(None, max_length=30)
     fingerprint_id: Optional[int] = None

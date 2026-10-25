@@ -339,6 +339,9 @@ async def save_manual_payroll(
     pay_res = await db.execute(pay_stmt)
     payroll = pay_res.scalar_one_or_none()
 
+    if payload.overtime_type:
+        employee.overtime_type = payload.overtime_type
+
     now = _dt.utcnow()
     if payroll:
         payroll.working_days = payload.working_days
