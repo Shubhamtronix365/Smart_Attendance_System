@@ -232,10 +232,10 @@ void clearLocalEmployees() {
 }
 
 // =====================================================
-//           15-SECOND ANTI-DOUBLE-SCAN GUARD
+//           2-MINUTE (120s) ANTI-DOUBLE-SCAN GUARD
 // =====================================================
 // Returns:
-// 0: Blocked (< 15s debounce) -> "Wait 15s"
+// 0: Blocked (< 120s debounce) -> "Wait 2 min"
 // 1: Valid punch (Session state managed by cloud backend)
 int checkAntiBounce(int fid, const String& rfid, uint32_t nowEpoch) {
   prefsDebounce.begin("punch_deb", false);
@@ -246,8 +246,8 @@ int checkAntiBounce(int fid, const String& rfid, uint32_t nowEpoch) {
 
   if (lastEpoch > 0 && nowEpoch >= lastEpoch) {
     uint32_t diff = nowEpoch - lastEpoch;
-    if (diff < 15) {
-      // Less than 15 seconds -> Block accidental double tap!
+    if (diff < 120) {
+      // Less than 2 minutes (120s) -> Block accidental double tap!
       prefsDebounce.end();
       return 0;
     }
@@ -783,13 +783,13 @@ void onAttendanceScanned(int fid, const String& rfidUid) {
     else empName = "Card " + rfidUid.substring(0, 8);
   }
 
-  // 3. 15-Second Anti-Double-Scan Check
+  // 3. 2-Minute Anti-Double-Scan Check
   int punchType = checkAntiBounce(fid, rfidUid, nowEpoch);
 
   if (punchType == 0) {
-    // Blocked: Within 15 seconds!
-    Serial.printf("[ATTENDANCE] %s: Scanned again within 15s. Ignored.\n", empName.c_str());
-    updateLcd(empName, "Wait 15s...");
+    // Blocked: Within 2 minutes!
+    Serial.printf("[ATTENDANCE] %s: Scanned again within 2m. Ignored.\n", empName.c_str());
+    updateLcd(empName, "Wait 2 min...");
     beepWarning();
     delay(1200);
     showReady();

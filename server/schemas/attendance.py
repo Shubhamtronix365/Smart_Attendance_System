@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from server.models.attendance import AttendanceStatus
 
 class AttendanceBase(BaseModel):
@@ -28,6 +28,19 @@ class AttendanceUpdate(BaseModel):
     overtime_hours: Optional[Decimal] = None
     status: Optional[AttendanceStatus] = None
     source: Optional[str] = None
+    punches: Optional[str] = None
+    checkout_count: Optional[int] = None
+
+class SessionItem(BaseModel):
+    session: Optional[int] = 1
+    in_time: str = Field(..., alias="in")
+    out_time: Optional[str] = Field(None, alias="out")
+    hours: Optional[float] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+class UpdateSessionsPayload(BaseModel):
+    sessions: list[SessionItem]
 
 class AttendanceOut(AttendanceBase):
     attendance_id: int

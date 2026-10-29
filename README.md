@@ -8,7 +8,7 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 
 - 🔐 **Fingerprint & RFID Authentication** via ESP32 Tronix hardware (R307S sensor + RC522 reader).
 - 💾 **Offline-First Flash Queue (Preferences.h):** Punches are stored in internal NVS Flash when Wi-Fi is unavailable and automatically synced when reconnected. Records are deleted from ESP32 Flash **only after cloud acknowledgment (`punch_ack`)**.
-- ⏱️ **15-Second Anti-Double-Scan Debounce & Multi-Session Tracking:** Replaced rigid 1-hour lockout with a smart 15-second debounce to prevent accidental double-touches.
+- ⏱️ **2-Minute Anti-Double-Scan Debounce & Multi-Session Tracking:** 2-minute (120-second) cooldown guard in both cloud backend and ESP32 hardware firmware (`Wait 2 min...`). Prevents accidental double-touches within 2 minutes (`already_marked`), and after 2 minutes automatically transitions the employee to their next checkout or check-in.
 - 🔁 **Cumulative Multi-Session Engine (Up to 5–6+ Check-Ins & Check-Outs per Day):** Supports employees checking in and out multiple times daily (e.g. for client visits, breaks, or split shifts). Odd punches open a session (`Check-In #N`) and even punches complete the session (`Check-Out #N`). Automatically tallies total completed checkouts (`checkout_count`), calculates cumulative worked duration across all sessions, and sums overtime hours.
 - 🌙 **Cross-Midnight Overtime & Overnight Shifts:** Scans past midnight (e.g., check-in at 09:00 AM on Oct 23 and work overtime until 03:00 AM on Oct 24) intelligently match and close the open Oct 23 shift as Check-Out, computing accurate total working hours (17.0h) and overtime (10.0h) without falsely starting a new day check-in.
 - 🕒 **Autonomous DS3231 RTC Clock & Local Name Display:** Employee roster is permanently cached in ESP32 Flash; scanning an employee displays their Name and accurate RTC time on the 16x2 LCD with **zero dependency on Wi-Fi or server**.
@@ -36,10 +36,21 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Persistent Rejection Tracking:** Rejected leaves remain in the employee's history table with exact rejection reason and reviewer details.
   - **One-Time Approval Alert:** When an employee's leave request is approved, a notification alert dialog is presented to that specific employee upon logging in or receiving approval in real time. Once acknowledged (`PUT /api/leave/{id}/acknowledge-alert`), it is permanently cleared so it never shows again.
 - 📱 **Full Mobile & Multi-Device Responsive Design:** Fully adaptive layout across smartphones (320px–480px), tablets (768px), and desktops. Includes sliding mobile sidebars with gesture/backdrop dismiss, responsive action toolbars, touch-friendly action buttons, fluid data tables with horizontal scroll wrappers, and auto-stacking form grids and modals.
-- 🔍 **Interactive Multi-Checkout & Session Breakdown Inspector:**
-  - Clicking on the `X checkouts` (e.g. `2 checkouts`) or `X sessions` pill in the Attendance registry opens a dedicated **Checkout & Session Breakdown Modal**.
+- 🔍 **Interactive Multi-Checkout & Session Breakdown Inspector with In-Place Admin Editing & Deletion:**
+  - Clicking on the `X checkouts` (e.g. `2 checkouts`) or `X sessions` pill in either the Attendance Registry or Reports opens the dedicated **Checkout & Session Breakdown Modal**.
   - Displays the exact calendar date, 12-hour AM/PM time, and duration of every single check-in and check-out session (e.g. Session 1 Check-out at 10:32 PM on Oct 28, Session 2 Check-out at 09:11 AM on Oct 29).
   - Highlights cross-midnight shifts with next-day tags and live in-progress session indicators.
+  - **In-Place Admin Session Editing:** Admins can click "Edit" on any session card (e.g. Session 2) to adjust check-in/out dates and times, or toggle active session mode.
+  - **In-Place Admin Session Deletion:** Admins can delete any individual session/checkpoint (e.g. delete the 2nd session). The system calls `PUT /api/attendance/{id}/sessions`, re-indexes remaining sessions, and automatically recalculates total working duration, checkout counts, late penalties, and Sunday overtime.
+  - **Add New Sessions:** Admins can click "+ Add Session" to append extra shift intervals.
+- 🕒 **Adaptive Late Arrival Duration Formatting (< 1h in mins, ≥ 1h in hrs):**
+  - Late arrival durations under 1 hour are cleanly formatted in minutes (e.g. `Late by 45m`).
+  - Late arrival durations of 1 hour or more are intelligently displayed in hours and minutes (e.g. `Late by 1h 38m`, `Late by 13h 35m`, `Late by 4h 46m`, `Late by 2h 27m`).
+  - Standardized across web UI tables (Attendance & Reports), PDF summaries, and Excel report files.
+- 📑 **Comprehensive Multi-Session Visibility in Reports, Excel & PDF:**
+  - **Web Reports:** Detailed and Daily report tables now show the `X checkouts` pill badge for multiple sessions, opening the interactive session breakdown modal on click.
+  - **Excel Exports (`.xlsx`):** Features dedicated `Checkouts` count column and a comprehensive `Sessions Breakdown` column (e.g. `Session 1: 01:46 PM - 10:32 PM (8.77h) | Session 2: 10:32 PM - 09:11 AM (10.64h)`).
+  - **PDF Reports (`.pdf`):** Check-Out column highlights total completed checkouts (e.g. `(2 checkouts)`), alongside formatted late durations.
 - ☀️ **Sunday Overtime & Weekly Holiday Engine:**
   - **Weekly Off / Holiday Calculation:** Sundays are treated as non-working holidays. Employees who do not work on Sunday have their holiday calculated automatically (status `HOLIDAY`), with zero absence penalty and zero salary deductions.
   - **100% Sunday Overtime:** Any employee who checks in, checks out, or works on a Sunday receives **100% of their worked time directly as Overtime (`overtime_hours = working_hours`)** without requiring 8/9 standard work hours threshold.

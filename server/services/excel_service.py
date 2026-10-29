@@ -1,3 +1,59 @@
+import json
+
+def format_late_duration_excel(minutes) -> str:
+    if not minutes or int(minutes) <= 0:
+        return "—"
+    m = int(minutes)
+    if m < 60:
+        return f"{m}m"
+    hrs = m // 60
+    rem = m % 60
+    return f"{hrs}h {rem}m" if rem > 0 else f"{hrs}h"
+
+def format_sessions_summary(punches_data) -> str:
+    if not punches_data:
+        return "—"
+    try:
+        if isinstance(punches_data, str):
+            sessions = json.loads(punches_data)
+        else:
+            sessions = punches_data
+        if not sessions or not isinstance(sessions, list):
+            return "—"
+        
+        parts = []
+        for s in sessions:
+            s_num = s.get("session", len(parts) + 1)
+            in_raw = s.get("in")
+            out_raw = s.get("out")
+            hrs = s.get("hours")
+            
+            in_str = in_raw
+            if in_raw and (" " in in_raw or "T" in in_raw):
+                try:
+                    dt = datetime.fromisoformat(in_raw.replace(" ", "T"))
+                    in_str = dt.strftime("%I:%M %p")
+                except Exception:
+                    in_str = in_raw.split(" ")[-1]
+            
+            out_str = "Active"
+            if out_raw:
+                if " " in out_raw or "T" in out_raw:
+                    try:
+                        dt = datetime.fromisoformat(out_raw.replace(" ", "T"))
+                        out_str = dt.strftime("%I:%M %p")
+                    except Exception:
+                        out_str = out_raw.split(" ")[-1]
+                else:
+                    out_str = out_raw
+            
+            duration_str = f" ({hrs}h)" if hrs is not None else ""
+            parts.append(f"S{s_num}: {in_str} - {out_str}{duration_str}")
+            
+        return " | ".join(parts) if parts else "—"
+    except Exception:
+        return "—"
+
 import calendar
 from io import BytesIO
 from datetime import date
@@ -60,7 +116,7 @@ def generate_daily_attendance_excel(report_date: date, records: list, title: str
     # Headers
     headers = [
         "Employee ID", "Employee Name", "Department", "Check-In", 
-        "Check-Out", "Working Hours", "Overtime (hrs)", "Status", "Source"
+        "Check-Out", "Checkouts", "Sessions Breakdown", "Working Hours", "Overtime (hrs)", "Status", "Source"
     ]
     
     start_row = 5
@@ -86,10 +142,16 @@ def generate_daily_attendance_excel(report_date: date, records: list, title: str
         
         ws.cell(row=current_row, column=5, value=cin_str).alignment = ALIGN_CENTER
         ws.cell(row=current_row, column=6, value=cout_str).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=7, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=8, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
         
-        status_cell = ws.cell(row=current_row, column=9, value=str(r.get("status")).upper())
+        cnt = int(r.get("checkout_count") or 0)
+        cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else "0")
+        ws.cell(row=current_row, column=7, value=cnt_str).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=8, value=format_sessions_summary(r.get("punches"))).alignment = ALIGN_LEFT
+
+        ws.cell(row=current_row, column=9, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
+        ws.cell(row=current_row, column=10, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
+        
+        status_cell = ws.cell(row=current_row, column=11, value=str(r.get("status")).upper())
         status_cell.alignment = ALIGN_CENTER
         # Color coding status
         status = str(r.get("status")).lower()
@@ -324,8 +386,8 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
 
     headers = [
         "Date", "Employee ID", "Employee Name", "Department",
-        "Check-In Time", "Check-Out Time", "Working Hours", "Late (min)",
-        "Overtime (hrs)", "Status", "Source"
+        "Check-In Time", "Check-Out Time", "Checkouts", "Sessions Breakdown",
+        "Working Hours", "Late Duration", "Overtime (hrs)", "Status", "Source"
     ]
 
     start_row = 5
@@ -358,12 +420,18 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
 
         ws.cell(row=current_row, column=6, value=cin_str).alignment = ALIGN_CENTER
         ws.cell(row=current_row, column=7, value=cout_str).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=8, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=9, value=int(r.get("late_minutes") or 0)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=10, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
+        
+        cnt = int(r.get("checkout_count") or 0)
+        cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else "0")
+        ws.cell(row=current_row, column=8, value=cnt_str).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=9, value=format_sessions_summary(r.get("punches"))).alignment = ALIGN_LEFT
+
+        ws.cell(row=current_row, column=10, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
+        ws.cell(row=current_row, column=11, value=format_late_duration_excel(r.get("late_minutes"))).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=12, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
 
         status_raw = str(r.get("status") or "absent").lower()
-        status_cell = ws.cell(row=current_row, column=11, value=status_raw.replace("_", " ").upper())
+        status_cell = ws.cell(row=current_row, column=13, value=status_raw.replace("_", " ").upper())
         status_cell.alignment = ALIGN_CENTER
 
         if status_raw in ("present", "wfh"):
@@ -385,11 +453,11 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
         status_cell.fill = status_fill
         status_cell.font = status_font
 
-        ws.cell(row=current_row, column=12, value=str(r.get("source") or "biometric").capitalize()).alignment = ALIGN_CENTER
+        ws.cell(row=current_row, column=14, value=str(r.get("source") or "biometric").capitalize()).alignment = ALIGN_CENTER
 
-        for col_idx in range(2, 13):
+        for col_idx in range(2, 15):
             c = ws.cell(row=current_row, column=col_idx)
-            if col_idx != 11:
+            if col_idx != 13:
                 c.font = REGULAR_FONT
             c.border = THIN_BORDER
 

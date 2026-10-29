@@ -9,7 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.database.connection import get_db
 from server.dependencies.auth import get_current_user, require_admin
 from server.models import Attendance, AttendanceStatus, Employee
-from server.schemas.attendance import AttendanceOut, AttendanceManualEntry, AttendanceStats, AttendanceUpdate
+from server.schemas.attendance import (
+    AttendanceOut,
+    AttendanceManualEntry,
+    AttendanceStats,
+    AttendanceUpdate,
+    UpdateSessionsPayload,
+)
+import json
+from datetime import timedelta
 from server.utils.time_utils import get_current_local_date, get_current_local_time
 from server.services.excel_service import (
     generate_daily_attendance_excel,
@@ -735,6 +743,152 @@ async def update_attendance(
     await db.commit()
     await db.refresh(record)
     
+    from server.services.attendance_service import calculate_late_minutes
+    return AttendanceOut(
+        attendance_id=record.attendance_id,
+        employee_id=record.employee_id,
+        date=record.date,
+        check_in=record.check_in,
+        check_out=record.check_out,
+        working_hours=record.working_hours,
+        overtime_hours=record.overtime_hours,
+        late_minutes=record.late_minutes if hasattr(record, "late_minutes") and record.late_minutes else (calculate_late_minutes(record.check_in.time(), record.date) if (record.check_in and record.status == AttendanceStatus.LATE and record.date.weekday() != 6) else 0),
+        status=record.status,
+        source=record.source,
+        checkout_count=record.checkout_count or 0,
+        punches=record.punches or "[]",
+        created_at=record.created_at,
+        employee_name=record.employee.name if record.employee else "Unknown",
+        employee_dept=record.employee.department if record.employee else "N/A"
+    )
+
+@router.put("/{attendance_id}/sessions", response_model=AttendanceOut)
+async def update_attendance_sessions(
+    attendance_id: int,
+    payload: UpdateSessionsPayload,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """
+    Allows admin to edit, delete, or append individual punch sessions / checkpoints.
+    Recalculates individual session hours, cumulative working hours, checkout count,
+    overtime (including 100% overtime on Sundays), and late status.
+    """
+    stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
+        Attendance.attendance_id == attendance_id
+    )
+    res = await db.execute(stmt)
+    record = res.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance record not found")
+
+    def parse_dt(dt_val: Optional[str], fallback_date: date) -> Optional[datetime]:
+        if not dt_val or str(dt_val).strip() in ("", "—", "-", "None", "null"):
+            return None
+        s = str(dt_val).strip()
+        if len(s) <= 8 and ":" in s and "-" not in s and "/" not in s:
+            parts = s.split(":")
+            hh = int(parts[0])
+            mm = int(parts[1])
+            ss = int(parts[2]) if len(parts) > 2 else 0
+            return datetime(fallback_date.year, fallback_date.month, fallback_date.day, hh, mm, ss)
+
+        try:
+            return datetime.fromisoformat(s.replace("Z", ""))
+        except Exception:
+            pass
+
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%d",
+            "%d-%m-%Y %H:%M:%S",
+            "%d-%m-%Y %H:%M",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+        ):
+            try:
+                return datetime.strptime(s, fmt)
+            except Exception:
+                pass
+        return None
+
+    cleaned_sessions = []
+    total_working_hours = 0.0
+    completed_checkouts = 0
+
+    for idx, s in enumerate(payload.sessions, start=1):
+        in_dt = parse_dt(s.in_time, record.date)
+        if not in_dt:
+            continue
+        out_dt = parse_dt(s.out_time, in_dt.date()) if s.out_time else None
+
+        session_hours = None
+        if out_dt:
+            if out_dt < in_dt and (in_dt - out_dt).total_seconds() < 86400:
+                out_dt = out_dt + timedelta(days=1)
+            diff_sec = max(0.0, (out_dt - in_dt).total_seconds())
+            duration = round(diff_sec / 3600.0, 2)
+            session_hours = duration
+            total_working_hours += duration
+            completed_checkouts += 1
+
+        cleaned_sessions.append({
+            "session": idx,
+            "in": in_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "out": out_dt.strftime("%Y-%m-%d %H:%M:%S") if out_dt else None,
+            "hours": session_hours
+        })
+
+    is_sunday = (record.date.weekday() == 6)
+
+    if not cleaned_sessions:
+        record.check_in = None
+        record.check_out = None
+        record.working_hours = 0.0
+        record.overtime_hours = 0.0
+        record.late_minutes = 0
+        record.checkout_count = 0
+        record.punches = "[]"
+        record.status = AttendanceStatus.HOLIDAY if is_sunday else AttendanceStatus.ABSENT
+    else:
+        first_in = parse_dt(cleaned_sessions[0]["in"], record.date)
+        record.check_in = first_in
+
+        last_out_str = cleaned_sessions[-1]["out"]
+        record.check_out = parse_dt(last_out_str, first_in.date()) if last_out_str else None
+
+        record.working_hours = round(total_working_hours, 2)
+        record.checkout_count = completed_checkouts
+        record.punches = json.dumps(cleaned_sessions)
+
+        if is_sunday:
+            record.status = AttendanceStatus.PRESENT
+            record.late_minutes = 0
+            record.overtime_hours = round(total_working_hours, 2)
+        else:
+            from server.services.attendance_service import calculate_late_minutes
+            record.late_minutes = calculate_late_minutes(first_in.time(), record.date)
+
+            if total_working_hours > 8.0:
+                record.overtime_hours = round(total_working_hours - 8.0, 2)
+            else:
+                record.overtime_hours = 0.0
+
+            if record.late_minutes > 0:
+                record.status = AttendanceStatus.LATE
+            elif total_working_hours >= 4.0 or (len(cleaned_sessions) > 0 and record.check_out is None):
+                record.status = AttendanceStatus.PRESENT
+            elif total_working_hours > 0:
+                record.status = AttendanceStatus.HALF_DAY
+            else:
+                record.status = AttendanceStatus.PRESENT
+
+    await db.commit()
+    await db.refresh(record)
+
     from server.services.attendance_service import calculate_late_minutes
     return AttendanceOut(
         attendance_id=record.attendance_id,

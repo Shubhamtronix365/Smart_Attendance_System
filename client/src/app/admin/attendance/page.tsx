@@ -869,6 +869,8 @@ export default function AttendancePage() {
             isOpen={!!selectedPunchesRecord}
             onClose={() => setSelectedPunchesRecord(null)}
             record={selectedPunchesRecord}
+            isAdmin={true}
+            onUpdate={() => fetchAttendance()}
           />
         )}
       </AnimatePresence>

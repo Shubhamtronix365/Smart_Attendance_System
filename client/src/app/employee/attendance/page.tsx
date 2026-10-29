@@ -382,6 +382,7 @@ export default function EmployeeAttendancePage() {
             isOpen={!!selectedRecord}
             onClose={() => setSelectedRecord(null)}
             record={selectedRecord}
+            isAdmin={false}
           />
         )}
       </AnimatePresence>

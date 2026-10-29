@@ -83,3 +83,14 @@ export function getLocalDateString(d: Date = new Date()): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+export function formatLateDuration(minutes?: number | null): string {
+  if (!minutes || minutes <= 0) return '—';
+  const m = Math.round(Number(minutes));
+  if (m < 60) {
+    return `${m}m`;
+  }
+  const hrs = Math.floor(m / 60);
+  const remMins = m % 60;
+  return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
+}

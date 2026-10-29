@@ -110,3 +110,59 @@ def test_sunday_multi_session_totals():
     assert checkouts == 2
     assert working == Decimal("6.00")
     assert ot == Decimal("6.00") # 100% of working hours are OT on Sunday!
+
+
+def test_session_item_schema():
+    """Verify SessionItem schema correctly populates by alias and serializes."""
+    from server.schemas.attendance import SessionItem, UpdateSessionsPayload
+    payload = UpdateSessionsPayload(sessions=[
+        SessionItem(session=1, in_time="2026-10-27 13:46:00", out_time="2026-10-27 22:32:00", hours=8.77),
+        SessionItem(session=2, in_time="2026-10-27 22:32:00", out_time="2026-10-28 09:11:00", hours=10.64),
+    ])
+    assert len(payload.sessions) == 2
+    assert payload.sessions[0].in_time == "2026-10-27 13:46:00"
+    assert payload.sessions[1].out_time == "2026-10-28 09:11:00"
+
+def test_late_duration_formatter_under_and_over_one_hour():
+    """Verify that late minutes under 1hr display in minutes and >= 1hr display in hours."""
+    from server.services.excel_service import format_late_duration_excel
+    from server.services.pdf_service import format_late_duration_pdf
+
+    # 45 minutes -> 45m
+    assert format_late_duration_excel(45) == "45m"
+    assert format_late_duration_pdf(45) == "45m"
+
+    # 60 minutes -> 1h
+    assert format_late_duration_excel(60) == "1h"
+    assert format_late_duration_pdf(60) == "1h"
+
+    # 98 minutes (from user image) -> 1h 38m
+    assert format_late_duration_excel(98) == "1h 38m"
+    assert format_late_duration_pdf(98) == "1h 38m"
+
+    # 815 minutes (from user image) -> 13h 35m
+    assert format_late_duration_excel(815) == "13h 35m"
+    assert format_late_duration_pdf(815) == "13h 35m"
+
+    # 286 minutes (from user image) -> 4h 46m
+    assert format_late_duration_excel(286) == "4h 46m"
+    assert format_late_duration_pdf(286) == "4h 46m"
+
+    # 0 or None -> "—"
+    assert format_late_duration_excel(0) == "—"
+    assert format_late_duration_excel(None) == "—"
+
+def test_sessions_summary_formatter_for_excel():
+    """Verify sessions breakdown is formatted into a readable string for Excel exports."""
+    from server.services.excel_service import format_sessions_summary
+    import json
+
+    punches = [
+        {"session": 1, "in": "2026-10-27 13:46:00", "out": "2026-10-27 22:32:00", "hours": 8.77},
+        {"session": 2, "in": "2026-10-27 22:32:00", "out": "2026-10-28 09:11:00", "hours": 10.64},
+    ]
+    summary = format_sessions_summary(json.dumps(punches))
+    assert "S1:" in summary
+    assert "S2:" in summary
+    assert "8.77h" in summary
+    assert "10.64h" in summary

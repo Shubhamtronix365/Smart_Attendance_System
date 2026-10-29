@@ -86,6 +86,8 @@ export const attendanceApi = {
   manualEntry: (data: unknown) => api.post("/api/attendance/manual", data),
   update: (id: string | number, data: unknown) => api.put(`/api/attendance/${id}`, data),
   delete: (id: string | number) => api.delete(`/api/attendance/${id}`),
+  updateSessions: (id: string | number, sessions: any[]) =>
+    api.put(`/api/attendance/${id}/sessions`, { sessions }),
   export: (paramsOrDate: string | Record<string, any>, format: "excel" | "pdf" = "excel") => {
     if (typeof paramsOrDate === "string") {
       return api.get("/api/attendance/export", { params: { date: paramsOrDate, format }, responseType: "blob" });

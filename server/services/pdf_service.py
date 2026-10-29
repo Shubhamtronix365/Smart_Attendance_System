@@ -1,3 +1,13 @@
+def format_late_duration_pdf(minutes) -> str:
+    if not minutes or int(minutes) <= 0:
+        return "—"
+    m = int(minutes)
+    if m < 60:
+        return f"{m}m"
+    hrs = m // 60
+    rem = m % 60
+    return f"{hrs}h {rem}m" if rem > 0 else f"{hrs}h"
+
 import calendar
 from io import BytesIO
 from datetime import datetime, date
@@ -275,12 +285,18 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
     for r in records:
         cin = r.get("check_in")
         cout = r.get("check_out")
+        cnt = int(r.get("checkout_count") or 0)
+        cout_str = cout.strftime("%I:%M %p") if cout else "--:--"
+        if cnt > 1:
+            cout_display = f"{cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
+        else:
+            cout_display = cout_str
         table_data.append([
             Paragraph(str(r.get("employee_id")), row_style),
             Paragraph(r.get("employee_name"), row_style),
             Paragraph(r.get("department") or "N/A", row_style),
             Paragraph(cin.strftime("%I:%M %p") if cin else "--:--", row_style),
-            Paragraph(cout.strftime("%I:%M %p") if cout else "--:--", row_style),
+            Paragraph(cout_display, row_style),
             Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}", row_style),
             Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}", row_style),
             Paragraph(str(r.get("status")).upper(), row_style),
@@ -517,10 +533,15 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
         cin = r.get("check_in")
         cout = r.get("check_out")
         cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
-        cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+        raw_cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+        cnt = int(r.get("checkout_count") or 0)
+        if cnt > 1:
+            cout_str = f"{raw_cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
+        else:
+            cout_str = raw_cout_str
 
         late_min = int(r.get("late_minutes") or 0)
-        late_str = f"{late_min}m" if late_min > 0 else "—"
+        late_str = format_late_duration_pdf(late_min)
 
         status_str = str(r.get("status") or "absent").replace("_", " ").upper()
 

@@ -59,6 +59,8 @@ async def get_daily_attendance_report(
     mapped_records = []
     for r in records:
         mapped_records.append({
+            "id": r.attendance_id,
+            "attendance_id": r.attendance_id,
             "employee_id": r.employee_id,
             "employee_name": r.employee.name if r.employee else "Unknown",
             "department": r.employee.department if r.employee else "N/A",
@@ -68,6 +70,7 @@ async def get_daily_attendance_report(
             "overtime_hours": r.overtime_hours,
             "status": r.status,
             "checkout_count": getattr(r, "checkout_count", 0) or 0,
+            "punches": getattr(r, "punches", "[]") or "[]",
             "source": r.source
         })
         
@@ -225,7 +228,9 @@ async def get_detailed_attendance_logs_report(
             "late_minutes": r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
             "overtime_hours": float(r.overtime_hours or 0.0),
             "status": r.status,
-            "source": r.source
+            "source": r.source,
+            "checkout_count": getattr(r, "checkout_count", 0) or 0,
+            "punches": getattr(r, "punches", "[]") or "[]"
         })
 
     # Build individualized or all-employee titles & filenames

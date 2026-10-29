@@ -22,7 +22,8 @@ import AdminTopBar from "@/components/AdminTopBar";
 import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import { reportsApi, employeesApi } from "@/services/api";
-import { formatTime } from "@/utils/formatters";
+import { formatTime, formatLateDuration } from "@/utils/formatters";
+import CheckoutHistoryModal from "@/components/CheckoutHistoryModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ReportType = "detailed" | "daily" | "monthly" | "payroll";
@@ -72,7 +73,7 @@ const REPORT_TABS: { id: ReportType; label: string; desc: string }[] = [
 ];
 
 // ─── Detailed Logs (Each Punch / Day) Table ──────────────────────────────────
-function DetailedLogsTable({ data }: { data: any[] }) {
+function DetailedLogsTable({ data, onSelectPunches }: { data: any[]; onSelectPunches?: (r: any) => void }) {
   return (
     <table className="w-full">
       <thead>
@@ -128,13 +129,26 @@ function DetailedLogsTable({ data }: { data: any[] }) {
                 {r.checkIn}
               </td>
               <td className="px-4 py-3.5 text-white/80 text-sm font-mono font-medium">
-                {r.checkOut}
+                <div className="flex flex-col items-start gap-1">
+                  <span>{r.checkOut}</span>
+                  {r.checkoutCount && r.checkoutCount > 1 && onSelectPunches ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelectPunches(r)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 transition-all cursor-pointer"
+                      title="Click to view all check-out checkpoints and session breakdown"
+                    >
+                      <Clock size={10} />
+                      {r.checkoutCount} checkouts
+                    </button>
+                  ) : null}
+                </div>
               </td>
               <td className="px-4 py-3.5 text-white/70 text-sm">{r.hours}</td>
               <td className="px-4 py-3.5 text-sm">
                 {r.lateMinutes > 0 ? (
                   <span className="text-amber-400 font-medium text-xs flex items-center gap-1">
-                    <AlertTriangle size={11} /> Late by {r.lateMinutes}m
+                    <AlertTriangle size={11} /> Late by {formatLateDuration(r.lateMinutes)}
                   </span>
                 ) : (
                   <span className="text-white/20">—</span>
@@ -167,7 +181,7 @@ function DetailedLogsTable({ data }: { data: any[] }) {
 }
 
 // ─── Daily Report Table ───────────────────────────────────────────────────────
-function DailyTable({ data }: { data: any[] }) {
+function DailyTable({ data, onSelectPunches }: { data: any[]; onSelectPunches?: (r: any) => void }) {
   return (
     <table className="w-full">
       <thead>
@@ -217,7 +231,22 @@ function DailyTable({ data }: { data: any[] }) {
               </td>
               <td className="px-4 py-3.5 text-white/50 text-sm">{r.dept}</td>
               <td className="px-4 py-3.5 text-white/70 text-sm font-mono">{r.checkIn}</td>
-              <td className="px-4 py-3.5 text-white/70 text-sm font-mono">{r.checkOut}</td>
+              <td className="px-4 py-3.5 text-white/70 text-sm font-mono">
+                <div className="flex flex-col items-start gap-1">
+                  <span>{r.checkOut}</span>
+                  {r.checkoutCount && r.checkoutCount > 1 && onSelectPunches ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelectPunches(r)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 transition-all cursor-pointer"
+                      title="Click to view all check-out checkpoints and session breakdown"
+                    >
+                      <Clock size={10} />
+                      {r.checkoutCount} checkouts
+                    </button>
+                  ) : null}
+                </div>
+              </td>
               <td className="px-4 py-3.5 text-white/60 text-sm">{r.hours}</td>
               <td className="px-4 py-3.5 text-sm">
                 {r.otHours && r.otHours !== "—" ? (
@@ -402,6 +431,7 @@ export default function ReportsPage() {
   const [dailyData, setDailyData] = useState<any[]>([]);
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [payrollData, setPayrollData] = useState<any[]>([]);
+  const [selectedPunchesRecord, setSelectedPunchesRecord] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Load employee list for the selector
@@ -511,19 +541,33 @@ export default function ReportsPage() {
           employee_id: empId,
           status: stat,
         });
-        const mapped = res.data.map((r: any) => ({
-          id: String(r.id || r.attendance_id),
-          date: r.date,
-          empId: `EMP${String(r.employee_id).padStart(3, "0")}`,
-          name: r.employee_name || "Unknown",
-          dept: r.department || "N/A",
-          checkIn: r.check_in_formatted || formatTime(r.check_in, true),
-          checkOut: r.check_out_formatted || formatTime(r.check_out, true),
-          hours: r.working_hours ? `${r.working_hours}h` : "—",
-          lateMinutes: r.late_minutes || 0,
-          otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
-          status: r.status === "half_day" ? "halfday" : r.status,
-        }));
+        const mapped = res.data.map((r: any) => {
+          let parsedPunches = [];
+          if (r.punches) {
+            try {
+              parsedPunches = typeof r.punches === "string" ? JSON.parse(r.punches) : r.punches;
+            } catch {
+              parsedPunches = [];
+            }
+          }
+          const cnt = r.checkout_count || (parsedPunches.length > 0 ? parsedPunches.filter((p: any) => p.out).length : (r.check_out ? 1 : 0));
+          return {
+            id: String(r.id || r.attendance_id),
+            date: r.date,
+            empId: `EMP${String(r.employee_id).padStart(3, "0")}`,
+            name: r.employee_name || "Unknown",
+            dept: r.department || "N/A",
+            checkIn: r.check_in_formatted || formatTime(r.check_in, true),
+            checkOut: r.check_out_formatted || formatTime(r.check_out, true),
+            hours: r.working_hours ? `${r.working_hours}h` : "—",
+            workingHours: r.working_hours ? `${r.working_hours}h` : "—",
+            lateMinutes: r.late_minutes || 0,
+            otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
+            status: r.status === "half_day" ? "halfday" : r.status,
+            checkoutCount: cnt,
+            punches: parsedPunches,
+          };
+        });
         setDetailedData(mapped);
       } else if (activeReport === "daily") {
         const res = await reportsApi.dailyAttendance({
@@ -532,16 +576,32 @@ export default function ReportsPage() {
           employee_id: empId,
           status: stat,
         });
-        const mapped = res.data.map((r: any) => ({
-          id: String(r.employee_id),
-          name: r.employee_name || "Unknown",
-          dept: r.department || "N/A",
-          checkIn: formatTime(r.check_in, true),
-          checkOut: formatTime(r.check_out, true),
-          hours: r.working_hours ? `${r.working_hours}h` : "—",
-          otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
-          status: r.status === "half_day" ? "halfday" : r.status,
-        }));
+        const mapped = res.data.map((r: any) => {
+          let parsedPunches = [];
+          if (r.punches) {
+            try {
+              parsedPunches = typeof r.punches === "string" ? JSON.parse(r.punches) : r.punches;
+            } catch {
+              parsedPunches = [];
+            }
+          }
+          const cnt = r.checkout_count || (parsedPunches.length > 0 ? parsedPunches.filter((p: any) => p.out).length : (r.check_out ? 1 : 0));
+          return {
+            id: String(r.id || r.attendance_id || r.employee_id),
+            date: fromDate,
+            empId: `EMP${String(r.employee_id).padStart(3, "0")}`,
+            name: r.employee_name || "Unknown",
+            dept: r.department || "N/A",
+            checkIn: formatTime(r.check_in, true),
+            checkOut: formatTime(r.check_out, true),
+            hours: r.working_hours ? `${r.working_hours}h` : "—",
+            workingHours: r.working_hours ? `${r.working_hours}h` : "—",
+            otHours: r.overtime_hours && Number(r.overtime_hours) > 0 ? `${r.overtime_hours}h` : "—",
+            status: r.status === "half_day" ? "halfday" : r.status,
+            checkoutCount: cnt,
+            punches: parsedPunches,
+          };
+        });
         setDailyData(mapped);
       } else if (activeReport === "monthly") {
         const res = await reportsApi.monthlyAttendance({
@@ -1278,9 +1338,9 @@ export default function ReportsPage() {
                 ) : (
                   <>
                     {activeReport === "detailed" && (
-                      <DetailedLogsTable key="detailed" data={detailedData} />
+                      <DetailedLogsTable key="detailed" data={detailedData} onSelectPunches={setSelectedPunchesRecord} />
                     )}
-                    {activeReport === "daily" && <DailyTable key="daily" data={dailyData} />}
+                    {activeReport === "daily" && <DailyTable key="daily" data={dailyData} onSelectPunches={setSelectedPunchesRecord} />}
                     {activeReport === "monthly" && (
                       <MonthlyTable key="monthly" data={monthlyData} />
                     )}
@@ -1293,6 +1353,17 @@ export default function ReportsPage() {
             </div>
           </motion.div>
         </div>
+              <AnimatePresence>
+          {selectedPunchesRecord && (
+            <CheckoutHistoryModal
+              isOpen={!!selectedPunchesRecord}
+              onClose={() => setSelectedPunchesRecord(null)}
+              record={selectedPunchesRecord}
+              isAdmin={true}
+              onUpdate={() => fetchReports()}
+            />
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );

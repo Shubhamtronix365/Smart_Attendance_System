@@ -108,7 +108,7 @@ async def record_attendance_punch(
 ) -> Dict[str, Any]:
     """
     Unified attendance state engine supporting:
-    1. 15-second anti-double-scan guard (replaces the old 1-hour lockout)
+    1. 2-minute (120-second) anti-double-scan guard (prevents rapid double-touch)
     2. Cross-midnight overtime / night-shift tracking (e.g. 9 AM to 3 AM next morning)
     3. Unlimited multiple check-in / check-out sessions per day (e.g. 5-6 times daily)
     4. Exact cumulative working time, overtime summation, and total checkouts counter
@@ -162,12 +162,12 @@ async def record_attendance_punch(
 
         elapsed_sec = (punch_dt - curr_in_dt).total_seconds()
 
-        # A. Anti-Double-Scan guard (15 seconds)
-        if elapsed_sec < 15:
+        # A. Anti-Double-Scan guard (2 minutes = 120 seconds)
+        if elapsed_sec < 120:
             return {
                 "success": True,
                 "status": "already_marked",
-                "message": "Already scanned! Please wait 15 seconds.",
+                "message": "Already scanned! Please wait 2 minutes.",
                 "employee_name": employee.name,
                 "method": scan_source,
                 "time": punch_dt.strftime("%H:%M:%S"),
@@ -258,14 +258,14 @@ async def record_attendance_punch(
         except Exception:
             sessions = []
 
-        # Anti-bounce guard against last checkout (15 seconds)
+        # Anti-bounce guard against last checkout (2 minutes = 120 seconds)
         if today_att.check_out:
             elapsed_out = (punch_dt - today_att.check_out).total_seconds()
-            if elapsed_out < 15:
+            if elapsed_out < 120:
                 return {
                     "success": True,
                     "status": "already_marked",
-                    "message": "Already scanned! Please wait 15 seconds.",
+                    "message": "Already scanned! Please wait 2 minutes.",
                     "employee_name": employee.name,
                     "method": scan_source,
                     "time": punch_dt.strftime("%H:%M:%S"),
