@@ -81,6 +81,7 @@ async def get_daily_attendance_report(
     active_employees = emp_res.scalars().all()
     
     logged_ids = {r.employee_id for r in records}
+    is_sunday = (report_date.weekday() == 6)
     for emp in active_employees:
         if emp.employee_id not in logged_ids:
             mapped_records.append({
@@ -91,7 +92,7 @@ async def get_daily_attendance_report(
                 "check_out": None,
                 "working_hours": 0.00,
                 "overtime_hours": 0.00,
-                "status": "absent",
+                "status": "holiday" if is_sunday else "absent",
                 "source": "system"
             })
 
@@ -306,9 +307,10 @@ async def get_monthly_attendance_report(
         att_res = await db.execute(att_stmt)
         records = att_res.scalars().all()
         
-        present_count = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH))
-        half_days_count = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY)
-        leave_days_count = sum(1 for r in records if r.status == AttendanceStatus.LEAVE)
+        standard_records = [r for r in records if r.date.weekday() != 6]
+        present_count = sum(1 for r in standard_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH))
+        half_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.HALF_DAY)
+        leave_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.LEAVE)
         ot_hours = sum(r.overtime_hours or 0.00 for r in records)
         
         present = float(present_count) + 0.5 * float(half_days_count)

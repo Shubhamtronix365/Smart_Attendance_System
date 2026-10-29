@@ -9,6 +9,7 @@ from server.config import settings
 async def calculate_employee_payroll(employee: Employee, year: int, month: int, db: AsyncSession) -> Payroll:
     """
     Calculates monthly payroll for a single employee and upserts the record.
+    Sunday work is paid as 100% overtime. Sundays are holidays for non-working staff.
     """
     working_days = get_working_days_in_month(year, month)
     
@@ -23,15 +24,17 @@ async def calculate_employee_payroll(employee: Employee, year: int, month: int, 
     att_result = await db.execute(att_stmt)
     records = att_result.scalars().all()
     
-    # Group attendance by status
-    present_days_count = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH))
-    late_days_count = sum(1 for r in records if r.status == AttendanceStatus.LATE)
-    half_days_count = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY)
-    leave_days_count = sum(1 for r in records if r.status == AttendanceStatus.LEAVE)
+    # Filter standard workdays (Monday-Saturday) vs Sunday (weekly holiday / pure overtime)
+    standard_records = [r for r in records if r.date.weekday() != 6]
+
+    present_days_count = sum(1 for r in standard_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH))
+    late_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.LATE)
+    half_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.HALF_DAY)
+    leave_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.LEAVE)
     
-    # Overtime hours & late hours
+    # Overtime hours (includes ALL Sunday worked hours as overtime!)
     ot_hours = sum(r.overtime_hours or Decimal("0.00") for r in records)
-    late_minutes_total = sum(r.late_minutes or 0 for r in records)
+    late_minutes_total = sum(r.late_minutes or 0 for r in standard_records)
     late_hours = Decimal(str(late_minutes_total)) / Decimal("60.0")
     
     # Financial math:
@@ -150,9 +153,9 @@ async def generate_payroll_for_all(year: int, month: int, db: AsyncSession) -> l
         
     return payrolls
 
-async def preview_individual_payroll(employee: Employee, year: int, month: int, db: AsyncSession) -> dict:
+async def preview_employee_payroll(employee: Employee, year: int, month: int, db: AsyncSession) -> dict:
     """
-    Returns dynamic calculation preview for an individual employee without persisting to DB.
+    Computes a preview of monthly payroll for an employee without persisting to the database.
     Allows Admin to review, inspect, and manually adjust in the UI.
     """
     working_days = get_working_days_in_month(year, month)
@@ -166,13 +169,15 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
     att_result = await db.execute(att_stmt)
     records = att_result.scalars().all()
     
-    present_days_count = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH))
-    late_days_count = sum(1 for r in records if r.status == AttendanceStatus.LATE)
-    half_days_count = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY)
-    leave_days_count = sum(1 for r in records if r.status == AttendanceStatus.LEAVE)
+    standard_records = [r for r in records if r.date.weekday() != 6]
+
+    present_days_count = sum(1 for r in standard_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.WFH))
+    late_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.LATE)
+    half_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.HALF_DAY)
+    leave_days_count = sum(1 for r in standard_records if r.status == AttendanceStatus.LEAVE)
     
     ot_hours = sum(r.overtime_hours or Decimal("0.00") for r in records)
-    late_minutes_total = sum(r.late_minutes or 0 for r in records)
+    late_minutes_total = sum(r.late_minutes or 0 for r in standard_records)
     late_hours = Decimal(str(late_minutes_total)) / Decimal("60.0")
     
     present_days = Decimal(str(present_days_count)) + Decimal("0.5") * Decimal(str(half_days_count))
@@ -183,7 +188,9 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
     hourly_rate = daily_rate / Decimal("8.0")
     
     ot_type = getattr(employee, "overtime_type", "per_hour") or "per_hour"
+    ot_rate_used = float(employee.overtime_rate or 0)
     ot_days_count = sum(1 for r in records if (r.overtime_hours or Decimal("0.00")) > Decimal("0.00"))
+    
     if ot_type == "per_day":
         if employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
             overtime_pay = round(Decimal(str(ot_days_count)) * employee.overtime_rate, 2)
@@ -194,12 +201,10 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
             ot_rate_used = float(round(daily_ot_rate, 2))
     elif employee.overtime_rate and employee.overtime_rate > Decimal("0.00"):
         overtime_pay = round(ot_hours * employee.overtime_rate, 2)
-        ot_rate_used = float(employee.overtime_rate)
     else:
         ot_multiplier = Decimal(str(settings.OT_MULTIPLIER))
         overtime_pay = round(ot_hours * hourly_rate * ot_multiplier, 2)
-        ot_rate_used = float(round(hourly_rate * ot_multiplier, 2))
-        
+
     absent_deduction = round(absent_days * daily_rate, 2)
     
     late_rate_used = float(employee.late_deduction_rate or 0)
@@ -215,23 +220,12 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
     total_deductions = absent_deduction + late_deduction
     final_salary = max(Decimal("0.00"), employee.salary + overtime_pay - total_deductions)
     
-    # Check if an existing saved payroll record exists
-    pay_stmt = select(Payroll).where(
-        and_(
-            Payroll.employee_id == employee.employee_id,
-            Payroll.month == month,
-            Payroll.year == year
-        )
-    )
-    pay_res = await db.execute(pay_stmt)
-    existing = pay_res.scalar_one_or_none()
-    
     return {
         "employee_id": employee.employee_id,
         "employee_name": employee.name,
-        "employee_code": employee.employee_code,
         "department": employee.department,
         "designation": employee.designation,
+        "basic_salary": float(employee.salary),
         "month": month,
         "year": year,
         "working_days": working_days,
@@ -242,22 +236,19 @@ async def preview_individual_payroll(employee: Employee, year: int, month: int, 
         "late_minutes_total": late_minutes_total,
         "leave_days": int(leave_days_count),
         "overtime_hours": float(ot_hours),
-        "overtime_days": int(ot_days_count),
+        "overtime_pay": float(overtime_pay),
         "overtime_type": ot_type,
-        "basic_salary": float(employee.salary),
+        "overtime_rate": ot_rate_used,
+        "overtime_days_count": ot_days_count,
         "daily_rate": float(round(daily_rate, 2)),
         "hourly_rate": float(round(hourly_rate, 2)),
-        "overtime_rate": ot_rate_used,
-        "overtime_pay": float(overtime_pay),
-        "late_deduction_rate": late_rate_used,
         "late_deduction_type": late_type_used,
         "late_deduction": float(late_deduction),
         "absent_deduction": float(absent_deduction),
         "total_deductions": float(total_deductions),
         "final_salary": float(final_salary),
-        "is_saved": existing is not None,
-        "is_paid": existing.is_paid if existing else False,
-        "payroll_id": existing.payroll_id if existing else None,
-        "remarks": getattr(existing, "remarks", "") if existing else "",
-        "bonus": float(existing.bonus or 0) if existing else 0.0
     }
+
+
+# Alias for backwards compatibility
+preview_individual_payroll = preview_employee_payroll

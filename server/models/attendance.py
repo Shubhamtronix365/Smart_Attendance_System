@@ -11,6 +11,7 @@ class AttendanceStatus(str, enum.Enum):
     HALF_DAY = "half_day"
     LEAVE = "leave"
     WFH = "wfh"
+    HOLIDAY = "holiday"
 
 class Attendance(Base):
     __tablename__ = "attendance"

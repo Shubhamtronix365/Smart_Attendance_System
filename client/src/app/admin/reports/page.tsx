@@ -44,6 +44,7 @@ const STATUS_OPTIONS = [
   { value: "absent", label: "Absent" },
   { value: "half_day", label: "Half Day" },
   { value: "leave", label: "Leave" },
+  { value: "holiday", label: "Holiday (Weekly Off)" },
   { value: "wfh", label: "WFH (Work From Home)" },
 ];
 

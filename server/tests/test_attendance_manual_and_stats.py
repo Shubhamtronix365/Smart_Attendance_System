@@ -84,3 +84,29 @@ def test_calculate_multi_session_totals_cross_midnight():
     # 17.0 - 7.0 standard = 10.00 hrs overtime
     assert ot == Decimal("10.00")
 
+
+
+def test_sunday_overtime_calculation():
+    """Verify that any work on Sunday is 100% calculated as overtime."""
+    from datetime import date
+    # 2026-10-25 is a Sunday
+    sunday_dt_in = datetime(2026, 10, 25, 11, 0)
+    sunday_dt_out = datetime(2026, 10, 25, 15, 0) # 4 hours
+    working, ot = calculate_hours(sunday_dt_in, sunday_dt_out)
+    assert working == Decimal("3.00") # 4h - 1h lunch = 3h
+    assert ot == Decimal("3.00") # 100% of Sunday work is overtime!
+
+    # Sunday check-in late minutes should be 0
+    assert calculate_late_minutes(time(11, 0), date(2026, 10, 25)) == 0
+
+def test_sunday_multi_session_totals():
+    """Verify calculate_multi_session_totals treats Sunday work as 100% overtime."""
+    from server.services.attendance_service import calculate_multi_session_totals
+    sessions = [
+        {"session": 1, "in": "2026-10-25 11:00:00", "out": "2026-10-25 14:00:00", "hours": 3.0},
+        {"session": 2, "in": "2026-10-25 15:00:00", "out": "2026-10-25 18:00:00", "hours": 3.0},
+    ]
+    working, ot, checkouts = calculate_multi_session_totals(sessions, standard_work_hours=8, is_sunday=True)
+    assert checkouts == 2
+    assert working == Decimal("6.00")
+    assert ot == Decimal("6.00") # 100% of working hours are OT on Sunday!

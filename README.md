@@ -36,6 +36,15 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Persistent Rejection Tracking:** Rejected leaves remain in the employee's history table with exact rejection reason and reviewer details.
   - **One-Time Approval Alert:** When an employee's leave request is approved, a notification alert dialog is presented to that specific employee upon logging in or receiving approval in real time. Once acknowledged (`PUT /api/leave/{id}/acknowledge-alert`), it is permanently cleared so it never shows again.
 - 📱 **Full Mobile & Multi-Device Responsive Design:** Fully adaptive layout across smartphones (320px–480px), tablets (768px), and desktops. Includes sliding mobile sidebars with gesture/backdrop dismiss, responsive action toolbars, touch-friendly action buttons, fluid data tables with horizontal scroll wrappers, and auto-stacking form grids and modals.
+- 🔍 **Interactive Multi-Checkout & Session Breakdown Inspector:**
+  - Clicking on the `X checkouts` (e.g. `2 checkouts`) or `X sessions` pill in the Attendance registry opens a dedicated **Checkout & Session Breakdown Modal**.
+  - Displays the exact calendar date, 12-hour AM/PM time, and duration of every single check-in and check-out session (e.g. Session 1 Check-out at 10:32 PM on Oct 28, Session 2 Check-out at 09:11 AM on Oct 29).
+  - Highlights cross-midnight shifts with next-day tags and live in-progress session indicators.
+- ☀️ **Sunday Overtime & Weekly Holiday Engine:**
+  - **Weekly Off / Holiday Calculation:** Sundays are treated as non-working holidays. Employees who do not work on Sunday have their holiday calculated automatically (status `HOLIDAY`), with zero absence penalty and zero salary deductions.
+  - **100% Sunday Overtime:** Any employee who checks in, checks out, or works on a Sunday receives **100% of their worked time directly as Overtime (`overtime_hours = working_hours`)** without requiring 8/9 standard work hours threshold.
+  - **Zero Sunday Late Penalty:** Voluntary Sunday work has no 9:00 AM late deduction or penalty (status `PRESENT`, 0 late minutes).
+  - Integrated across all attendance registries, daily/monthly Excel & PDF exports, dashboard analytics, and payroll auto-computation.
 
 ---
 

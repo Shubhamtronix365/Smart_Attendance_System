@@ -25,6 +25,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
 import { employeeSelfApi } from "@/services/api";
 import { formatTime, formatDate } from "@/utils/formatters";
+import CheckoutHistoryModal from "@/components/CheckoutHistoryModal";
+import { AnimatePresence } from "framer-motion";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -42,6 +44,7 @@ export default function EmployeeAttendancePage() {
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -281,8 +284,15 @@ export default function EmployeeAttendancePage() {
                     return (
                       <tr key={r.attendance_id} className="hover:bg-white/[0.02] transition-colors">
                         <td className="py-4 px-6 font-medium text-white whitespace-nowrap">
-                          {formatDate(r.date)}
-                          <span className="ml-1.5 text-white/30 font-normal">({dayName})</span>
+                          <div>
+                            <span>{formatDate(r.date)}</span>
+                            <span className="ml-1.5 text-white/30 font-normal">({dayName})</span>
+                            {punchDate.getDay() === 0 && (
+                              <span className="block text-[10px] text-amber-400 font-sans font-semibold mt-0.5">
+                                Sunday (OT)
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-6 font-mono text-cyan-300">
                           <div>
@@ -295,7 +305,35 @@ export default function EmployeeAttendancePage() {
                           </div>
                         </td>
                         <td className="py-4 px-6 font-mono text-white/70">
-                          {r.check_out ? formatTime(r.check_out) : "--:--"}
+                          <div>
+                            <span>{r.check_out ? formatTime(r.check_out) : "--:--"}</span>
+                            {r.checkout_count && r.checkout_count > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRecord({
+                                  id: String(r.attendance_id),
+                                  date: r.date,
+                                  empId: user?.employee_code || `EMP${String(r.employee_id).padStart(3, "0")}`,
+                                  name: user?.name || "Employee",
+                                  department: user?.department || "General",
+                                  avatar: (user?.name || "??").slice(0, 2).toUpperCase(),
+                                  checkIn: r.check_in ? formatTime(r.check_in) : "—",
+                                  checkOut: r.check_out ? formatTime(r.check_out) : "—",
+                                  workingHours: r.working_hours ? `${r.working_hours}h` : "—",
+                                  status: r.status,
+                                  otHours: r.overtime_hours ? `${r.overtime_hours}h` : "—",
+                                  checkoutCount: r.checkout_count,
+                                  punches: r.punches ? (typeof r.punches === "string" ? JSON.parse(r.punches) : r.punches) : [],
+                                })}
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-sans font-semibold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 transition-all cursor-pointer shadow-sm group"
+                                title="Click to view dates and times of all checkouts"
+                              >
+                                <Clock size={11} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+                                <span>{r.checkout_count} checkout{r.checkout_count > 1 ? "s" : ""}</span>
+                                <span className="text-[9px] text-cyan-400/80 underline ml-0.5">view times</span>
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="py-4 px-6 font-mono font-semibold text-white">
                           {r.working_hours ? `${r.working_hours}h` : "--"}
@@ -337,6 +375,16 @@ export default function EmployeeAttendancePage() {
             </div>
         </div>
       </main>
+
+      <AnimatePresence>
+        {selectedRecord && (
+          <CheckoutHistoryModal
+            isOpen={!!selectedRecord}
+            onClose={() => setSelectedRecord(null)}
+            record={selectedRecord}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -3,22 +3,24 @@
 import { motion } from "framer-motion";
 
 // ─── Status Config ─────────────────────────────────────────────────────────────
-type Status = "present" | "absent" | "late" | "halfday" | "leave" | "wfh" | "active" | "inactive" | "pending" | "approved" | "rejected" | "paid" | "unpaid";
+type Status = "present" | "absent" | "late" | "halfday" | "leave" | "wfh" | "holiday" | "weekly_off" | "active" | "inactive" | "pending" | "approved" | "rejected" | "paid" | "unpaid";
 
 const STATUS_MAP: Record<Status, { label: string; color: string; bg: string; border: string }> = {
-  present:  { label: "Present",   color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
-  absent:   { label: "Absent",    color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"  },
-  late:     { label: "Late",      color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)" },
-  halfday:  { label: "Half Day",  color: "#f97316", bg: "rgba(249,115,22,0.1)",  border: "rgba(249,115,22,0.25)" },
-  leave:    { label: "On Leave",  color: "#a78bfa", bg: "rgba(167,139,250,0.1)", border: "rgba(167,139,250,0.25)"},
-  wfh:      { label: "WFH",       color: "#3b82f6", bg: "rgba(59,130,246,0.1)",  border: "rgba(59,130,246,0.25)" },
-  active:   { label: "Active",    color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
-  inactive: { label: "Inactive",  color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"  },
-  pending:  { label: "Pending",   color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)" },
-  approved: { label: "Approved",  color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
-  rejected: { label: "Rejected",  color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"  },
-  paid:     { label: "Paid",      color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
-  unpaid:   { label: "Unpaid",    color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)" },
+  present:    { label: "Present",    color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
+  absent:     { label: "Absent",     color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"  },
+  late:       { label: "Late",       color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)" },
+  halfday:    { label: "Half Day",   color: "#f97316", bg: "rgba(249,115,22,0.1)",  border: "rgba(249,115,22,0.25)" },
+  leave:      { label: "On Leave",   color: "#a78bfa", bg: "rgba(167,139,250,0.1)", border: "rgba(167,139,250,0.25)"},
+  wfh:        { label: "WFH",        color: "#3b82f6", bg: "rgba(59,130,246,0.1)",  border: "rgba(59,130,246,0.25)" },
+  holiday:    { label: "Holiday",    color: "#38bdf8", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.3)"  },
+  weekly_off: { label: "Weekly Off", color: "#38bdf8", bg: "rgba(56,189,248,0.12)", border: "rgba(56,189,248,0.3)"  },
+  active:     { label: "Active",     color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
+  inactive:   { label: "Inactive",   color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"  },
+  pending:    { label: "Pending",    color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)" },
+  approved:   { label: "Approved",   color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
+  rejected:   { label: "Rejected",   color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"  },
+  paid:       { label: "Paid",       color: "#22c55e", bg: "rgba(34,197,94,0.1)",   border: "rgba(34,197,94,0.25)"  },
+  unpaid:     { label: "Unpaid",     color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)" },
 };
 
 interface StatusBadgeProps {
@@ -28,7 +30,8 @@ interface StatusBadgeProps {
 }
 
 export default function StatusBadge({ status, size = "md", pulse = false }: StatusBadgeProps) {
-  const cfg = STATUS_MAP[status as Status] ?? {
+  const normKey = String(status || "").toLowerCase().replace("-", "_");
+  const cfg = STATUS_MAP[normKey as Status] ?? {
     label: status,
     color: "#94a3b8",
     bg: "rgba(148,163,184,0.1)",

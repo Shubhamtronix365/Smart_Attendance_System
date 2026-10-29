@@ -57,9 +57,11 @@ async def my_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
-            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0),
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time(), r.date) if (r.check_in and r.status == AttendanceStatus.LATE and r.date.weekday() != 6) else 0),
             status=r.status,
             source=r.source,
+            checkout_count=getattr(r, "checkout_count", 0) or 0,
+            punches=getattr(r, "punches", "[]") or "[]",
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
             employee_dept=r.employee.department if r.employee else "N/A"
@@ -92,12 +94,13 @@ async def my_attendance_stats(
     res = await db.execute(stmt)
     records = res.scalars().all()
 
-    on_time_days = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.WFH))
-    late_days = sum(1 for r in records if r.status == AttendanceStatus.LATE)
-    half_day_days = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY)
-    leave_days = sum(1 for r in records if r.status == AttendanceStatus.LEAVE)
+    standard_records = [r for r in records if r.date.weekday() != 6]
+    on_time_days = sum(1 for r in standard_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.WFH))
+    late_days = sum(1 for r in standard_records if r.status == AttendanceStatus.LATE)
+    half_day_days = sum(1 for r in standard_records if r.status == AttendanceStatus.HALF_DAY)
+    leave_days = sum(1 for r in standard_records if r.status == AttendanceStatus.LEAVE)
     
-    # Total days attended at work
+    # Total standard working days attended at work (Sundays are overtime, not regular working days)
     present_days = on_time_days + late_days + half_day_days
 
     overtime_hours = sum(float(r.overtime_hours or 0) for r in records)
@@ -105,8 +108,8 @@ async def my_attendance_stats(
 
     total_late_minutes = sum(
         (r.late_minutes if (hasattr(r, "late_minutes") and r.late_minutes and r.late_minutes > 0)
-         else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0))
-        for r in records
+         else (calculate_late_minutes(r.check_in.time(), r.date) if (r.check_in and r.status == AttendanceStatus.LATE and r.date.weekday() != 6) else 0))
+        for r in standard_records
     )
     total_late_hours = round(total_late_minutes / 60.0, 2)
 
@@ -333,9 +336,11 @@ async def today_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
-            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time()) if (r.check_in and r.status == AttendanceStatus.LATE) else 0),
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time(), r.date) if (r.check_in and r.status == AttendanceStatus.LATE and r.date.weekday() != 6) else 0),
             status=r.status,
             source=r.source,
+            checkout_count=getattr(r, "checkout_count", 0) or 0,
+            punches=getattr(r, "punches", "[]") or "[]",
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
             employee_dept=r.employee.department if r.employee else "N/A"
@@ -383,8 +388,9 @@ async def live_attendance(
             source=r.source,
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
-            employee_dept=r.employee.department if r.employee else "N/A"
-        )
+            employee_dept=r.employee.department if r.employee else "N/A",
+            checkout_count=getattr(r, "checkout_count", 0) or 0,
+            punches=getattr(r, "punches", "[]") or "[]")
         for r in records
     ]
 
@@ -418,8 +424,14 @@ async def get_today_stats(
     
     present_total = present + late + wfh_or_half
     
-    # Absent count is active employees without check-in who aren't on leave
-    absent = max(total_active - present_total - leave, 0)
+    # On Sunday, non-working employees are on Holiday / Weekly Off, NOT Absent
+    is_today_sunday = (today.weekday() == 6)
+    if is_today_sunday:
+        absent = 0
+        holiday = max(total_active - present_total - leave, 0)
+    else:
+        absent = max(total_active - present_total - leave, 0)
+        holiday = 0
 
     # Today's overtime and late hours
     today_overtime_hours = sum(float(r.overtime_hours or 0) for r in records)
@@ -455,6 +467,7 @@ async def get_today_stats(
         "absent": absent,
         "late": late,
         "leave": leave,
+        "holiday": holiday,
         "overtime_hours": round(today_overtime_hours, 2),
         "late_minutes": today_late_minutes,
         "late_hours": today_late_hours,
@@ -607,6 +620,7 @@ async def manual_entry(
         raise HTTPException(status_code=400, detail="Attendance record already exists for this date")
         
     # Calculate hours and late minutes if check-in and check-out are provided
+    is_sunday = (entry.date.weekday() == 6)
     working_hours = None
     overtime_hours = 0.0
     late_minutes = 0
@@ -614,12 +628,16 @@ async def manual_entry(
         from server.services.attendance_service import calculate_hours
         working_hours, overtime_hours = calculate_hours(entry.check_in, entry.check_out)
 
-    if entry.check_in:
+    if entry.check_in and not is_sunday:
         from server.services.attendance_service import calculate_late_minutes
-        late_minutes = calculate_late_minutes(entry.check_in.time())
+        late_minutes = calculate_late_minutes(entry.check_in.time(), entry.date)
         
     status_to_save = entry.status
-    if entry.status == AttendanceStatus.PRESENT and late_minutes > 0:
+    if is_sunday:
+        status_to_save = AttendanceStatus.PRESENT
+        late_minutes = 0
+        overtime_hours = working_hours or 0.0
+    elif entry.status == AttendanceStatus.PRESENT and late_minutes > 0:
         status_to_save = AttendanceStatus.LATE
 
     manual_punches = []
@@ -670,6 +688,8 @@ async def manual_entry(
         late_minutes=record.late_minutes if hasattr(record, "late_minutes") and record.late_minutes else late_minutes,
         status=record.status,
         source=record.source,
+        checkout_count=record.checkout_count or 0,
+        punches=record.punches or "[]",
         created_at=record.created_at,
         employee_name=record.employee.name if record.employee else "Unknown",
         employee_dept=record.employee.department if record.employee else "N/A"
@@ -696,13 +716,21 @@ async def update_attendance(
         setattr(record, field, value)
         
     # Recalculate hours and late minutes if check_in/check_out changed
-    if updates.check_in or updates.check_out:
+    if updates.check_in or updates.check_out or updates.date:
         from server.services.attendance_service import calculate_hours, calculate_late_minutes
-        working_hours, overtime_hours = calculate_hours(record.check_in, record.check_out)
-        record.working_hours = working_hours
-        record.overtime_hours = overtime_hours
-        if record.check_in:
-            record.late_minutes = calculate_late_minutes(record.check_in.time())
+        is_rec_sunday = (record.date.weekday() == 6)
+        if record.check_in and record.check_out:
+            working_hours, overtime_hours = calculate_hours(record.check_in, record.check_out)
+            record.working_hours = working_hours
+            if is_rec_sunday:
+                record.overtime_hours = working_hours
+                record.late_minutes = 0
+                record.status = AttendanceStatus.PRESENT
+            else:
+                record.overtime_hours = overtime_hours
+                record.late_minutes = calculate_late_minutes(record.check_in.time(), record.date)
+        elif is_rec_sunday:
+            record.late_minutes = 0
         
     await db.commit()
     await db.refresh(record)
@@ -716,9 +744,11 @@ async def update_attendance(
         check_out=record.check_out,
         working_hours=record.working_hours,
         overtime_hours=record.overtime_hours,
-        late_minutes=record.late_minutes if hasattr(record, "late_minutes") and record.late_minutes else (calculate_late_minutes(record.check_in.time()) if (record.check_in and record.status == AttendanceStatus.LATE) else 0),
+        late_minutes=record.late_minutes if hasattr(record, "late_minutes") and record.late_minutes else (calculate_late_minutes(record.check_in.time(), record.date) if (record.check_in and record.status == AttendanceStatus.LATE and record.date.weekday() != 6) else 0),
         status=record.status,
         source=record.source,
+        checkout_count=record.checkout_count or 0,
+        punches=record.punches or "[]",
         created_at=record.created_at,
         employee_name=record.employee.name if record.employee else "Unknown",
         employee_dept=record.employee.department if record.employee else "N/A"
@@ -773,7 +803,8 @@ async def get_history(
             source=r.source,
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
-            employee_dept=r.employee.department if r.employee else "N/A"
-        )
+            employee_dept=r.employee.department if r.employee else "N/A",
+            checkout_count=getattr(r, "checkout_count", 0) or 0,
+            punches=getattr(r, "punches", "[]") or "[]")
         for r in records
     ]

@@ -14,9 +14,10 @@ import { useToast } from "@/components/ToastProvider";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { attendanceApi, employeesApi } from "@/services/api";
 import { formatTime, getLocalDateString } from "@/utils/formatters";
+import CheckoutHistoryModal from "@/components/CheckoutHistoryModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type AttendanceStatus = "present" | "absent" | "late" | "halfday" | "leave" | "wfh";
+type AttendanceStatus = "present" | "absent" | "late" | "halfday" | "leave" | "wfh" | "holiday" | "weekly_off";
 
 interface AttendanceRecord {
   id: string;
@@ -350,6 +351,7 @@ export default function AttendancePage() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
   const [showModal, setShowModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [selectedPunchesRecord, setSelectedPunchesRecord] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -749,7 +751,22 @@ export default function AttendancePage() {
                       style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
                       {viewMode === "historical" && (
                         <td className="px-4 py-3.5 text-cyan-300/80 text-xs font-mono whitespace-nowrap">
-                          {r.date || "—"}
+                          <div>
+                            <span>{r.date || "—"}</span>
+                            {(() => {
+                              try {
+                                const d = new Date(r.date + "T00:00:00");
+                                if (d.getDay() === 0) {
+                                  return (
+                                    <span className="block text-[10px] text-amber-400 font-sans font-semibold mt-0.5">
+                                      Sunday (OT)
+                                    </span>
+                                  );
+                                }
+                              } catch {}
+                              return null;
+                            })()}
+                          </div>
                         </td>
                       )}
                       <td className="px-4 py-3.5">
@@ -776,9 +793,16 @@ export default function AttendancePage() {
                         <div>
                           <span>{r.checkOut}</span>
                           {r.checkoutCount && r.checkoutCount > 0 ? (
-                            <span className="block text-[10px] text-cyan-400 font-sans font-medium mt-0.5">
-                              {r.checkoutCount} checkout{r.checkoutCount > 1 ? "s" : ""}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPunchesRecord(r)}
+                              className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-sans font-semibold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 transition-all cursor-pointer shadow-sm group"
+                              title="Click to view exact times and dates of all checkouts"
+                            >
+                              <Clock size={11} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+                              <span>{r.checkoutCount} checkout{r.checkoutCount > 1 ? "s" : ""}</span>
+                              <span className="text-[9px] text-cyan-400/80 underline ml-0.5">view times</span>
+                            </button>
                           ) : null}
                         </div>
                       </td>
@@ -786,9 +810,14 @@ export default function AttendancePage() {
                         <div>
                           <span className="font-semibold text-white/90">{r.workingHours}</span>
                           {r.punches && r.punches.length > 1 && (
-                            <span className="block text-[10px] text-purple-300 font-sans mt-0.5" title={`${r.punches.length} sessions recorded`}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPunchesRecord(r)}
+                              className="block text-[10px] text-purple-300 hover:text-purple-200 font-sans mt-0.5 cursor-pointer hover:underline text-left"
+                              title={`${r.punches.length} sessions recorded — click to inspect`}
+                            >
                               {r.punches.length} sessions
-                            </span>
+                            </button>
                           )}
                         </div>
                       </td>
@@ -833,6 +862,13 @@ export default function AttendancePage() {
             onClose={() => setEditingRecord(null)}
             onSave={handleEditSave}
             onDelete={handleDeleteAttendance}
+          />
+        )}
+        {selectedPunchesRecord && (
+          <CheckoutHistoryModal
+            isOpen={!!selectedPunchesRecord}
+            onClose={() => setSelectedPunchesRecord(null)}
+            record={selectedPunchesRecord}
           />
         )}
       </AnimatePresence>

@@ -99,6 +99,9 @@ def generate_daily_attendance_excel(report_date: date, records: list, title: str
         elif status == "late":
             status_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid") # light amber
             status_font = Font(name=FONT_NAME, size=10, bold=True, color="92400E")
+        elif status in ("holiday", "weekly_off"):
+            status_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid") # light sky blue
+            status_font = Font(name=FONT_NAME, size=10, bold=True, color="0369A1")
         elif status in ("absent", "half_day"):
             status_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid") # light red
             status_font = Font(name=FONT_NAME, size=10, bold=True, color="991B1B")
@@ -369,6 +372,9 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
         elif status_raw in ("late", "half_day", "halfday"):
             status_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
             status_font = Font(name=FONT_NAME, size=10, bold=True, color="92400E")
+        elif status_raw in ("holiday", "weekly_off"):
+            status_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+            status_font = Font(name=FONT_NAME, size=10, bold=True, color="0369A1")
         elif status_raw == "leave":
             status_fill = PatternFill(start_color="EDE9FE", end_color="EDE9FE", fill_type="solid")
             status_font = Font(name=FONT_NAME, size=10, bold=True, color="6D28D9")

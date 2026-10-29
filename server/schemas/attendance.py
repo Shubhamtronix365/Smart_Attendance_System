@@ -50,6 +50,7 @@ class AttendanceStats(BaseModel):
     absent: int
     late: int
     leave: int
+    holiday: Optional[int] = 0
     overtime_hours: Optional[Decimal] = Decimal("0.00")
     late_minutes: Optional[int] = 0
     late_hours: Optional[Decimal] = Decimal("0.00")
