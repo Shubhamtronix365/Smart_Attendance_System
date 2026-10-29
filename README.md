@@ -29,7 +29,7 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
     - **Edit Any Attendance Log:** Admins can edit check-in time, check-out time, attendance status (Present, Late, Half Day, Absent, Leave, WFH), and date for any employee.
     - **Automatic Shift & Hours Re-computation:** Editing punch times automatically recalculates worked duration, applies the 1-hour lunch break deduction, and updates late arrival minutes and overtime hours.
     - **Delete Attendance Record:** Dedicated `DELETE /api/attendance/{id}` endpoint and deletion modal to remove erroneous or duplicate punch entries from database and live logs.
-    - **Manual Entry:** Insert new attendance entries for any employee and date.
+    - **Manual Entry with Active Session Support:** Insert new attendance entries for any employee and date. Includes a dedicated **"Active Session (Currently Working)"** toggle for shifts currently in progress: records check-in with `check_out: null`, initializes Session 1 as active in `punches`, displays an animated **Active Session** indicator, and seamlessly transitions to checkout when scanned on hardware.
 - ⏱️ **Detailed Time-by-Time Reports & Logs:** Complete punch-by-punch attendance logs displaying exact check-in and check-out timestamps, hours, late minutes, overtime, and status for each employee, filterable by month or custom date range, and downloadable in Excel (`.xlsx`) and PDF (`.pdf`).
 - 🏖️ **Real-Time Leave Management & One-Time Approval Alerts:**
   - **Real-Time WebSocket Sync:** Live approval and rejection notifications broadcast over WebSocket (`/ws/client`) to dynamically refresh admin and employee leave pages without manual reloads.

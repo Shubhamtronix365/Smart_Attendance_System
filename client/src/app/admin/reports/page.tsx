@@ -130,7 +130,14 @@ function DetailedLogsTable({ data, onSelectPunches }: { data: any[]; onSelectPun
               </td>
               <td className="px-4 py-3.5 text-white/80 text-sm font-mono font-medium">
                 <div className="flex flex-col items-start gap-1">
-                  <span>{r.checkOut}</span>
+                  {r.checkIn && r.checkIn !== "—" && r.checkIn !== "--:--" && (!r.checkOut || r.checkOut === "—" || r.checkOut === "--:--") ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                      Active Session
+                    </span>
+                  ) : (
+                    <span>{r.checkOut}</span>
+                  )}
                   {r.checkoutCount && r.checkoutCount > 1 && onSelectPunches ? (
                     <button
                       type="button"
@@ -233,7 +240,14 @@ function DailyTable({ data, onSelectPunches }: { data: any[]; onSelectPunches?: 
               <td className="px-4 py-3.5 text-white/70 text-sm font-mono">{r.checkIn}</td>
               <td className="px-4 py-3.5 text-white/70 text-sm font-mono">
                 <div className="flex flex-col items-start gap-1">
-                  <span>{r.checkOut}</span>
+                  {r.checkIn && r.checkIn !== "—" && r.checkIn !== "--:--" && (!r.checkOut || r.checkOut === "—" || r.checkOut === "--:--") ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                      Active Session
+                    </span>
+                  ) : (
+                    <span>{r.checkOut}</span>
+                  )}
                   {r.checkoutCount && r.checkoutCount > 1 && onSelectPunches ? (
                     <button
                       type="button"

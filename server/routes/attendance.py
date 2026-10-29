@@ -655,7 +655,7 @@ async def manual_entry(
             "session": 1,
             "in": entry.check_in.strftime("%Y-%m-%d %H:%M:%S"),
             "out": entry.check_out.strftime("%Y-%m-%d %H:%M:%S") if entry.check_out else None,
-            "hours": float(working_hours) if working_hours else 0.0
+            "hours": float(working_hours) if (working_hours and entry.check_out) else None
         })
         if entry.check_out:
             checkout_cnt = 1
@@ -724,7 +724,8 @@ async def update_attendance(
         setattr(record, field, value)
         
     # Recalculate hours and late minutes if check_in/check_out changed
-    if updates.check_in or updates.check_out or updates.date:
+    updates_dict = updates.model_dump(exclude_unset=True)
+    if "check_in" in updates_dict or "check_out" in updates_dict or "date" in updates_dict:
         from server.services.attendance_service import calculate_hours, calculate_late_minutes
         is_rec_sunday = (record.date.weekday() == 6)
         if record.check_in and record.check_out:
@@ -737,6 +738,40 @@ async def update_attendance(
             else:
                 record.overtime_hours = overtime_hours
                 record.late_minutes = calculate_late_minutes(record.check_in.time(), record.date)
+            # Sync punches if session 1 exists
+            try:
+                p_list = json.loads(record.punches or "[]")
+                if not p_list:
+                    p_list = [{"session": 1, "in": record.check_in.strftime("%Y-%m-%d %H:%M:%S"), "out": record.check_out.strftime("%Y-%m-%d %H:%M:%S"), "hours": float(working_hours or 0)}]
+                else:
+                    p_list[-1]["out"] = record.check_out.strftime("%Y-%m-%d %H:%M:%S")
+                    p_list[-1]["hours"] = float(working_hours or 0)
+                record.punches = json.dumps(p_list)
+                record.checkout_count = sum(1 for s in p_list if s.get("out"))
+            except Exception:
+                pass
+        elif record.check_in and not record.check_out:
+            # Active session
+            record.working_hours = None
+            record.overtime_hours = 0.0
+            if is_rec_sunday:
+                record.late_minutes = 0
+                record.status = AttendanceStatus.PRESENT
+            else:
+                record.late_minutes = calculate_late_minutes(record.check_in.time(), record.date)
+                record.status = AttendanceStatus.LATE if record.late_minutes > 0 else AttendanceStatus.PRESENT
+            # Sync punches
+            try:
+                p_list = json.loads(record.punches or "[]")
+                if not p_list:
+                    p_list = [{"session": 1, "in": record.check_in.strftime("%Y-%m-%d %H:%M:%S"), "out": None, "hours": None}]
+                else:
+                    p_list[-1]["out"] = None
+                    p_list[-1]["hours"] = None
+                record.punches = json.dumps(p_list)
+                record.checkout_count = sum(1 for s in p_list if s.get("out"))
+            except Exception:
+                pass
         elif is_rec_sunday:
             record.late_minutes = 0
         

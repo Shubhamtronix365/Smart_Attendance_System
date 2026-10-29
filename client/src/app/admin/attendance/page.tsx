@@ -43,6 +43,7 @@ interface AttendanceRecord {
 function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d: any) => void }) {
   const [employeesList, setEmployeesList] = useState<any[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState("");
+  const [isActiveSession, setIsActiveSession] = useState(false);
   const [form, setForm] = useState({
     date: getLocalDateString(),
     checkIn: "09:00",
@@ -61,7 +62,9 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
   const handleSubmit = () => {
     if (!selectedEmpId) return;
     const cIn = form.checkIn ? `${form.date}T${form.checkIn.length === 5 ? form.checkIn + ":00" : form.checkIn}` : null;
-    const cOut = form.checkOut ? `${form.date}T${form.checkOut.length === 5 ? form.checkOut + ":00" : form.checkOut}` : null;
+    const cOut = (!isActiveSession && form.checkOut)
+      ? `${form.date}T${form.checkOut.length === 5 ? form.checkOut + ":00" : form.checkOut}`
+      : null;
     onSave({
       employee_id: Number(selectedEmpId),
       date: form.date,
@@ -91,7 +94,7 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
       >
         <div className="flex items-center justify-between px-7 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           <h3 className="text-white font-black text-lg">Manual Attendance Entry</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer"><X size={16} /></button>
         </div>
         <div className="px-7 py-5 grid gap-4">
           <div>
@@ -111,25 +114,64 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
             </select>
           </div>
 
-          {[
-            { label: "Date", key: "date" as const, type: "date", placeholder: "" },
-            { label: "Check-In Time", key: "checkIn" as const, type: "time", placeholder: "" },
-            { label: "Check-Out Time", key: "checkOut" as const, type: "time", placeholder: "" },
-          ].map(({ label, key, type, placeholder }) => (
-            <div key={key}>
-              <label className="text-white/50 text-xs font-medium mb-1.5 block">{label}</label>
-              <input
-                type={type}
-                value={form[key]}
-                onChange={(e) => s(key)(e.target.value)}
-                placeholder={placeholder}
-                className="w-full px-4 py-2.5 text-white text-sm outline-none rounded-xl"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,245,255,0.4)")}
-                onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
-              />
+          <div>
+            <label className="text-white/50 text-xs font-medium mb-1.5 block">Record Date</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => s("date")(e.target.value)}
+              className="w-full px-4 py-2.5 text-white text-sm outline-none rounded-xl"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+            />
+          </div>
+
+          <div>
+            <label className="text-white/50 text-xs font-medium mb-1.5 block">Check-In Time</label>
+            <input
+              type="time"
+              value={form.checkIn}
+              onChange={(e) => s("checkIn")(e.target.value)}
+              className="w-full px-4 py-2.5 text-white text-sm font-mono outline-none rounded-xl"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(0,245,255,0.3)" }}
+            />
+          </div>
+
+          {/* Check-Out / Active Session Option */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+              <label className="text-white/50 text-xs font-medium">Check-Out Time</label>
+              <label className="inline-flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer select-none bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={isActiveSession}
+                  onChange={(e) => setIsActiveSession(e.target.checked)}
+                  className="rounded border-amber-400 text-amber-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                />
+                <span>Active Session (Currently Working)</span>
+              </label>
             </div>
-          ))}
+
+            {!isActiveSession ? (
+              <input
+                type="time"
+                value={form.checkOut}
+                onChange={(e) => s("checkOut")(e.target.value)}
+                className="w-full px-4 py-2.5 text-white text-sm font-mono outline-none rounded-xl"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+              />
+            ) : (
+              <div className="px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-2.5 text-xs text-amber-200">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+                <div>
+                  <span className="font-bold text-amber-300 block">Active Shift In Progress</span>
+                  <span className="text-amber-200/70 text-[11px]">
+                    No check-out timestamp recorded. User is marked as actively working in office.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div>
             <label className="text-white/50 text-xs font-medium mb-1.5 block">Status</label>
             <select value={form.status} onChange={(e) => s("status")(e.target.value)}
@@ -142,11 +184,11 @@ function ManualEntryModal({ onClose, onSave }: { onClose: () => void; onSave: (d
           </div>
         </div>
         <div className="flex gap-3 px-7 py-5" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all border border-white/10">Cancel</button>
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all border border-white/10 cursor-pointer">Cancel</button>
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={handleSubmit}
-            className="flex-1 py-3 rounded-xl text-sm font-bold text-black"
+            className="flex-1 py-3 rounded-xl text-sm font-bold text-black cursor-pointer"
             style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
           >Save Entry</motion.button>
         </div>
@@ -167,6 +209,8 @@ function EditAttendanceModal({
   onSave: (updated: AttendanceRecord) => void;
   onDelete: (id: string) => void;
 }) {
+  const isInitiallyActive = !record.checkOut || record.checkOut === "—" || record.checkOut === "-";
+  const [isActiveSession, setIsActiveSession] = useState(isInitiallyActive);
   const [val, setVal] = useState({
     date: record.date || new Date().toISOString().split("T")[0],
     checkIn: record.rawCheckIn || (record.checkIn && record.checkIn !== "—" ? record.checkIn.slice(0, 5) : "09:00"),
@@ -245,14 +289,32 @@ function EditAttendanceModal({
               />
             </div>
             <div>
-              <label className="text-white/50 text-xs font-medium mb-1.5 block">Check-Out Time</label>
-              <input
-                type="time"
-                value={val.checkOut}
-                onChange={(e) => setVal((v) => ({ ...v, checkOut: e.target.value }))}
-                className="w-full px-3 py-2 text-white text-xs font-mono outline-none rounded-xl"
-                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(124,58,237,0.2)" }}
-              />
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                <label className="text-white/50 text-xs font-medium">Check-Out Time</label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer select-none bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded-lg border border-amber-500/30 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={isActiveSession}
+                    onChange={(e) => setIsActiveSession(e.target.checked)}
+                    className="rounded border-amber-400 text-amber-500 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                  />
+                  <span>Active Session</span>
+                </label>
+              </div>
+              {!isActiveSession ? (
+                <input
+                  type="time"
+                  value={val.checkOut}
+                  onChange={(e) => setVal((v) => ({ ...v, checkOut: e.target.value }))}
+                  className="w-full px-3 py-2 text-white text-xs font-mono outline-none rounded-xl"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(124,58,237,0.2)" }}
+                />
+              ) : (
+                <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-2 text-xs text-amber-300">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+                  <span>Active · Currently Working</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -320,9 +382,9 @@ function EditAttendanceModal({
                   ...record,
                   date: val.date,
                   checkIn: val.checkIn,
-                  checkOut: val.checkOut,
+                  checkOut: isActiveSession ? "—" : val.checkOut,
                   rawCheckIn: val.checkIn,
-                  rawCheckOut: val.checkOut,
+                  rawCheckOut: isActiveSession ? "" : val.checkOut,
                   status: val.status,
                 });
               }}
@@ -791,7 +853,14 @@ export default function AttendancePage() {
                       </td>
                       <td className="px-4 py-3.5 text-white/70 text-sm font-mono">
                         <div>
-                          <span>{r.checkOut}</span>
+                          {r.checkIn && r.checkIn !== "—" && (!r.checkOut || r.checkOut === "—") ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                              Active Session
+                            </span>
+                          ) : (
+                            <span>{r.checkOut || "—"}</span>
+                          )}
                           {r.checkoutCount && r.checkoutCount > 0 ? (
                             <button
                               type="button"
@@ -803,7 +872,18 @@ export default function AttendancePage() {
                               <span>{r.checkoutCount} checkout{r.checkoutCount > 1 ? "s" : ""}</span>
                               <span className="text-[9px] text-cyan-400/80 underline ml-0.5">view times</span>
                             </button>
-                          ) : null}
+                          ) : (
+                            r.checkIn && r.checkIn !== "—" && (!r.checkOut || r.checkOut === "—") && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPunchesRecord(r)}
+                                className="mt-1 block text-[10px] text-cyan-400/80 hover:text-cyan-300 font-sans cursor-pointer hover:underline text-left"
+                                title="Click to view session details"
+                              >
+                                view session details
+                              </button>
+                            )
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-white/60 text-sm">

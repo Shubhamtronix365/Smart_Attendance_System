@@ -306,7 +306,14 @@ export default function EmployeeAttendancePage() {
                         </td>
                         <td className="py-4 px-6 font-mono text-white/70">
                           <div>
-                            <span>{r.check_out ? formatTime(r.check_out) : "--:--"}</span>
+                            {r.check_in && !r.check_out ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                                Active Session
+                              </span>
+                            ) : (
+                              <span>{r.check_out ? formatTime(r.check_out) : "--:--"}</span>
+                            )}
                             {r.checkout_count && r.checkout_count > 0 ? (
                               <button
                                 type="button"
