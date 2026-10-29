@@ -56,6 +56,21 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **100% Sunday Overtime:** Any employee who checks in, checks out, or works on a Sunday receives **100% of their worked time directly as Overtime (`overtime_hours = working_hours`)** without requiring 8/9 standard work hours threshold.
   - **Zero Sunday Late Penalty:** Voluntary Sunday work has no 9:00 AM late deduction or penalty (status `PRESENT`, 0 late minutes).
   - Integrated across all attendance registries, daily/monthly Excel & PDF exports, dashboard analytics, and payroll auto-computation.
+- 📄 **Executive Professional PDF Reports Redesign (ReportLab):**
+  - **Corporate Navy Header & Branding:** Executive deep navy banner (`#0f172a`), bright accent line (`#0284c7`), and dynamic generation metadata (Date, Generated For, Total Records, Confidentiality Notice).
+  - **Top KPI Summary Metric Cards:** Visual summary blocks at the top of Daily and Historical attendance PDFs displaying Total Records, Present, Late, Absent, Holidays, Total Worked Hours, and Overtime.
+  - **Color-Coded Status Pills:** High-contrast colored status badges for `PRESENT` (emerald), `LATE` (amber), `ABSENT` (rose), `HOLIDAY` (blue), `LEAVE` (purple), and live `Active Session` (warm amber).
+  - **Zebra Striping & Clean Typography:** Crisp alternating white and slate rows (`#ffffff` / `#f8fafc`), thin slate borders (`#e2e8f0`), exact point-width table column fits for zero text clipping on US Letter landscape/portrait layouts.
+- 📊 **Executive Excel Spreadsheet Exports (openpyxl):**
+  - **Branded Executive Title Block:** Bold navy title headers with system metadata and report scope.
+  - **Freeze Panes (`B7`):** Headers and metadata remain locked at the top during large dataset scrolling.
+  - **Soft Tinted Status Fills:** Clean pastel fills with matching dark bold text for all attendance statuses.
+  - **Automated Column Sizing:** Dynamic cell measurement algorithm setting column widths between 13 and 55 characters for instant readability in Microsoft Excel, Google Sheets, and LibreOffice.
+  - **Summary & Total Rows:** Double-bordered accounting totals (`TOTAL_BORDER`) summing total hours and overtime across records.
+- 📱 **Enhanced Mobile & Multi-Device Responsiveness:**
+  - **Adaptive Breakdowns & Modals:** `CheckoutHistoryModal` automatically reflows its summary metrics into single-column cards on mobile viewports (< 640px) and 3-column rows on desktop.
+  - **Smooth Horizontal Data Tables:** Minimum table widths (`min-w-[600px]` to `min-w-[760px]`) inside `overflow-x-auto` wrappers ensure comprehensive attendance and report tables scroll fluidly without compressing columns or cutting off timestamps.
+  - **Adaptive Export Actions Bar:** Filter and export button groups (`Print`, `Excel`, `PDF`) automatically wrap or expand on small mobile screens.
 
 ---
 

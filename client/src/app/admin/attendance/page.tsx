@@ -782,7 +782,7 @@ export default function AttendancePage() {
           {/* Table */}
           <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.2 }} className="neo-card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[700px]">
                 <thead>
                   <tr style={{ borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
                     {(viewMode === "historical"

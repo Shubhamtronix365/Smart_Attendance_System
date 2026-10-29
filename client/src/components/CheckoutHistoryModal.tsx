@@ -352,14 +352,14 @@ export default function CheckoutHistoryModal({
         style={{ background: "rgba(10, 15, 30, 0.98)" }}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-white/10 flex items-start justify-between bg-white/[0.02]">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-white/10 flex items-start justify-between bg-white/[0.02]">
           <div className="flex items-start gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
               <Clock size={22} />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-white font-bold text-lg">Checkout & Session Breakdown</h3>
+                <h3 className="text-white font-bold text-base sm:text-lg">Checkout & Session Breakdown</h3>
                 {isSunday && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
                     <SunMedium size={12} />
@@ -391,7 +391,7 @@ export default function CheckoutHistoryModal({
         </div>
 
         {/* Overview Stats Bar */}
-        <div className="px-6 py-3.5 bg-white/[0.03] border-b border-white/5 grid grid-cols-3 gap-3">
+        <div className="px-4 sm:px-6 py-3.5 bg-white/[0.03] border-b border-white/5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
           <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/5">
             <span className="text-white/40 text-[10px] uppercase font-bold tracking-wider block">Total Checkouts</span>
             <span className="text-cyan-400 font-mono font-black text-xl mt-0.5 block">
@@ -413,7 +413,7 @@ export default function CheckoutHistoryModal({
         </div>
 
         {/* Session Details List */}
-        <div className="p-6 overflow-y-auto space-y-4 flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           <div className="flex items-center justify-between mb-1">
             <h4 className="text-xs font-bold uppercase tracking-wider text-white/50">
               Recorded Punch Sessions ({sessions.length})

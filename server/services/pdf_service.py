@@ -1,3 +1,19 @@
+import calendar
+from io import BytesIO
+from datetime import datetime, date
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from server.models import Payroll, Employee
+
 def format_late_duration_pdf(minutes) -> str:
     if not minutes or int(minutes) <= 0:
         return "—"
@@ -8,483 +24,334 @@ def format_late_duration_pdf(minutes) -> str:
     rem = m % 60
     return f"{hrs}h {rem}m" if rem > 0 else f"{hrs}h"
 
-import calendar
-from io import BytesIO
-from datetime import datetime, date
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from server.models import Payroll, Employee
+# ─── Executive Color Palette ──────────────────────────────────────────────────
+COLOR_PRIMARY_NAVY = colors.HexColor("#0f172a")    # Slate 900
+COLOR_SECONDARY = colors.HexColor("#1e293b")        # Slate 800
+COLOR_ACCENT_BLUE = colors.HexColor("#0284c7")      # Sky 600
+COLOR_BORDER = colors.HexColor("#e2e8f0")           # Slate 200
+COLOR_ZEBRA_LIGHT = colors.HexColor("#f8fafc")      # Slate 50
+COLOR_WHITE = colors.HexColor("#ffffff")
 
+# Status badge font colors
+COLOR_STATUS_PRESENT = "#059669"   # Emerald
+COLOR_STATUS_LATE = "#d97706"      # Amber
+COLOR_STATUS_ABSENT = "#dc2626"    # Rose
+COLOR_STATUS_HOLIDAY = "#0284c7"   # Sky blue
+COLOR_STATUS_LEAVE = "#7c3aed"     # Violet
+COLOR_STATUS_ACTIVE = "#b45309"    # Amber active
+
+def _format_status_badge(status_raw: str) -> str:
+    s = str(status_raw or "absent").lower().strip()
+    if s in ("present", "wfh"):
+        return f'<font color="{COLOR_STATUS_PRESENT}"><b>{s.upper()}</b></font>'
+    elif s == "late":
+        return f'<font color="{COLOR_STATUS_LATE}"><b>LATE</b></font>'
+    elif s in ("holiday", "weekly_off"):
+        return f'<font color="{COLOR_STATUS_HOLIDAY}"><b>HOLIDAY</b></font>'
+    elif s == "leave":
+        return f'<font color="{COLOR_STATUS_LEAVE}"><b>LEAVE</b></font>'
+    elif s in ("half_day", "halfday"):
+        return f'<font color="{COLOR_STATUS_LATE}"><b>HALF DAY</b></font>'
+    else:
+        return f'<font color="{COLOR_STATUS_ABSENT}"><b>ABSENT</b></font>'
+
+def _add_executive_header(story, title: str, subtitle: str, styles, right_meta: str = ""):
+    """Adds a modern corporate header banner with clean typography and accent line."""
+    org_style = ParagraphStyle(
+        name="OrgBanner",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=COLOR_ACCENT_BLUE,
+        textTransform="uppercase",
+    )
+    title_style = ParagraphStyle(
+        name="ExecTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=16,
+        leading=20,
+        textColor=COLOR_PRIMARY_NAVY,
+        spaceAfter=2,
+    )
+    sub_style = ParagraphStyle(
+        name="ExecSub",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor("#64748b"),
+    )
+    right_meta_style = ParagraphStyle(
+        name="ExecRightMeta",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=11,
+        textColor=colors.HexColor("#64748b"),
+        alignment=2,
+    )
+
+    header_table_data = [
+        [
+            Paragraph("<b>SMART ATTENDANCE &amp; PAYROLL MANAGEMENT SYSTEM</b>", org_style),
+            Paragraph(f"<b>REPORT GENERATED:</b> {datetime.now().strftime('%d %b %Y, %I:%M %p IST')}", right_meta_style),
+        ],
+        [
+            Paragraph(title, title_style),
+            Paragraph(right_meta or "<b>STATUS:</b> OFFICIAL ARCHIVE", right_meta_style),
+        ],
+        [
+            Paragraph(subtitle, sub_style),
+            Paragraph("", right_meta_style),
+        ],
+    ]
+
+    t_head = Table(header_table_data, colWidths=[500, 240])
+    t_head.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
+        ('TOPPADDING', (0,0), (-1,-1), 1),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+    ]))
+    story.append(t_head)
+    story.append(Spacer(1, 4))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_ACCENT_BLUE, spaceBefore=2, spaceAfter=8))
+
+def _build_kpi_summary_bar(total_records: int, present: int, late: int, absent: int, holiday: int, total_hours: float, total_ot: float):
+    """Builds a compact, executive KPI dashboard strip table."""
+    box_style_lbl = ParagraphStyle(
+        name="KPILbl",
+        fontName="Helvetica-Bold",
+        fontSize=7,
+        leading=9,
+        textColor=colors.HexColor("#475569"),
+        alignment=1,
+    )
+    box_style_val = ParagraphStyle(
+        name="KPIVal",
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=13,
+        alignment=1,
+    )
+
+    kpi_data = [
+        [
+            Paragraph("TOTAL LOGS", box_style_lbl),
+            Paragraph("PRESENT", box_style_lbl),
+            Paragraph("LATE ARRIVALS", box_style_lbl),
+            Paragraph("ABSENT / LEAVE", box_style_lbl),
+            Paragraph("HOLIDAYS / OFF", box_style_lbl),
+            Paragraph("TOTAL WORKED", box_style_lbl),
+            Paragraph("OVERTIME", box_style_lbl),
+        ],
+        [
+            Paragraph(f"<b>{total_records}</b>", ParagraphStyle("K1", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
+            Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">{present}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_LATE}">{late}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_ABSENT}">{absent}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_HOLIDAY}">{holiday}</font></b>', box_style_val),
+            Paragraph(f"<b>{total_hours:.1f}h</b>", ParagraphStyle("K2", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
+            Paragraph(f'<b><font color="#7c3aed">+{total_ot:.1f}h</font></b>', box_style_val),
+        ]
+    ]
+
+    t_kpi = Table(kpi_data, colWidths=[105, 105, 105, 105, 105, 105, 110])
+    t_kpi.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f8fafc")),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    return t_kpi
+
+# ─── 1. Payslip PDF Generator ─────────────────────────────────────────────────
 def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
-    """
-    Generates a professional PDF payslip for an employee.
-    Returns the PDF content as a bytes object.
-    """
+    """Generates an executive-grade PDF payslip for an employee."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        rightMargin=40,
-        leftMargin=40,
-        topMargin=40,
-        bottomMargin=40
-    )
-    
-    story = []
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        name="TitleStyle",
-        parent=styles["Heading1"],
-        fontName="Helvetica-Bold",
-        fontSize=20,
-        leading=24,
-        textColor=colors.HexColor("#0f1629"),
-        alignment=1
-    )
-    
-    subtitle_style = ParagraphStyle(
-        name="SubtitleStyle",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=12,
-        leading=16,
-        textColor=colors.HexColor("#7c3aed"),
-        alignment=1
-    )
-    
-    section_heading = ParagraphStyle(
-        name="SectionHeading",
-        parent=styles["Heading2"],
-        fontName="Helvetica-Bold",
-        fontSize=12,
-        leading=16,
-        textColor=colors.HexColor("#0f1629"),
-        spaceAfter=6
-    )
-    
-    body_style = ParagraphStyle(
-        name="BodyStyle",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor("#334155")
-    )
-    
-    bold_body = ParagraphStyle(
-        name="BoldBody",
-        parent=body_style,
-        fontName="Helvetica-Bold"
-    )
-    
-    right_bold_body = ParagraphStyle(
-        name="RightBoldBody",
-        parent=bold_body,
-        alignment=2
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36
     )
 
-    right_body = ParagraphStyle(
-        name="RightBody",
-        parent=body_style,
-        alignment=2
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        name="PSTitle",
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=COLOR_PRIMARY_NAVY,
+        alignment=1,
     )
-    
-    story.append(Paragraph("SMART ATTENDANCE & PAYROLL SYSTEM", title_style))
+    sub_style = ParagraphStyle(
+        name="PSSub",
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=14,
+        textColor=COLOR_ACCENT_BLUE,
+        alignment=1,
+    )
+    body_style = ParagraphStyle(
+        name="PSBody",
+        fontName="Helvetica",
+        fontSize=9,
+        leading=13,
+        textColor=COLOR_SECONDARY,
+    )
+    bold_body = ParagraphStyle(
+        name="PSBold",
+        parent=body_style,
+        fontName="Helvetica-Bold",
+    )
+    right_body = ParagraphStyle(
+        name="PSRight",
+        parent=body_style,
+        alignment=2,
+    )
+    right_bold = ParagraphStyle(
+        name="PSRightBold",
+        parent=bold_body,
+        alignment=2,
+    )
+
+    story.append(Paragraph("SMART ATTENDANCE &amp; PAYROLL MANAGEMENT SYSTEM", title_style))
     month_name = calendar.month_name[payroll.month]
-    story.append(Paragraph(f"PAYSLIP FOR {month_name.upper()} {payroll.year}", subtitle_style))
-    story.append(Spacer(1, 20))
-    
+    story.append(Paragraph(f"OFFICIAL SALARY PAYSLIP — {month_name.upper()} {payroll.year}", sub_style))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_ACCENT_BLUE, spaceBefore=8, spaceAfter=14))
+
+    # Employee Information Block
+    emp_code = employee.employee_code or f"EMP{employee.employee_id:03d}"
     emp_details = [
         [
+            Paragraph("<b>Employee Name:</b>", body_style),
+            Paragraph(employee.name, bold_body),
             Paragraph("<b>Employee ID:</b>", body_style),
-            Paragraph(str(employee.employee_id), body_style),
-            Paragraph("<b>Name:</b>", body_style),
-            Paragraph(employee.name, body_style)
+            Paragraph(f'<font color="#0284c7"><b>{emp_code}</b></font>', bold_body),
         ],
         [
             Paragraph("<b>Department:</b>", body_style),
             Paragraph(employee.department or "N/A", body_style),
             Paragraph("<b>Designation:</b>", body_style),
-            Paragraph(employee.designation or "N/A", body_style)
+            Paragraph(employee.designation or "Staff", body_style),
         ],
         [
-            Paragraph("<b>Phone:</b>", body_style),
-            Paragraph(employee.phone or "N/A", body_style),
             Paragraph("<b>Email:</b>", body_style),
-            Paragraph(employee.email, body_style)
-        ]
+            Paragraph(employee.email, body_style),
+            Paragraph("<b>Working Days:</b>", body_style),
+            Paragraph(f"{payroll.working_days} Days", body_style),
+        ],
+        [
+            Paragraph("<b>Present Days:</b>", body_style),
+            Paragraph(f"{float(payroll.present_days or 0):.1f} Days", body_style),
+            Paragraph("<b>Absent Days:</b>", body_style),
+            Paragraph(f"{float(payroll.absent_days or 0):.1f} Days", body_style),
+        ],
+        [
+            Paragraph("<b>Approved Leaves:</b>", body_style),
+            Paragraph(f"{payroll.leave_days} Days", body_style),
+            Paragraph("<b>Overtime Hours:</b>", body_style),
+            Paragraph(f'<font color="#7c3aed"><b>{float(payroll.overtime_hours or 0):.2f} hrs</b></font>', bold_body),
+        ],
     ]
-    
-    t_details = Table(emp_details, colWidths=[100, 160, 100, 160])
-    t_details.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f8fafc")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#f1f5f9")),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+
+    t_emp = Table(emp_details, colWidths=[110, 160, 110, 160])
+    t_emp.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), COLOR_ZEBRA_LIGHT),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(t_emp)
+    story.append(Spacer(1, 14))
+
+    # Earnings & Deductions Breakdown
+    h_style = ParagraphStyle("PSHead", fontName="Helvetica-Bold", fontSize=9, textColor=COLOR_WHITE)
+    salary_data = [
+        [
+            Paragraph("<b>SALARY COMPONENT &amp; DESCRIPTION</b>", h_style),
+            Paragraph("<b>ALLOWANCES (₹)</b>", ParagraphStyle("H1", parent=h_style, alignment=2)),
+            Paragraph("<b>DEDUCTIONS (₹)</b>", ParagraphStyle("H2", parent=h_style, alignment=2)),
+        ],
+        [
+            Paragraph("Basic Monthly Salary", body_style),
+            Paragraph(f"₹ {float(payroll.basic_salary or 0):,.2f}", right_body),
+            Paragraph("—", right_body),
+        ],
+        [
+            Paragraph(f"Overtime Pay ({float(payroll.overtime_hours or 0):.2f} hrs)", body_style),
+            Paragraph(f"₹ {float(payroll.overtime_pay or 0):,.2f}", right_body),
+            Paragraph("—", right_body),
+        ],
+        [
+            Paragraph("Unpaid Absences &amp; Late Penalty Deductions", body_style),
+            Paragraph("—", right_body),
+            Paragraph(f'<font color="#dc2626">₹ {float(payroll.deductions or 0):,.2f}</font>', right_body),
+        ],
+        [
+            Paragraph("<b>TOTALS</b>", bold_body),
+            Paragraph(f"<b>₹ {(float(payroll.basic_salary or 0) + float(payroll.overtime_pay or 0)):,.2f}</b>", right_bold),
+            Paragraph(f'<b><font color="#dc2626">₹ {float(payroll.deductions or 0):,.2f}</font></b>', right_bold),
+        ],
+        [
+            Paragraph("<b>NET DISBURSED PAYABLE SALARY</b>", ParagraphStyle("PNet", parent=bold_body, fontSize=11, textColor=COLOR_PRIMARY_NAVY)),
+            Paragraph(f'<b><font color="#059669" size="12">₹ {float(payroll.final_salary or 0):,.2f}</font></b>', ParagraphStyle("PNetR", parent=right_bold, fontSize=12)),
+            Paragraph(f'<b><font color="{"#059669" if payroll.is_paid else "#dc2626"}">{"[PAID]" if payroll.is_paid else "[UNPAID]"}</font></b>', ParagraphStyle("PNetS", parent=right_bold)),
+        ],
+    ]
+
+    t_sal = Table(salary_data, colWidths=[270, 135, 135])
+    t_sal.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_PRIMARY_NAVY),
+        ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
+        ('BACKGROUND', (0,-2), (-1,-2), colors.HexColor("#f1f5f9")),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#ecfdf5") if payroll.is_paid else colors.HexColor("#fef2f2")),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
         ('LEFTPADDING', (0,0), (-1,-1), 8),
         ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
-    story.append(t_details)
-    story.append(Spacer(1, 15))
-    
-    story.append(Paragraph("Attendance Summary", section_heading))
-    attendance_data = [
-        [
-            Paragraph("<b>Total Working Days</b>", bold_body),
-            Paragraph("<b>Days Present</b>", bold_body),
-            Paragraph("<b>Days Absent</b>", bold_body),
-            Paragraph("<b>Leave Days</b>", bold_body),
-            Paragraph("<b>Overtime (hrs)</b>", bold_body),
-        ],
-        [
-            Paragraph(str(payroll.working_days), body_style),
-            Paragraph(str(payroll.present_days), body_style),
-            Paragraph(str(payroll.absent_days), body_style),
-            Paragraph(str(payroll.leave_days), body_style),
-            Paragraph(f"{payroll.overtime_hours:.2f}", body_style),
-        ]
-    ]
-    t_att = Table(attendance_data, colWidths=[104, 104, 104, 104, 104])
-    t_att.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f1f5f9")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-    ]))
-    story.append(t_att)
-    story.append(Spacer(1, 15))
-    
-    story.append(Paragraph("Earnings and Deductions", section_heading))
-    salary_data = [
-        [
-            Paragraph("<b>Description</b>", bold_body),
-            Paragraph("<b>Earnings (INR)</b>", right_bold_body),
-            Paragraph("<b>Deductions (INR)</b>", right_bold_body)
-        ],
-        [
-            Paragraph("Basic Salary", body_style),
-            Paragraph(f"{payroll.basic_salary:,.2f}", right_body),
-            Paragraph("-", right_body)
-        ],
-        [
-            Paragraph("Overtime Allowance", body_style),
-            Paragraph(f"{payroll.overtime_pay:,.2f}", right_body),
-            Paragraph("-", right_body)
-        ],
-        [
-            Paragraph("Loss of Pay (Absent Days)", body_style),
-            Paragraph("-", right_body),
-            Paragraph(f"{payroll.deductions:,.2f}", right_body)
-        ],
-        [
-            Paragraph("<b>Net Salary Payable</b>", bold_body),
-            Paragraph(f"<b>{payroll.final_salary:,.2f}</b>", right_bold_body),
-            Paragraph("-", right_bold_body)
-        ]
-    ]
-    
-    t_sal = Table(salary_data, colWidths=[240, 140, 140])
-    t_sal.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f1f5f9")),
-        ('LINEBELOW', (0,0), (-1,0), 1.5, colors.HexColor("#cbd5e1")),
-        ('LINEBELOW', (0,1), (-1,-2), 0.5, colors.HexColor("#f1f5f9")),
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f8fafc")),
-        ('LINEABOVE', (0,-1), (-1,-1), 1.5, colors.HexColor("#0f1629")),
-        ('BOX', (0,0), (-1,-1), 1.5, colors.HexColor("#0f1629")),
-        ('TOPPADDING', (0,0), (-1,-1), 8),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
-        ('LEFTPADDING', (0,0), (-1,-1), 10),
-        ('RIGHTPADDING', (0,0), (-1,-1), 10),
-    ]))
     story.append(t_sal)
-    story.append(Spacer(1, 40))
-    
-    now_str = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    story.append(Spacer(1, 24))
+
+    now_str = datetime.now().strftime("%Y-%m-%d %I:%M %p IST")
     footer_data = [
         [
-            Paragraph(f"Generated on: {now_str}<br/>Status: <b>{'PAID' if payroll.is_paid else 'UNPAID'}</b>", body_style),
-            Paragraph("____________________________<br/>Authorized HR Signature", right_body)
+            Paragraph(f"Generated securely on: {now_str}<br/>System Status: <b>{'PAID' if payroll.is_paid else 'PAYMENT PENDING'}</b>", body_style),
+            Paragraph("____________________________<br/>Authorized HR / Finance Signatory", right_body),
         ]
     ]
-    t_foot = Table(footer_data, colWidths=[260, 260])
+    t_foot = Table(footer_data, colWidths=[270, 270])
     t_foot.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
     ]))
     story.append(t_foot)
-    
+
     doc.build(story)
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
 
-# Helper for report styling
-def _add_report_header(story, title, subtitle, styles):
-    title_style = ParagraphStyle(
-        name="RepTitle",
-        parent=styles["Heading1"],
-        fontName="Helvetica-Bold",
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor("#0f1629")
-    )
-    sub_style = ParagraphStyle(
-        name="RepSub",
-        parent=styles["Normal"],
-        fontName="Helvetica-Oblique",
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor("#7c3aed"),
-        spaceAfter=15
-    )
-    story.append(Paragraph(title, title_style))
-    story.append(Paragraph(subtitle, sub_style))
-
+# ─── 2. Daily Attendance PDF Generator ────────────────────────────────────────
 def generate_daily_attendance_pdf(report_date: date, records: list, title: str = "DAILY ATTENDANCE REPORT", subtitle: str = None) -> bytes:
-    """Generates PDF for Daily Attendance Report."""
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(letter),
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
-    )
-    story = []
-    styles = getSampleStyleSheet()
-    
-    sub = subtitle or f"Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')} | Report Date: {report_date.strftime('%B %d, %Y')}"
-    _add_report_header(
-        story, 
-        title, 
-        sub, 
-        styles
-    )
-    
-    header_style = ParagraphStyle("HStyle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, color=colors.white)
-    row_style = ParagraphStyle("RStyle", parent=styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#1e293b"))
-    
-    table_data = [[
-        Paragraph("<b>ID</b>", header_style),
-        Paragraph("<b>Name</b>", header_style),
-        Paragraph("<b>Department</b>", header_style),
-        Paragraph("<b>Check-In</b>", header_style),
-        Paragraph("<b>Check-Out</b>", header_style),
-        Paragraph("<b>Hours</b>", header_style),
-        Paragraph("<b>Overtime</b>", header_style),
-        Paragraph("<b>Status</b>", header_style),
-        Paragraph("<b>Source</b>", header_style)
-    ]]
-    
-    for r in records:
-        cin = r.get("check_in")
-        cout = r.get("check_out")
-        cnt = int(r.get("checkout_count") or 0)
-        cout_str = cout.strftime("%I:%M %p") if cout else "--:--"
-        if cnt > 1:
-            cout_display = f"{cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
-        else:
-            cout_display = cout_str
-        table_data.append([
-            Paragraph(str(r.get("employee_id")), row_style),
-            Paragraph(r.get("employee_name"), row_style),
-            Paragraph(r.get("department") or "N/A", row_style),
-            Paragraph(cin.strftime("%I:%M %p") if cin else "--:--", row_style),
-            Paragraph(cout_display, row_style),
-            Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}", row_style),
-            Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}", row_style),
-            Paragraph(str(r.get("status")).upper(), row_style),
-            Paragraph(str(r.get("source")).capitalize(), row_style)
-        ])
-        
-    t = Table(table_data, colWidths=[40, 120, 100, 75, 75, 55, 55, 60, 60])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f1629")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-    ]))
-    story.append(t)
-    
-    doc.build(story)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
-
-def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, title: str = "MONTHLY ATTENDANCE SUMMARY", subtitle: str = None) -> bytes:
-    """Generates PDF for Monthly Attendance Summary."""
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
-    )
-    story = []
-    styles = getSampleStyleSheet()
-    
-    month_name = calendar.month_name[month]
-    sub = subtitle or f"Period: {month_name} {year} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
-    _add_report_header(
-        story, 
-        title, 
-        sub, 
-        styles
-    )
-    
-    header_style = ParagraphStyle("HStyle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, color=colors.white)
-    row_style = ParagraphStyle("RStyle", parent=styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#1e293b"))
-    
-    table_data = [[
-        Paragraph("<b>ID</b>", header_style),
-        Paragraph("<b>Employee Name</b>", header_style),
-        Paragraph("<b>Department</b>", header_style),
-        Paragraph("<b>Present</b>", header_style),
-        Paragraph("<b>Absent</b>", header_style),
-        Paragraph("<b>Leaves</b>", header_style),
-        Paragraph("<b>OT Hours</b>", header_style)
-    ]]
-    
-    for s in summaries:
-        table_data.append([
-            Paragraph(str(s.get("employee_id")), row_style),
-            Paragraph(s.get("employee_name"), row_style),
-            Paragraph(s.get("department") or "N/A", row_style),
-            Paragraph(f"{float(s.get('present_days') or 0.0):.1f}", row_style),
-            Paragraph(f"{float(s.get('absent_days') or 0.0):.1f}", row_style),
-            Paragraph(f"{float(s.get('leave_days') or 0.0):.1f}", row_style),
-            Paragraph(f"{float(s.get('overtime_hours') or 0.00):.2f}", row_style)
-        ])
-        
-    t = Table(table_data, colWidths=[45, 155, 110, 60, 60, 60, 60])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f1629")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-    ]))
-    story.append(t)
-    
-    doc.build(story)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
-
-def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
-    """Generates PDF for Monthly Payroll Report."""
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(letter),
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
-    )
-    story = []
-    styles = getSampleStyleSheet()
-    
-    month_name = calendar.month_name[month]
-    _add_report_header(
-        story, 
-        "MONTHLY PAYROLL SUMMARY", 
-        f"Period: {month_name} {year} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}", 
-        styles
-    )
-    
-    header_style = ParagraphStyle("HStyle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, color=colors.white)
-    row_style = ParagraphStyle("RStyle", parent=styles["Normal"], fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#1e293b"))
-    bold_row = ParagraphStyle("BRowStyle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#0f1629"))
-    
-    table_data = [[
-        Paragraph("<b>ID</b>", header_style),
-        Paragraph("<b>Employee Name</b>", header_style),
-        Paragraph("<b>Department</b>", header_style),
-        Paragraph("<b>Pres. Days</b>", header_style),
-        Paragraph("<b>Basic (INR)</b>", header_style),
-        Paragraph("<b>OT Pay (INR)</b>", header_style),
-        Paragraph("<b>Deductions</b>", header_style),
-        Paragraph("<b>Net Pay (INR)</b>", header_style),
-        Paragraph("<b>Status</b>", header_style)
-    ]]
-    
-    total_basic = 0.0
-    total_ot = 0.0
-    total_ded = 0.0
-    total_net = 0.0
-    
-    for p in payrolls:
-        basic = float(p.get("basic_salary") or 0.0)
-        ot = float(p.get("overtime_pay") or 0.0)
-        ded = float(p.get("deductions") or 0.0)
-        net = float(p.get("final_salary") or 0.0)
-        
-        total_basic += basic
-        total_ot += ot
-        total_ded += ded
-        total_net += net
-        
-        table_data.append([
-            Paragraph(str(p.get("employee_id")), row_style),
-            Paragraph(p.get("employee_name"), row_style),
-            Paragraph(p.get("department") or "N/A", row_style),
-            Paragraph(f"{float(p.get('present_days') or 0.0):.1f}", row_style),
-            Paragraph(f"{basic:,.2f}", row_style),
-            Paragraph(f"{ot:,.2f}", row_style),
-            Paragraph(f"{ded:,.2f}", row_style),
-            Paragraph(f"{net:,.2f}", row_style),
-            Paragraph("PAID" if p.get("is_paid") else "UNPAID", row_style)
-        ])
-        
-    # Totals Row
-    table_data.append([
-        Paragraph("", bold_row),
-        Paragraph("Total", bold_row),
-        Paragraph("", bold_row),
-        Paragraph("", bold_row),
-        Paragraph(f"{total_basic:,.2f}", bold_row),
-        Paragraph(f"{total_ot:,.2f}", bold_row),
-        Paragraph(f"{total_ded:,.2f}", bold_row),
-        Paragraph(f"{total_net:,.2f}", bold_row),
-        Paragraph("", bold_row)
-    ])
-    
-    t = Table(table_data, colWidths=[35, 130, 95, 60, 75, 75, 75, 80, 55])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f1629")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f8fafc")),
-        ('LINEABOVE', (0,-1), (-1,-1), 1.5, colors.HexColor("#0f1629")),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-    ]))
-    story.append(t)
-    
-    doc.build(story)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return pdf_bytes
-
-
-def generate_historical_attendance_pdf(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT", subtitle: str = None) -> bytes:
-    """
-    Generates a PDF for historical attendance with full timestamps (check-in, check-out)
-    for each employee over a date range or full month.
-    """
+    """Generates PDF for Daily Attendance with executive styling and KPI strip."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -497,18 +364,285 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
     story = []
     styles = getSampleStyleSheet()
 
-    sub = subtitle or f"Period: {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')} | Generated on: {datetime.now().strftime('%Y-%m-%d %I:%M %p')}"
-    _add_report_header(
+    sub = subtitle or f"Report Date: {report_date.strftime('%A, %d %B %Y')} | Department: All"
+    _add_executive_header(story, title, sub, styles, f"DATE: {report_date.strftime('%d-%m-%Y')}")
+
+    # Accumulate stats for KPI box
+    total_logs = len(records)
+    present_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("present", "wfh"))
+    late_cnt = sum(1 for r in records if str(r.get("status") or "").lower() == "late")
+    absent_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("absent", "leave", "half_day", "halfday"))
+    holiday_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("holiday", "weekly_off"))
+    total_hrs = sum(float(r.get("working_hours") or 0.0) for r in records)
+    total_ot = sum(float(r.get("overtime_hours") or 0.0) for r in records)
+
+    story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, holiday_cnt, total_hrs, total_ot))
+    story.append(Spacer(1, 8))
+
+    header_style = ParagraphStyle("HDaily", fontName="Helvetica-Bold", fontSize=8, color=COLOR_WHITE, alignment=1)
+    row_style = ParagraphStyle("RDaily", fontName="Helvetica", fontSize=8, textColor=COLOR_SECONDARY)
+    row_center = ParagraphStyle("RDailyC", parent=row_style, alignment=1)
+    row_right = ParagraphStyle("RDailyR", parent=row_style, alignment=2)
+
+    table_data = [[
+        Paragraph("<b>ID</b>", header_style),
+        Paragraph("<b>Employee Name</b>", header_style),
+        Paragraph("<b>Department</b>", header_style),
+        Paragraph("<b>Check-In</b>", header_style),
+        Paragraph("<b>Check-Out</b>", header_style),
+        Paragraph("<b>Working Hours</b>", header_style),
+        Paragraph("<b>Overtime</b>", header_style),
+        Paragraph("<b>Status</b>", header_style),
+        Paragraph("<b>Source</b>", header_style),
+    ]]
+
+    for r in records:
+        cin = r.get("check_in")
+        cout = r.get("check_out")
+        cnt = int(r.get("checkout_count") or 0)
+        cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
+
+        if cin and not cout:
+            cout_display = '<font color="#b45309"><b>Active Session</b></font>'
+        else:
+            raw_cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+            if cnt > 1:
+                cout_display = f"{raw_cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
+            else:
+                cout_display = raw_cout_str
+
+        status_badge = _format_status_badge(r.get("status"))
+
+        table_data.append([
+            Paragraph(f"<b>EMP{int(r.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{r.get('employee_name') or 'Unknown'}</b>", row_style),
+            Paragraph(r.get("department") or "N/A", row_style),
+            Paragraph(cin_str, row_center),
+            Paragraph(cout_display, row_center),
+            Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}h", row_right),
+            Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}h", row_right),
+            Paragraph(status_badge, row_center),
+            Paragraph(str(r.get("source") or "Biometric").capitalize(), row_center),
+        ])
+
+    t = Table(table_data, colWidths=[55, 145, 105, 80, 95, 75, 70, 65, 52])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(t)
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+# ─── 3. Monthly Attendance Summary PDF Generator ──────────────────────────────
+def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, title: str = "MONTHLY ATTENDANCE SUMMARY", subtitle: str = None) -> bytes:
+    """Generates PDF for Monthly Attendance Summary."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=25,
+        leftMargin=25,
+        topMargin=25,
+        bottomMargin=25
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    month_name = calendar.month_name[month]
+    sub = subtitle or f"Period: {month_name} {year} | All Employees"
+    _add_executive_header(story, title, sub, styles, f"MONTH: {month_name.upper()} {year}")
+
+    header_style = ParagraphStyle("HMon", fontName="Helvetica-Bold", fontSize=8.5, color=COLOR_WHITE, alignment=1)
+    row_style = ParagraphStyle("RMon", fontName="Helvetica", fontSize=8.5, textColor=COLOR_SECONDARY)
+    row_center = ParagraphStyle("RMonC", parent=row_style, alignment=1)
+    row_right = ParagraphStyle("RMonR", parent=row_style, alignment=2)
+
+    table_data = [[
+        Paragraph("<b>ID</b>", header_style),
+        Paragraph("<b>Employee Name</b>", header_style),
+        Paragraph("<b>Department</b>", header_style),
+        Paragraph("<b>Present Days</b>", header_style),
+        Paragraph("<b>Absent Days</b>", header_style),
+        Paragraph("<b>Leaves</b>", header_style),
+        Paragraph("<b>OT Hours</b>", header_style),
+    ]]
+
+    for s in summaries:
+        table_data.append([
+            Paragraph(f"<b>EMP{int(s.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{s.get('employee_name')}</b>", row_style),
+            Paragraph(s.get("department") or "N/A", row_style),
+            Paragraph(f'<font color="{COLOR_STATUS_PRESENT}"><b>{float(s.get("present_days") or 0.0):.1f}</b></font>', row_center),
+            Paragraph(f'<font color="{COLOR_STATUS_ABSENT}"><b>{float(s.get("absent_days") or 0.0):.1f}</b></font>', row_center),
+            Paragraph(f'<font color="{COLOR_STATUS_LEAVE}"><b>{float(s.get("leave_days") or 0.0):.1f}</b></font>', row_center),
+            Paragraph(f'<font color="#7c3aed"><b>{float(s.get("overtime_hours") or 0.00):.2f}h</b></font>', row_right),
+        ])
+
+    t = Table(table_data, colWidths=[60, 160, 112, 60, 55, 55, 60])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(t)
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+# ─── 4. Monthly Payroll Report PDF Generator ──────────────────────────────────
+def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
+    """Generates PDF for Monthly Payroll Report."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=25,
+        leftMargin=25,
+        topMargin=25,
+        bottomMargin=25
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    month_name = calendar.month_name[month]
+    _add_executive_header(
         story,
-        title,
-        sub,
-        styles
+        "MONTHLY PAYROLL DISBURSEMENT REPORT",
+        f"Period: {month_name} {year} | All Employees Summary",
+        styles,
+        f"PERIOD: {month_name.upper()} {year}"
     )
 
-    header_style = ParagraphStyle("HStyleHist", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8, color=colors.white, alignment=1)
-    row_style = ParagraphStyle("RStyleHist", parent=styles["Normal"], fontName="Helvetica", fontSize=8, textColor=colors.HexColor("#1e293b"))
-    row_center = ParagraphStyle("RStyleHistC", parent=row_style, alignment=1)
-    row_right = ParagraphStyle("RStyleHistR", parent=row_style, alignment=2)
+    header_style = ParagraphStyle("HPay", fontName="Helvetica-Bold", fontSize=8, color=COLOR_WHITE, alignment=1)
+    row_style = ParagraphStyle("RPay", fontName="Helvetica", fontSize=8, textColor=COLOR_SECONDARY)
+    row_center = ParagraphStyle("RPayC", parent=row_style, alignment=1)
+    row_right = ParagraphStyle("RPayR", parent=row_style, alignment=2)
+    bold_right = ParagraphStyle("BPayR", parent=row_style, fontName="Helvetica-Bold", alignment=2, textColor=COLOR_PRIMARY_NAVY)
+
+    table_data = [[
+        Paragraph("<b>ID</b>", header_style),
+        Paragraph("<b>Employee Name</b>", header_style),
+        Paragraph("<b>Department</b>", header_style),
+        Paragraph("<b>Days Pres.</b>", header_style),
+        Paragraph("<b>Basic (₹)</b>", header_style),
+        Paragraph("<b>OT Pay (₹)</b>", header_style),
+        Paragraph("<b>Deductions (₹)</b>", header_style),
+        Paragraph("<b>Net Salary (₹)</b>", header_style),
+        Paragraph("<b>Status</b>", header_style),
+    ]]
+
+    total_basic = 0.0
+    total_ot = 0.0
+    total_ded = 0.0
+    total_net = 0.0
+
+    for p in payrolls:
+        basic = float(p.get("basic_salary") or 0.0)
+        ot = float(p.get("overtime_pay") or 0.0)
+        ded = float(p.get("deductions") or 0.0)
+        net = float(p.get("final_salary") or 0.0)
+
+        total_basic += basic
+        total_ot += ot
+        total_ded += ded
+        total_net += net
+
+        is_paid = bool(p.get("is_paid"))
+        status_html = '<font color="#059669"><b>PAID</b></font>' if is_paid else '<font color="#dc2626"><b>UNPAID</b></font>'
+
+        table_data.append([
+            Paragraph(f"<b>EMP{int(p.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{p.get('employee_name')}</b>", row_style),
+            Paragraph(p.get("department") or "N/A", row_style),
+            Paragraph(f"{float(p.get('present_days') or 0.0):.1f}", row_center),
+            Paragraph(f"₹ {basic:,.2f}", row_right),
+            Paragraph(f"₹ {ot:,.2f}", row_right),
+            Paragraph(f'<font color="#dc2626">₹ {ded:,.2f}</font>', row_right),
+            Paragraph(f'<b><font color="#059669">₹ {net:,.2f}</font></b>', row_right),
+            Paragraph(status_html, row_center),
+        ])
+
+    # Totals Row
+    table_data.append([
+        Paragraph("", bold_right),
+        Paragraph("<b>GRAND TOTALS</b>", ParagraphStyle("BTot", parent=row_style, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
+        Paragraph("", bold_right),
+        Paragraph("", bold_right),
+        Paragraph(f"<b>₹ {total_basic:,.2f}</b>", bold_right),
+        Paragraph(f"<b>₹ {total_ot:,.2f}</b>", bold_right),
+        Paragraph(f'<b><font color="#dc2626">₹ {total_ded:,.2f}</font></b>', bold_right),
+        Paragraph(f'<b><font color="#059669">₹ {total_net:,.2f}</font></b>', bold_right),
+        Paragraph("", bold_right),
+    ])
+
+    t = Table(table_data, colWidths=[55, 140, 95, 60, 80, 80, 80, 92, 60])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f1f5f9")),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(t)
+
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+    return pdf_bytes
+
+# ─── 5. Historical / Detailed Attendance PDF Generator ────────────────────────
+def generate_historical_attendance_pdf(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT", subtitle: str = None) -> bytes:
+    """Generates an executive PDF for Detailed Attendance logs with KPI strip."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=25,
+        leftMargin=25,
+        topMargin=25,
+        bottomMargin=25
+    )
+    story = []
+    styles = getSampleStyleSheet()
+
+    sub = subtitle or f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')} | Department: All"
+    _add_executive_header(story, title, sub, styles, f"PERIOD: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
+
+    # Accumulate stats for KPI box
+    total_logs = len(records)
+    present_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("present", "wfh"))
+    late_cnt = sum(1 for r in records if str(r.get("status") or "").lower() == "late")
+    absent_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("absent", "leave", "half_day", "halfday"))
+    holiday_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("holiday", "weekly_off"))
+    total_hrs = sum(float(r.get("working_hours") or 0.0) for r in records)
+    total_ot = sum(float(r.get("overtime_hours") or 0.0) for r in records)
+
+    story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, holiday_cnt, total_hrs, total_ot))
+    story.append(Spacer(1, 8))
+
+    header_style = ParagraphStyle("HHist", fontName="Helvetica-Bold", fontSize=8, color=COLOR_WHITE, alignment=1)
+    row_style = ParagraphStyle("RHist", fontName="Helvetica", fontSize=8, textColor=COLOR_SECONDARY)
+    row_center = ParagraphStyle("RHistC", parent=row_style, alignment=1)
+    row_right = ParagraphStyle("RHistR", parent=row_style, alignment=2)
 
     table_data = [[
         Paragraph("<b>Date</b>", header_style),
@@ -526,44 +660,48 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
     for r in records:
         r_date = r.get("date")
         if hasattr(r_date, "strftime"):
-            date_str = r_date.strftime("%Y-%m-%d")
+            date_str = r_date.strftime("%d-%m-%Y")
         else:
             date_str = str(r_date) if r_date else "--"
 
         cin = r.get("check_in")
         cout = r.get("check_out")
         cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
-        raw_cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
-        cnt = int(r.get("checkout_count") or 0)
-        if cnt > 1:
-            cout_str = f"{raw_cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
+
+        if cin and not cout:
+            cout_str = '<font color="#b45309"><b>Active Session</b></font>'
         else:
-            cout_str = raw_cout_str
+            raw_cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+            cnt = int(r.get("checkout_count") or 0)
+            if cnt > 1:
+                cout_str = f"{raw_cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
+            else:
+                cout_str = raw_cout_str
 
         late_min = int(r.get("late_minutes") or 0)
         late_str = format_late_duration_pdf(late_min)
-
-        status_str = str(r.get("status") or "absent").replace("_", " ").upper()
+        status_badge = _format_status_badge(r.get("status"))
 
         table_data.append([
             Paragraph(date_str, row_center),
-            Paragraph(str(r.get("employee_id")), row_center),
-            Paragraph(r.get("employee_name") or "Unknown", row_style),
+            Paragraph(f"<b>EMP{int(r.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{r.get('employee_name') or 'Unknown'}</b>", row_style),
             Paragraph(r.get("department") or "N/A", row_style),
             Paragraph(cin_str, row_center),
             Paragraph(cout_str, row_center),
-            Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}", row_right),
+            Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}h", row_right),
             Paragraph(late_str, row_center),
-            Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}", row_right),
-            Paragraph(status_str, row_center),
+            Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}h", row_right),
+            Paragraph(status_badge, row_center),
         ])
 
     # Table column widths sum to 742 (landscape letter width is 792 - 50 margins = 742)
-    t = Table(table_data, colWidths=[70, 45, 135, 95, 75, 75, 55, 45, 65, 82])
+    t = Table(table_data, colWidths=[65, 50, 135, 95, 75, 85, 55, 52, 60, 70])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f1629")),
-        ('BOX', (0,0), (-1,-1), 1, colors.HexColor("#e2e8f0")),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
+        ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
@@ -574,4 +712,3 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
     pdf_bytes = buffer.getvalue()
     buffer.close()
     return pdf_bytes
-

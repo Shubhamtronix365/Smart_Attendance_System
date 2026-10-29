@@ -251,7 +251,7 @@ export default function EmployeeAttendancePage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[680px] text-left text-xs">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.02] text-white/40 uppercase tracking-wider font-semibold">
                   <th className="py-3.5 px-6">Date</th>

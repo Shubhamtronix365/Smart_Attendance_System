@@ -190,7 +190,7 @@ function DetailedLogsTable({ data, onSelectPunches }: { data: any[]; onSelectPun
 // ─── Daily Report Table ───────────────────────────────────────────────────────
 function DailyTable({ data, onSelectPunches }: { data: any[]; onSelectPunches?: (r: any) => void }) {
   return (
-    <table className="w-full">
+    <table className="w-full min-w-[650px]">
       <thead>
         <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           {[
@@ -291,7 +291,7 @@ function DailyTable({ data, onSelectPunches }: { data: any[]; onSelectPunches?: 
 // ─── Monthly Report Table ─────────────────────────────────────────────────────
 function MonthlyTable({ data }: { data: any[] }) {
   return (
-    <table className="w-full">
+    <table className="w-full min-w-[650px]">
       <thead>
         <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           {[
@@ -367,7 +367,7 @@ function MonthlyTable({ data }: { data: any[] }) {
 // ─── Payroll Report Table ─────────────────────────────────────────────────────
 function PayrollTable({ data }: { data: any[] }) {
   return (
-    <table className="w-full">
+    <table className="w-full min-w-[600px]">
       <thead>
         <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           {["Employee", "Department", "Basic Salary", "Net Salary", "Status"].map((h) => (
@@ -1091,10 +1091,10 @@ export default function ReportsPage() {
               </div>
 
               {/* Export Buttons */}
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <div className="flex items-center flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto justify-stretch sm:justify-end">
                 <button
                   onClick={handlePrint}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all text-center"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all text-center cursor-pointer"
                 >
                   <Printer size={13} /> Print
                 </button>
@@ -1106,7 +1106,7 @@ export default function ReportsPage() {
                       ? `Download individual Excel report for ${selectedEmployeeObj.name}`
                       : "Download all employees Excel report"
                   }
-                  className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold text-emerald-400 border border-emerald-400/30 hover:bg-emerald-400/10 transition-all text-center"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold text-emerald-400 border border-emerald-400/30 hover:bg-emerald-400/10 transition-all text-center cursor-pointer"
                 >
                   <FileSpreadsheet size={13} />
                   <span>
@@ -1125,7 +1125,7 @@ export default function ReportsPage() {
                       ? `Download individual PDF report for ${selectedEmployeeObj.name}`
                       : "Download all employees PDF report"
                   }
-                  className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold text-black text-center"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold text-black text-center cursor-pointer shadow-lg shadow-cyan-400/20"
                   style={{ background: "linear-gradient(135deg,#00f5ff,#7c3aed)" }}
                 >
                   <FileText size={13} />

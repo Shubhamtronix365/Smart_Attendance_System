@@ -1,5 +1,12 @@
 import json
+import calendar
+from io import BytesIO
+from datetime import date, datetime
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
 
+# ─── Formatting Helpers ───────────────────────────────────────────────────────
 def format_late_duration_excel(minutes) -> str:
     if not minutes or int(minutes) <= 0:
         return "—"
@@ -54,21 +61,18 @@ def format_sessions_summary(punches_data) -> str:
     except Exception:
         return "—"
 
-import calendar
-from io import BytesIO
-from datetime import date
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
+# ─── Executive Design Palette ─────────────────────────────────────────────────
+FONT_FAMILY = "Segoe UI"
+HEADER_FILL = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+HEADER_FONT = Font(name=FONT_FAMILY, size=10, bold=True, color="FFFFFF")
 
-# Design Theme Palette (matching Neo-Glass / Charcoal professional feel)
-FONT_NAME = "Segoe UI"
-HEADER_FILL = PatternFill(start_color="0F1629", end_color="0F1629", fill_type="solid")
-HEADER_FONT = Font(name=FONT_NAME, size=11, bold=True, color="FFFFFF")
-TITLE_FONT = Font(name=FONT_NAME, size=16, bold=True, color="0F1629")
-SUBTITLE_FONT = Font(name=FONT_NAME, size=11, italic=True, color="7C3AED")
-BOLD_FONT = Font(name=FONT_NAME, size=10, bold=True)
-REGULAR_FONT = Font(name=FONT_NAME, size=10)
+TITLE_FONT = Font(name=FONT_FAMILY, size=15, bold=True, color="0F172A")
+SUBTITLE_FONT = Font(name=FONT_FAMILY, size=9.5, italic=True, color="475569")
+BOLD_FONT = Font(name=FONT_FAMILY, size=9.5, bold=True, color="0F172A")
+REGULAR_FONT = Font(name=FONT_FAMILY, size=9.5, color="1E293B")
+
+ZEBRA_FILL = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+WHITE_FILL = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
 ALIGN_LEFT = Alignment(horizontal="left", vertical="center")
 ALIGN_CENTER = Alignment(horizontal="center", vertical="center")
@@ -82,307 +86,440 @@ THIN_BORDER = Border(
 )
 
 TOTAL_BORDER = Border(
-    top=Side(style='thin', color='0F1629'),
-    bottom=Side(style='double', color='0F1629')
+    top=Side(style='thin', color='0F172A'),
+    bottom=Side(style='double', color='0F172A')
 )
 
-def _autofit_columns(ws):
-    """Automatically fits column widths to their content."""
+def _get_status_style(status_raw: str):
+    s = str(status_raw or "absent").lower().strip()
+    if s in ("present", "wfh"):
+        return PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="065F46")
+    elif s == "late":
+        return PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="92400E")
+    elif s in ("holiday", "weekly_off"):
+        return PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="0369A1")
+    elif s == "leave":
+        return PatternFill(start_color="EDE9FE", end_color="EDE9FE", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="6D28D9")
+    elif s in ("half_day", "halfday"):
+        return PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="92400E")
+    else:
+        return PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="991B1B")
+
+def _autofit_columns(ws, min_col=2, max_col=15):
+    """Automatically fits column widths with padding and maximum limits."""
     for col in ws.columns:
+        col_idx = col[0].column
+        if col_idx < min_col:
+            continue
+        col_letter = get_column_letter(col_idx)
         max_len = 0
-        col_letter = get_column_letter(col[0].column)
         for cell in col:
-            # Check cell value length
+            # Ignore title rows
+            if cell.row in (1, 2, 3, 4):
+                continue
             if cell.value is not None:
                 max_len = max(max_len, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 4, 13), 55)
 
+# ─── 1. Daily Attendance Excel ────────────────────────────────────────────────
 def generate_daily_attendance_excel(report_date: date, records: list, title: str = "DAILY ATTENDANCE REPORT", subtitle: str = None) -> bytes:
-    """
-    Generates a daily attendance report Excel.
-    records is a list of dictionaries/objects containing:
-    [employee_id, employee_name, department, check_in, check_out, working_hours, overtime_hours, status, source]
-    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Daily Attendance"
     ws.views.sheetView[0].showGridLines = True
-    
+
     # Title Block
-    ws.cell(row=2, column=2, value=title).font = TITLE_FONT
-    sub = subtitle or f"Date: {report_date.strftime('%A, %d %B %Y')}"
-    ws.cell(row=3, column=2, value=sub).font = SUBTITLE_FONT
-    
-    # Headers
+    ws.cell(row=2, column=2, value="SMART ATTENDANCE MANAGEMENT SYSTEM").font = Font(name=FONT_FAMILY, size=10, bold=True, color="0284C7")
+    ws.cell(row=3, column=2, value=title).font = TITLE_FONT
+    sub = subtitle or f"Date: {report_date.strftime('%A, %d %B %Y')} | Exported on: {datetime.now().strftime('%d %b %Y, %I:%M %p IST')}"
+    ws.cell(row=4, column=2, value=sub).font = SUBTITLE_FONT
+
     headers = [
         "Employee ID", "Employee Name", "Department", "Check-In", 
         "Check-Out", "Checkouts", "Sessions Breakdown", "Working Hours", "Overtime (hrs)", "Status", "Source"
     ]
-    
-    start_row = 5
+
+    start_row = 6
+    ws.row_dimensions[start_row].height = 26
     for col_idx, header in enumerate(headers, start=2):
         cell = ws.cell(row=start_row, column=col_idx, value=header)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = ALIGN_CENTER
         cell.border = THIN_BORDER
-        
-    # Data Rows
+
+    ws.freeze_panes = f"B{start_row + 1}"
+
     current_row = start_row + 1
+    total_hours = 0.0
+    total_ot = 0.0
+
     for r in records:
-        ws.cell(row=current_row, column=2, value=r.get("employee_id")).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=3, value=r.get("employee_name")).alignment = ALIGN_LEFT
-        ws.cell(row=current_row, column=4, value=r.get("department") or "N/A").alignment = ALIGN_LEFT
-        
-        # Check-in/out formatted as string
+        ws.row_dimensions[current_row].height = 20
+        row_fill = ZEBRA_FILL if (current_row % 2 == 0) else WHITE_FILL
+
         cin = r.get("check_in")
         cout = r.get("check_out")
-        cin_str = cin.strftime("%I:%M %p") if cin else "--:--"
-        cout_str = cout.strftime("%I:%M %p") if cout else "--:--"
+        cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
         
-        ws.cell(row=current_row, column=5, value=cin_str).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=6, value=cout_str).alignment = ALIGN_CENTER
-        
-        cnt = int(r.get("checkout_count") or 0)
-        cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else "0")
-        ws.cell(row=current_row, column=7, value=cnt_str).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=8, value=format_sessions_summary(r.get("punches"))).alignment = ALIGN_LEFT
+        if cin and not cout:
+            cout_str = "Active Session"
+        else:
+            cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
 
-        ws.cell(row=current_row, column=9, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=10, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
-        
-        status_cell = ws.cell(row=current_row, column=11, value=str(r.get("status")).upper())
+        emp_code = f"EMP{int(r.get('employee_id') or 0):03d}"
+        cnt = int(r.get("checkout_count") or 0)
+        cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else ("Active" if (cin and not cout) else "0"))
+
+        hrs = float(r.get("working_hours") or 0.00)
+        ot = float(r.get("overtime_hours") or 0.00)
+        total_hours += hrs
+        total_ot += ot
+
+        c_id = ws.cell(row=current_row, column=2, value=emp_code)
+        c_id.alignment = ALIGN_CENTER
+        c_id.font = BOLD_FONT
+
+        c_name = ws.cell(row=current_row, column=3, value=r.get("employee_name") or "Unknown")
+        c_name.alignment = ALIGN_LEFT
+        c_name.font = BOLD_FONT
+
+        c_dept = ws.cell(row=current_row, column=4, value=r.get("department") or "N/A")
+        c_dept.alignment = ALIGN_LEFT
+
+        c_cin = ws.cell(row=current_row, column=5, value=cin_str)
+        c_cin.alignment = ALIGN_CENTER
+
+        c_cout = ws.cell(row=current_row, column=6, value=cout_str)
+        c_cout.alignment = ALIGN_CENTER
+        if cout_str == "Active Session":
+            c_cout.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="B45309")
+
+        c_cnt = ws.cell(row=current_row, column=7, value=cnt_str)
+        c_cnt.alignment = ALIGN_CENTER
+
+        c_ses = ws.cell(row=current_row, column=8, value=format_sessions_summary(r.get("punches")))
+        c_ses.alignment = ALIGN_LEFT
+
+        c_hrs = ws.cell(row=current_row, column=9, value=hrs)
+        c_hrs.alignment = ALIGN_RIGHT
+        c_hrs.number_format = '0.00'
+
+        c_ot = ws.cell(row=current_row, column=10, value=ot)
+        c_ot.alignment = ALIGN_RIGHT
+        c_ot.number_format = '0.00'
+
+        # Status Cell with styled pill fill
+        status_fill, status_font = _get_status_style(r.get("status"))
+        status_cell = ws.cell(row=current_row, column=11, value=str(r.get("status") or "absent").upper())
         status_cell.alignment = ALIGN_CENTER
-        # Color coding status
-        status = str(r.get("status")).lower()
-        if status in ("present", "wfh"):
-            status_fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid") # light green
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="065F46")
-        elif status == "late":
-            status_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid") # light amber
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="92400E")
-        elif status in ("holiday", "weekly_off"):
-            status_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid") # light sky blue
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="0369A1")
-        elif status in ("absent", "half_day"):
-            status_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid") # light red
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="991B1B")
-        else: # leave
-            status_fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid") # light blue
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="1E40AF")
-            
         status_cell.fill = status_fill
         status_cell.font = status_font
-        
-        ws.cell(row=current_row, column=10, value=str(r.get("source")).capitalize()).alignment = ALIGN_CENTER
-        
-        # Apply fonts and borders
-        for col_idx in range(2, 11):
+
+        c_src = ws.cell(row=current_row, column=12, value=str(r.get("source") or "biometric").capitalize())
+        c_src.alignment = ALIGN_CENTER
+
+        for col_idx in range(2, 13):
             c = ws.cell(row=current_row, column=col_idx)
-            if col_idx != 9:  # Keep custom font for status
-                c.font = REGULAR_FONT
+            if col_idx != 11:
+                c.fill = row_fill
+                if col_idx not in (2, 3, 6):
+                    c.font = REGULAR_FONT
             c.border = THIN_BORDER
-            
+
         current_row += 1
-        
-    _autofit_columns(ws)
+
+    # Total Summary Row
+    ws.row_dimensions[current_row].height = 24
+    ws.cell(row=current_row, column=3, value="Total Summary").font = BOLD_FONT
     
+    t_hrs = ws.cell(row=current_row, column=9, value=round(total_hours, 2))
+    t_hrs.alignment = ALIGN_RIGHT
+    t_hrs.font = BOLD_FONT
+    t_hrs.number_format = '0.00'
+
+    t_ot = ws.cell(row=current_row, column=10, value=round(total_ot, 2))
+    t_ot.alignment = ALIGN_RIGHT
+    t_ot.font = BOLD_FONT
+    t_ot.number_format = '0.00'
+
+    for col_idx in range(2, 13):
+        ws.cell(row=current_row, column=col_idx).border = TOTAL_BORDER
+
+    _autofit_columns(ws, min_col=2, max_col=12)
+
     buffer = BytesIO()
     wb.save(buffer)
     excel_bytes = buffer.getvalue()
     buffer.close()
     return excel_bytes
 
-
+# ─── 2. Monthly Attendance Summary Excel ──────────────────────────────────────
 def generate_monthly_attendance_excel(year: int, month: int, summaries: list, title: str = "MONTHLY ATTENDANCE SUMMARY", subtitle: str = None) -> bytes:
-    """
-    Generates a monthly attendance summary report Excel.
-    summaries is a list of dicts:
-    [employee_id, employee_name, department, designation, present_days, absent_days, leave_days, overtime_hours]
-    """
     wb = Workbook()
     ws = wb.active
-    ws.title = "Monthly Attendance"
+    ws.title = "Monthly Summary"
     ws.views.sheetView[0].showGridLines = True
-    
-    # Title Block
-    ws.cell(row=2, column=2, value=title).font = TITLE_FONT
+
     month_name = calendar.month_name[month]
-    sub = subtitle or f"Period: {month_name} {year}"
-    ws.cell(row=3, column=2, value=sub).font = SUBTITLE_FONT
-    
-    # Headers
+    ws.cell(row=2, column=2, value="SMART ATTENDANCE MANAGEMENT SYSTEM").font = Font(name=FONT_FAMILY, size=10, bold=True, color="0284C7")
+    ws.cell(row=3, column=2, value=title).font = TITLE_FONT
+    sub = subtitle or f"Period: {month_name} {year} | Exported on: {datetime.now().strftime('%d %b %Y, %I:%M %p IST')}"
+    ws.cell(row=4, column=2, value=sub).font = SUBTITLE_FONT
+
     headers = [
         "Employee ID", "Employee Name", "Department", "Designation", 
-        "Present Days", "Absent Days", "Leave Days", "Overtime Hours"
+        "Present Days", "Absent Days", "Leave Days", "Overtime (hrs)"
     ]
-    
-    start_row = 5
+
+    start_row = 6
+    ws.row_dimensions[start_row].height = 26
     for col_idx, header in enumerate(headers, start=2):
         cell = ws.cell(row=start_row, column=col_idx, value=header)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = ALIGN_CENTER
         cell.border = THIN_BORDER
-        
-    # Data Rows
+
+    ws.freeze_panes = f"B{start_row + 1}"
+
     current_row = start_row + 1
+    total_pres = 0.0
+    total_abs = 0.0
+    total_lv = 0.0
+    total_ot = 0.0
+
     for s in summaries:
-        ws.cell(row=current_row, column=2, value=s.get("employee_id")).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=3, value=s.get("employee_name")).alignment = ALIGN_LEFT
+        ws.row_dimensions[current_row].height = 20
+        row_fill = ZEBRA_FILL if (current_row % 2 == 0) else WHITE_FILL
+
+        p_days = float(s.get("present_days") or 0.0)
+        a_days = float(s.get("absent_days") or 0.0)
+        l_days = float(s.get("leave_days") or 0.0)
+        ot_h = float(s.get("overtime_hours") or 0.00)
+
+        total_pres += p_days
+        total_abs += a_days
+        total_lv += l_days
+        total_ot += ot_h
+
+        c_id = ws.cell(row=current_row, column=2, value=f"EMP{int(s.get('employee_id') or 0):03d}")
+        c_id.alignment = ALIGN_CENTER
+        c_id.font = BOLD_FONT
+
+        c_name = ws.cell(row=current_row, column=3, value=s.get("employee_name") or "Unknown")
+        c_name.alignment = ALIGN_LEFT
+        c_name.font = BOLD_FONT
+
         ws.cell(row=current_row, column=4, value=s.get("department") or "N/A").alignment = ALIGN_LEFT
-        ws.cell(row=current_row, column=5, value=s.get("designation") or "N/A").alignment = ALIGN_LEFT
-        ws.cell(row=current_row, column=6, value=float(s.get("present_days") or 0.0)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=7, value=float(s.get("absent_days") or 0.0)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=8, value=float(s.get("leave_days") or 0.0)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=9, value=float(s.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
-        
-        # Style all cells
+        ws.cell(row=current_row, column=5, value=s.get("designation") or "Staff").alignment = ALIGN_LEFT
+
+        c_p = ws.cell(row=current_row, column=6, value=p_days)
+        c_p.alignment = ALIGN_RIGHT
+        c_p.number_format = '0.0'
+
+        c_a = ws.cell(row=current_row, column=7, value=a_days)
+        c_a.alignment = ALIGN_RIGHT
+        c_a.number_format = '0.0'
+
+        c_l = ws.cell(row=current_row, column=8, value=l_days)
+        c_l.alignment = ALIGN_RIGHT
+        c_l.number_format = '0.0'
+
+        c_ot = ws.cell(row=current_row, column=9, value=ot_h)
+        c_ot.alignment = ALIGN_RIGHT
+        c_ot.number_format = '0.00'
+
         for col_idx in range(2, 10):
             c = ws.cell(row=current_row, column=col_idx)
-            c.font = REGULAR_FONT
+            c.fill = row_fill
+            if col_idx not in (2, 3):
+                c.font = REGULAR_FONT
             c.border = THIN_BORDER
-            
+
         current_row += 1
-        
-    _autofit_columns(ws)
+
+    # Summary Totals
+    ws.row_dimensions[current_row].height = 24
+    ws.cell(row=current_row, column=3, value="Total Summary").font = BOLD_FONT
     
+    t_p = ws.cell(row=current_row, column=6, value=round(total_pres, 1))
+    t_p.alignment = ALIGN_RIGHT
+    t_p.font = BOLD_FONT
+    t_p.number_format = '0.0'
+
+    t_a = ws.cell(row=current_row, column=7, value=round(total_abs, 1))
+    t_a.alignment = ALIGN_RIGHT
+    t_a.font = BOLD_FONT
+    t_a.number_format = '0.0'
+
+    t_l = ws.cell(row=current_row, column=8, value=round(total_lv, 1))
+    t_l.alignment = ALIGN_RIGHT
+    t_l.font = BOLD_FONT
+    t_l.number_format = '0.0'
+
+    t_ot = ws.cell(row=current_row, column=9, value=round(total_ot, 2))
+    t_ot.alignment = ALIGN_RIGHT
+    t_ot.font = BOLD_FONT
+    t_ot.number_format = '0.00'
+
+    for col_idx in range(2, 10):
+        ws.cell(row=current_row, column=col_idx).border = TOTAL_BORDER
+
+    _autofit_columns(ws, min_col=2, max_col=9)
+
     buffer = BytesIO()
     wb.save(buffer)
     excel_bytes = buffer.getvalue()
     buffer.close()
     return excel_bytes
 
-
+# ─── 3. Monthly Payroll Report Excel ──────────────────────────────────────────
 def generate_payroll_report_excel(year: int, month: int, payrolls: list) -> bytes:
-    """
-    Generates a monthly payroll report Excel.
-    payrolls is a list of dicts/objects with:
-    [employee_id, employee_name, department, working_days, present_days, overtime_hours, basic_salary, overtime_pay, deductions, final_salary, is_paid]
-    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Payroll Report"
     ws.views.sheetView[0].showGridLines = True
-    
-    # Title Block
-    ws.cell(row=2, column=2, value="MONTHLY PAYROLL SUMMARY REPORT").font = TITLE_FONT
+
     month_name = calendar.month_name[month]
-    ws.cell(row=3, column=2, value=f"Period: {month_name} {year}").font = SUBTITLE_FONT
-    
-    # Headers
+    ws.cell(row=2, column=2, value="SMART ATTENDANCE & PAYROLL MANAGEMENT SYSTEM").font = Font(name=FONT_FAMILY, size=10, bold=True, color="0284C7")
+    ws.cell(row=3, column=2, value="MONTHLY PAYROLL SUMMARY REPORT").font = TITLE_FONT
+    ws.cell(row=4, column=2, value=f"Period: {month_name} {year} | Exported on: {datetime.now().strftime('%d %b %Y, %I:%M %p IST')}").font = SUBTITLE_FONT
+
     headers = [
         "Employee ID", "Employee Name", "Department", "Working Days", 
-        "Present Days", "Overtime (hrs)", "Basic Salary (INR)", "Overtime Pay (INR)", 
-        "Deductions (INR)", "Net Salary (INR)", "Payment Status"
+        "Present Days", "Overtime (hrs)", "Basic Salary (₹)", "Overtime Pay (₹)", 
+        "Deductions (₹)", "Net Salary (₹)", "Payment Status"
     ]
-    
-    start_row = 5
+
+    start_row = 6
+    ws.row_dimensions[start_row].height = 26
     for col_idx, header in enumerate(headers, start=2):
         cell = ws.cell(row=start_row, column=col_idx, value=header)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = ALIGN_CENTER
         cell.border = THIN_BORDER
-        
-    # Data Rows
+
+    ws.freeze_panes = f"B{start_row + 1}"
+
     current_row = start_row + 1
-    
-    # Accumulators for totals
     total_basic = 0.0
     total_ot_pay = 0.0
     total_deductions = 0.0
     total_net = 0.0
-    
+
     for p in payrolls:
+        ws.row_dimensions[current_row].height = 20
+        row_fill = ZEBRA_FILL if (current_row % 2 == 0) else WHITE_FILL
+
         basic = float(p.get("basic_salary") or 0.0)
         ot_pay = float(p.get("overtime_pay") or 0.0)
         ded = float(p.get("deductions") or 0.0)
         net = float(p.get("final_salary") or 0.0)
-        
+
         total_basic += basic
         total_ot_pay += ot_pay
         total_deductions += ded
         total_net += net
-        
-        ws.cell(row=current_row, column=2, value=p.get("employee_id")).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=3, value=p.get("employee_name")).alignment = ALIGN_LEFT
+
+        c_id = ws.cell(row=current_row, column=2, value=f"EMP{int(p.get('employee_id') or 0):03d}")
+        c_id.alignment = ALIGN_CENTER
+        c_id.font = BOLD_FONT
+
+        c_name = ws.cell(row=current_row, column=3, value=p.get("employee_name") or "Unknown")
+        c_name.alignment = ALIGN_LEFT
+        c_name.font = BOLD_FONT
+
         ws.cell(row=current_row, column=4, value=p.get("department") or "N/A").alignment = ALIGN_LEFT
         ws.cell(row=current_row, column=5, value=int(p.get("working_days") or 0)).alignment = ALIGN_RIGHT
         ws.cell(row=current_row, column=6, value=float(p.get("present_days") or 0.0)).alignment = ALIGN_RIGHT
         ws.cell(row=current_row, column=7, value=float(p.get("overtime_hours") or 0.0)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=8, value=basic).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=9, value=ot_pay).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=10, value=ded).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=11, value=net).alignment = ALIGN_RIGHT
-        
-        status_cell = ws.cell(row=current_row, column=12, value="PAID" if p.get("is_paid") else "UNPAID")
+
+        c_basic = ws.cell(row=current_row, column=8, value=basic)
+        c_basic.alignment = ALIGN_RIGHT
+        c_basic.number_format = '"₹"#,##0.00'
+
+        c_otpay = ws.cell(row=current_row, column=9, value=ot_pay)
+        c_otpay.alignment = ALIGN_RIGHT
+        c_otpay.number_format = '"₹"#,##0.00'
+
+        c_ded = ws.cell(row=current_row, column=10, value=ded)
+        c_ded.alignment = ALIGN_RIGHT
+        c_ded.number_format = '"₹"#,##0.00'
+        c_ded.font = Font(name=FONT_FAMILY, size=9.5, color="DC2626")
+
+        c_net = ws.cell(row=current_row, column=11, value=net)
+        c_net.alignment = ALIGN_RIGHT
+        c_net.number_format = '"₹"#,##0.00'
+        c_net.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="059669")
+
+        is_paid = bool(p.get("is_paid"))
+        status_cell = ws.cell(row=current_row, column=12, value="PAID" if is_paid else "UNPAID")
         status_cell.alignment = ALIGN_CENTER
-        if p.get("is_paid"):
+        if is_paid:
             status_cell.fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
-            status_cell.font = Font(name=FONT_NAME, size=10, bold=True, color="065F46")
+            status_cell.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="065F46")
         else:
             status_cell.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
-            status_cell.font = Font(name=FONT_NAME, size=10, bold=True, color="991B1B")
-            
+            status_cell.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="991B1B")
+
         for col_idx in range(2, 12):
             c = ws.cell(row=current_row, column=col_idx)
-            c.font = REGULAR_FONT
+            c.fill = row_fill
+            if col_idx not in (2, 3, 10, 11):
+                c.font = REGULAR_FONT
             c.border = THIN_BORDER
-            # Currency format for financials
-            if col_idx in (8, 9, 10, 11):
-                c.number_format = '"₹"#,##0.00'
-                
-        ws.cell(row=current_row, column=12).border = THIN_BORDER
+        status_cell.border = THIN_BORDER
+
         current_row += 1
-        
+
     # Totals Row
-    ws.cell(row=current_row, column=3, value="Total").font = BOLD_FONT
-    ws.cell(row=current_row, column=8, value=total_basic).font = BOLD_FONT
-    ws.cell(row=current_row, column=9, value=total_ot_pay).font = BOLD_FONT
-    ws.cell(row=current_row, column=10, value=total_deductions).font = BOLD_FONT
-    ws.cell(row=current_row, column=11, value=total_net).font = BOLD_FONT
+    ws.row_dimensions[current_row].height = 24
+    ws.cell(row=current_row, column=3, value="Grand Totals").font = BOLD_FONT
     
-    # Alignments & formats for totals
-    ws.cell(row=current_row, column=8).number_format = '"₹"#,##0.00'
-    ws.cell(row=current_row, column=9).number_format = '"₹"#,##0.00'
-    ws.cell(row=current_row, column=10).number_format = '"₹"#,##0.00'
-    ws.cell(row=current_row, column=11).number_format = '"₹"#,##0.00'
-    
-    ws.cell(row=current_row, column=8).alignment = ALIGN_RIGHT
-    ws.cell(row=current_row, column=9).alignment = ALIGN_RIGHT
-    ws.cell(row=current_row, column=10).alignment = ALIGN_RIGHT
-    ws.cell(row=current_row, column=11).alignment = ALIGN_RIGHT
-    
+    t_b = ws.cell(row=current_row, column=8, value=total_basic)
+    t_b.font = BOLD_FONT
+    t_b.alignment = ALIGN_RIGHT
+    t_b.number_format = '"₹"#,##0.00'
+
+    t_ot = ws.cell(row=current_row, column=9, value=total_ot_pay)
+    t_ot.font = BOLD_FONT
+    t_ot.alignment = ALIGN_RIGHT
+    t_ot.number_format = '"₹"#,##0.00'
+
+    t_d = ws.cell(row=current_row, column=10, value=total_deductions)
+    t_d.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="DC2626")
+    t_d.alignment = ALIGN_RIGHT
+    t_d.number_format = '"₹"#,##0.00'
+
+    t_n = ws.cell(row=current_row, column=11, value=total_net)
+    t_n.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="059669")
+    t_n.alignment = ALIGN_RIGHT
+    t_n.number_format = '"₹"#,##0.00'
+
     for col_idx in range(2, 13):
-        c = ws.cell(row=current_row, column=col_idx)
-        c.border = TOTAL_BORDER
-        
-    _autofit_columns(ws)
-    
+        ws.cell(row=current_row, column=col_idx).border = TOTAL_BORDER
+
+    _autofit_columns(ws, min_col=2, max_col=12)
+
     buffer = BytesIO()
     wb.save(buffer)
     excel_bytes = buffer.getvalue()
     buffer.close()
     return excel_bytes
 
-
+# ─── 4. Historical Attendance Excel ───────────────────────────────────────────
 def generate_historical_attendance_excel(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT", subtitle: str = None) -> bytes:
-    """
-    Generates a comprehensive historical attendance Excel report for a date range or full month.
-    Each record contains detailed timestamps (check-in, check-out) and statistics.
-    records is a list of dicts:
-    [date, employee_id, employee_name, department, check_in, check_out, working_hours, late_minutes, overtime_hours, status, source]
-    """
     wb = Workbook()
     ws = wb.active
     ws.title = "Attendance Logs"
     ws.views.sheetView[0].showGridLines = True
 
-    # Title Block
-    ws.cell(row=2, column=2, value=title).font = TITLE_FONT
-    sub = subtitle or f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')}"
-    ws.cell(row=3, column=2, value=sub).font = SUBTITLE_FONT
+    ws.cell(row=2, column=2, value="SMART ATTENDANCE MANAGEMENT SYSTEM").font = Font(name=FONT_FAMILY, size=10, bold=True, color="0284C7")
+    ws.cell(row=3, column=2, value=title).font = TITLE_FONT
+    sub = subtitle or f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')} | Exported on: {datetime.now().strftime('%d %b %Y, %I:%M %p IST')}"
+    ws.cell(row=4, column=2, value=sub).font = SUBTITLE_FONT
 
     headers = [
         "Date", "Employee ID", "Employee Name", "Department",
@@ -390,7 +527,8 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
         "Working Hours", "Late Duration", "Overtime (hrs)", "Status", "Source"
     ]
 
-    start_row = 5
+    start_row = 6
+    ws.row_dimensions[start_row].height = 26
     for col_idx, header in enumerate(headers, start=2):
         cell = ws.cell(row=start_row, column=col_idx, value=header)
         cell.fill = HEADER_FILL
@@ -398,58 +536,77 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
         cell.alignment = ALIGN_CENTER
         cell.border = THIN_BORDER
 
+    ws.freeze_panes = f"B{start_row + 1}"
+
     current_row = start_row + 1
+    total_hours = 0.0
+    total_ot = 0.0
+
     for r in records:
-        # Date column
+        ws.row_dimensions[current_row].height = 20
+        row_fill = ZEBRA_FILL if (current_row % 2 == 0) else WHITE_FILL
+
         r_date = r.get("date")
         if hasattr(r_date, "strftime"):
             date_str = r_date.strftime("%Y-%m-%d")
         else:
             date_str = str(r_date) if r_date else "--"
 
-        ws.cell(row=current_row, column=2, value=date_str).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=3, value=r.get("employee_id")).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=4, value=r.get("employee_name") or "Unknown").alignment = ALIGN_LEFT
-        ws.cell(row=current_row, column=5, value=r.get("department") or "N/A").alignment = ALIGN_LEFT
-
-        # Formatted check-in / check-out times
         cin = r.get("check_in")
         cout = r.get("check_out")
         cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
-        cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
 
-        ws.cell(row=current_row, column=6, value=cin_str).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=7, value=cout_str).alignment = ALIGN_CENTER
-        
+        if cin and not cout:
+            cout_str = "Active Session"
+        else:
+            cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
+
+        emp_code = f"EMP{int(r.get('employee_id') or 0):03d}"
         cnt = int(r.get("checkout_count") or 0)
-        cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else "0")
+        cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else ("Active" if (cin and not cout) else "0"))
+
+        hrs = float(r.get("working_hours") or 0.00)
+        ot = float(r.get("overtime_hours") or 0.00)
+        total_hours += hrs
+        total_ot += ot
+
+        c_dt = ws.cell(row=current_row, column=2, value=date_str)
+        c_dt.alignment = ALIGN_CENTER
+
+        c_id = ws.cell(row=current_row, column=3, value=emp_code)
+        c_id.alignment = ALIGN_CENTER
+        c_id.font = BOLD_FONT
+
+        c_name = ws.cell(row=current_row, column=4, value=r.get("employee_name") or "Unknown")
+        c_name.alignment = ALIGN_LEFT
+        c_name.font = BOLD_FONT
+
+        ws.cell(row=current_row, column=5, value=r.get("department") or "N/A").alignment = ALIGN_LEFT
+        ws.cell(row=current_row, column=6, value=cin_str).alignment = ALIGN_CENTER
+
+        c_cout = ws.cell(row=current_row, column=7, value=cout_str)
+        c_cout.alignment = ALIGN_CENTER
+        if cout_str == "Active Session":
+            c_cout.font = Font(name=FONT_FAMILY, size=9.5, bold=True, color="B45309")
+
         ws.cell(row=current_row, column=8, value=cnt_str).alignment = ALIGN_CENTER
         ws.cell(row=current_row, column=9, value=format_sessions_summary(r.get("punches"))).alignment = ALIGN_LEFT
 
-        ws.cell(row=current_row, column=10, value=float(r.get("working_hours") or 0.00)).alignment = ALIGN_RIGHT
-        ws.cell(row=current_row, column=11, value=format_late_duration_excel(r.get("late_minutes"))).alignment = ALIGN_CENTER
-        ws.cell(row=current_row, column=12, value=float(r.get("overtime_hours") or 0.00)).alignment = ALIGN_RIGHT
+        c_hrs = ws.cell(row=current_row, column=10, value=hrs)
+        c_hrs.alignment = ALIGN_RIGHT
+        c_hrs.number_format = '0.00'
 
-        status_raw = str(r.get("status") or "absent").lower()
-        status_cell = ws.cell(row=current_row, column=13, value=status_raw.replace("_", " ").upper())
+        c_late = ws.cell(row=current_row, column=11, value=format_late_duration_excel(r.get("late_minutes")))
+        c_late.alignment = ALIGN_CENTER
+
+        c_ot = ws.cell(row=current_row, column=12, value=ot)
+        c_ot.alignment = ALIGN_RIGHT
+        c_ot.number_format = '0.00'
+
+        # Status cell with pill
+        status_fill, status_font = _get_status_style(r.get("status"))
+        status_cell = ws.cell(row=current_row, column=13, value=str(r.get("status") or "absent").upper())
         status_cell.alignment = ALIGN_CENTER
-
-        if status_raw in ("present", "wfh"):
-            status_fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="065F46")
-        elif status_raw in ("late", "half_day", "halfday"):
-            status_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="92400E")
-        elif status_raw in ("holiday", "weekly_off"):
-            status_fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="0369A1")
-        elif status_raw == "leave":
-            status_fill = PatternFill(start_color="EDE9FE", end_color="EDE9FE", fill_type="solid")
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="6D28D9")
-        else:
-            status_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
-            status_font = Font(name=FONT_NAME, size=10, bold=True, color="991B1B")
-
         status_cell.fill = status_fill
         status_cell.font = status_font
 
@@ -458,16 +615,34 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
         for col_idx in range(2, 15):
             c = ws.cell(row=current_row, column=col_idx)
             if col_idx != 13:
-                c.font = REGULAR_FONT
+                c.fill = row_fill
+                if col_idx not in (3, 4, 7):
+                    c.font = REGULAR_FONT
             c.border = THIN_BORDER
 
         current_row += 1
 
-    _autofit_columns(ws)
+    # Total Summary
+    ws.row_dimensions[current_row].height = 24
+    ws.cell(row=current_row, column=4, value="Total Summary").font = BOLD_FONT
+
+    t_hrs = ws.cell(row=current_row, column=10, value=round(total_hours, 2))
+    t_hrs.alignment = ALIGN_RIGHT
+    t_hrs.font = BOLD_FONT
+    t_hrs.number_format = '0.00'
+
+    t_ot = ws.cell(row=current_row, column=12, value=round(total_ot, 2))
+    t_ot.alignment = ALIGN_RIGHT
+    t_ot.font = BOLD_FONT
+    t_ot.number_format = '0.00'
+
+    for col_idx in range(2, 15):
+        ws.cell(row=current_row, column=col_idx).border = TOTAL_BORDER
+
+    _autofit_columns(ws, min_col=2, max_col=14)
 
     buffer = BytesIO()
     wb.save(buffer)
     excel_bytes = buffer.getvalue()
     buffer.close()
     return excel_bytes
-
