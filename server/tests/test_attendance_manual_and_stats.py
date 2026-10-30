@@ -200,3 +200,49 @@ def test_determine_status_logic():
     # On Sunday (2026-10-25)
     sunday = date(2026, 10, 25)
     assert determine_status(time(11, 30), sunday) == AttendanceStatus.PRESENT
+
+
+def test_attendance_update_schema_validation():
+    """Verify AttendanceUpdate accepts standard dates, ISO strings, AM/PM strings, and normalizes halfday."""
+    import datetime as dt
+    from server.schemas.attendance import AttendanceUpdate
+    from server.models.attendance import AttendanceStatus
+
+    # 1. Standard ISO date and datetime (the payload that previously failed with 422)
+    p1 = AttendanceUpdate(
+        date="2026-10-30",
+        check_in="2026-10-30T09:00:00",
+        check_out="2026-10-30T17:00:00",
+        status="present"
+    )
+    assert p1.date == dt.date(2026, 10, 30)
+    assert p1.check_in == dt.datetime(2026, 10, 30, 9, 0, 0)
+    assert p1.check_out == dt.datetime(2026, 10, 30, 17, 0, 0)
+    assert p1.status == AttendanceStatus.PRESENT
+
+    # 2. Absent update (cleared check_in / check_out)
+    p2 = AttendanceUpdate(
+        date="2026-10-30",
+        check_in=None,
+        check_out=None,
+        status="absent"
+    )
+    assert p2.date == dt.date(2026, 10, 30)
+    assert p2.check_in is None
+    assert p2.check_out is None
+    assert p2.status == AttendanceStatus.ABSENT
+
+    # 3. Normalizes halfday
+    p3 = AttendanceUpdate(status="halfday")
+    assert p3.status == AttendanceStatus.HALF_DAY
+
+    # 4. Cleans empty strings and dashes
+    p4 = AttendanceUpdate(check_in="", check_out="—", date="")
+    assert p4.date is None
+    assert p4.check_in is None
+    assert p4.check_out is None
+
+    # 5. Accepts AM/PM formatted strings
+    p5 = AttendanceUpdate(check_in="2026-10-30T11:27:00 AM", check_out="2026-10-30T08:42:00 PM")
+    assert p5.check_in == dt.datetime(2026, 10, 30, 11, 27, 0)
+    assert p5.check_out == dt.datetime(2026, 10, 30, 20, 42, 0)

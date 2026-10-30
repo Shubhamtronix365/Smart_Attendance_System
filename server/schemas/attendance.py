@@ -20,16 +20,75 @@ class AttendanceBase(BaseModel):
 class AttendanceCreate(AttendanceBase):
     pass
 
+import datetime as dt
+from pydantic import field_validator
+
 class AttendanceUpdate(BaseModel):
-    date: Optional[date] = None
-    check_in: Optional[datetime] = None
-    check_out: Optional[datetime] = None
+    date: Optional[dt.date] = None
+    check_in: Optional[dt.datetime] = None
+    check_out: Optional[dt.datetime] = None
     working_hours: Optional[Decimal] = None
     overtime_hours: Optional[Decimal] = None
     status: Optional[AttendanceStatus] = None
     source: Optional[str] = None
     punches: Optional[str] = None
     checkout_count: Optional[int] = None
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def clean_date(cls, v):
+        if not v or v in ("", "null", "none", "—", "-"):
+            return None
+        if isinstance(v, str):
+            v = v.split("T")[0].strip()
+            return dt.date.fromisoformat(v)
+        return v
+
+    @field_validator("check_in", "check_out", mode="before")
+    @classmethod
+    def clean_datetime(cls, v):
+        if not v or v in ("", "null", "none", "—", "-"):
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            # If string ends with AM/PM (e.g. "2026-10-30T09:15:00 AM" or "2026-10-30 09:15 AM")
+            if " AM" in v.upper() or " PM" in v.upper():
+                import re
+                clean = re.sub(r"\s+", " ", v)
+                for fmt in ("%Y-%m-%dT%I:%M:%S %p", "%Y-%m-%dT%I:%M %p", "%Y-%m-%d %I:%M:%S %p", "%Y-%m-%d %I:%M %p"):
+                    try:
+                        return dt.datetime.strptime(clean, fmt)
+                    except ValueError:
+                        pass
+            # Standard ISO datetime or date
+            if "T" in v:
+                v = v.replace("Z", "")
+                parts = v.split("T")
+                d_part = parts[0]
+                t_part = parts[1]
+                if not t_part or t_part in ("—", "-"):
+                    return None
+                if len(t_part) == 5:
+                    t_part += ":00"
+                v = f"{d_part}T{t_part}"
+                return dt.datetime.fromisoformat(v)
+            elif " " in v:
+                return dt.datetime.fromisoformat(v)
+        return v
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def clean_status(cls, v):
+        if not v or v in ("", "null", "none"):
+            return None
+        if isinstance(v, str):
+            v_low = v.lower().strip()
+            if v_low in ("halfday", "half_day"):
+                return AttendanceStatus.HALF_DAY
+            for s in AttendanceStatus:
+                if s.value == v_low:
+                    return s
+        return v
 
 class SessionItem(BaseModel):
     session: Optional[int] = 1

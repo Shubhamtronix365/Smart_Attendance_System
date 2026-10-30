@@ -381,10 +381,10 @@ function EditAttendanceModal({
                 onSave({
                   ...record,
                   date: val.date,
-                  checkIn: val.checkIn,
-                  checkOut: isActiveSession ? "—" : val.checkOut,
-                  rawCheckIn: val.checkIn,
-                  rawCheckOut: isActiveSession ? "" : val.checkOut,
+                  checkIn: val.status === "absent" ? "" : val.checkIn,
+                  checkOut: val.status === "absent" ? "" : (isActiveSession ? "—" : val.checkOut),
+                  rawCheckIn: val.status === "absent" ? "" : val.checkIn,
+                  rawCheckOut: val.status === "absent" ? "" : (isActiveSession ? "" : val.checkOut),
                   status: val.status,
                 });
               }}
@@ -595,15 +595,40 @@ export default function AttendancePage() {
     success("Attendance record updated.");
 
     try {
-      const cleanTime = (t: string) => (t && t !== "—") ? t : null;
-      const cIn = cleanTime(updated.rawCheckIn || updated.checkIn);
-      const cOut = cleanTime(updated.rawCheckOut || updated.checkOut);
+      const normalizeTime = (t: string | null | undefined): string | null => {
+        if (!t || t === "—" || t === "-" || t.trim() === "") return null;
+        const clean = t.trim();
+        // 24-hr format HH:mm or HH:mm:ss
+        const m24 = clean.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (m24) {
+          const hh = m24[1].padStart(2, "0");
+          const mm = m24[2];
+          const ss = m24[3] || "00";
+          return `${hh}:${mm}:${ss}`;
+        }
+        // 12-hr format with AM/PM (e.g. "09:15 AM", "09:15:00 AM")
+        const m12 = clean.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+        if (m12) {
+          let hh = parseInt(m12[1], 10);
+          const mm = m12[2];
+          const ss = m12[3] || "00";
+          const ap = m12[4].toUpperCase();
+          if (ap === "PM" && hh < 12) hh += 12;
+          if (ap === "AM" && hh === 12) hh = 0;
+          return `${String(hh).padStart(2, "0")}:${mm}:${ss}`;
+        }
+        return null;
+      };
+
       const targetDate = updated.date || todayIso;
-      
+      const isAbsent = updated.status === "absent";
+      const normIn = isAbsent ? null : normalizeTime(updated.rawCheckIn || updated.checkIn);
+      const normOut = isAbsent ? null : normalizeTime(updated.rawCheckOut || updated.checkOut);
+
       const backendData = {
         date: targetDate,
-        check_in: cIn ? `${targetDate}T${cIn.length === 5 ? cIn + ":00" : cIn}` : null,
-        check_out: cOut ? `${targetDate}T${cOut.length === 5 ? cOut + ":00" : cOut}` : null,
+        check_in: normIn ? `${targetDate}T${normIn}` : null,
+        check_out: normOut ? `${targetDate}T${normOut}` : null,
         status: updated.status === "halfday" ? "half_day" : updated.status,
       };
       await attendanceApi.update(updated.id, backendData);

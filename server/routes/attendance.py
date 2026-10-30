@@ -813,6 +813,13 @@ async def update_attendance(
                 record.checkout_count = sum(1 for s in p_list if s.get("out"))
             except Exception:
                 pass
+        elif not record.check_in:
+            record.check_out = None
+            record.working_hours = Decimal("0.00")
+            record.overtime_hours = Decimal("0.00")
+            record.late_minutes = 0
+            record.punches = "[]"
+            record.checkout_count = 0
         elif is_rec_sunday:
             record.late_minutes = 0
         
