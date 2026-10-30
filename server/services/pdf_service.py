@@ -1,6 +1,7 @@
+import json
 import calendar
 from io import BytesIO
-from datetime import datetime, date
+from datetime import datetime, date, time
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.platypus import (
@@ -24,6 +25,45 @@ def format_late_duration_pdf(minutes) -> str:
     rem = m % 60
     return f"{hrs}h {rem}m" if rem > 0 else f"{hrs}h"
 
+def format_time_str(val):
+    if not val:
+        return None
+    if isinstance(val, (datetime, time)):
+        return val.strftime("%I:%M %p")
+    s = str(val).strip()
+    if " " in s or "T" in s:
+        try:
+            dt = datetime.fromisoformat(s.replace(" ", "T"))
+            return dt.strftime("%I:%M %p")
+        except Exception:
+            pass
+    if ":" in s and len(s) <= 8:
+        try:
+            parts = s.split(":")
+            dt = datetime(2026, 1, 1, int(parts[0]), int(parts[1]))
+            return dt.strftime("%I:%M %p")
+        except Exception:
+            pass
+    return s
+
+def _is_next_day(in_val, out_val):
+    try:
+        in_dt = in_val if isinstance(in_val, datetime) else (datetime.fromisoformat(str(in_val).replace(" ", "T")) if in_val else None)
+        out_dt = out_val if isinstance(out_val, datetime) else (datetime.fromisoformat(str(out_val).replace(" ", "T")) if out_val else None)
+        if in_dt and out_dt:
+            return out_dt.date() > in_dt.date()
+    except Exception:
+        pass
+    return False
+
+def _normalize_status(status_raw) -> str:
+    if hasattr(status_raw, "value"):
+        return str(status_raw.value).lower().strip()
+    s = str(status_raw or "absent").lower().strip()
+    if "." in s:
+        s = s.split(".")[-1]
+    return s
+
 # ─── Executive Color Palette ──────────────────────────────────────────────────
 COLOR_PRIMARY_NAVY = colors.HexColor("#0f172a")    # Slate 900
 COLOR_SECONDARY = colors.HexColor("#1e293b")        # Slate 800
@@ -41,7 +81,7 @@ COLOR_STATUS_LEAVE = "#7c3aed"     # Violet
 COLOR_STATUS_ACTIVE = "#b45309"    # Amber active
 
 def _format_status_badge(status_raw: str) -> str:
-    s = str(status_raw or "absent").lower().strip()
+    s = _normalize_status(status_raw)
     if s in ("present", "wfh"):
         return f'<font color="{COLOR_STATUS_PRESENT}"><b>{s.upper()}</b></font>'
     elif s == "late":
@@ -54,6 +94,56 @@ def _format_status_badge(status_raw: str) -> str:
         return f'<font color="{COLOR_STATUS_LATE}"><b>HALF DAY</b></font>'
     else:
         return f'<font color="{COLOR_STATUS_ABSENT}"><b>ABSENT</b></font>'
+
+def format_punch_sessions_pdf(cin_raw, cout_raw, punches_raw, checkout_count=0):
+    """
+    Formats Check-In and Check-Out table cells for PDF.
+    - Single session: standard timestamp display (e.g. 11:27 AM / 08:42 PM or Active Session).
+    - Multi-session: detailed, unambiguous breakdown of every session:
+        Check-In:
+          <b>Session 1:</b> 11:27 AM
+          <b>Session 2:</b> 12:42 PM
+        Check-Out:
+          <b>Session 1:</b> 12:41 PM (1.24h)
+          <b>Session 2:</b> 08:42 PM (7.00h)
+    """
+    sessions = []
+    if punches_raw:
+        try:
+            if isinstance(punches_raw, str):
+                sessions = json.loads(punches_raw)
+            elif isinstance(punches_raw, list):
+                sessions = punches_raw
+        except Exception:
+            sessions = []
+
+    if not sessions or len(sessions) <= 1:
+        cin_str = format_time_str(cin_raw) or (str(cin_raw) if cin_raw else "--:--")
+        if cin_raw and not cout_raw:
+            cout_str = '<font color="#b45309"><b>Active Session</b></font>'
+        else:
+            cout_str = format_time_str(cout_raw) or (str(cout_raw) if cout_raw else "--:--")
+        return cin_str, cout_str
+
+    in_lines = []
+    out_lines = []
+    for idx, s in enumerate(sessions, 1):
+        s_num = s.get("session", idx)
+        in_t = format_time_str(s.get("in")) or "--:--"
+        out_t = format_time_str(s.get("out"))
+        hrs = s.get("hours")
+
+        in_lines.append(f'<b>Session {s_num}:</b> {in_t}')
+        if out_t:
+            next_day_tag = ""
+            if _is_next_day(s.get("in"), s.get("out")):
+                next_day_tag = ' <font color="#7c3aed"><b>(+1d)</b></font>'
+            dur_str = f" <font color='#475569'>({float(hrs):.2f}h)</font>" if hrs is not None else ""
+            out_lines.append(f'<b>Session {s_num}:</b> {out_t}{next_day_tag}{dur_str}')
+        else:
+            out_lines.append(f'<b>Session {s_num}:</b> <font color="#b45309"><b>Active Session</b></font>')
+
+    return "<br/>".join(in_lines), "<br/>".join(out_lines)
 
 def _add_executive_header(story, title: str, subtitle: str, styles, right_meta: str = ""):
     """Adds a modern corporate header banner with clean typography and accent line."""
@@ -70,8 +160,8 @@ def _add_executive_header(story, title: str, subtitle: str, styles, right_meta: 
         name="ExecTitle",
         parent=styles["Heading1"],
         fontName="Helvetica-Bold",
-        fontSize=16,
-        leading=20,
+        fontSize=15,
+        leading=19,
         textColor=COLOR_PRIMARY_NAVY,
         spaceAfter=2,
     )
@@ -230,7 +320,6 @@ def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
     story.append(Paragraph(f"OFFICIAL SALARY PAYSLIP — {month_name.upper()} {payroll.year}", sub_style))
     story.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_ACCENT_BLUE, spaceBefore=8, spaceAfter=14))
 
-    # Employee Information Block
     emp_code = employee.employee_code or f"EMP{employee.employee_id:03d}"
     emp_details = [
         [
@@ -306,43 +395,39 @@ def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
             Paragraph(f'<b><font color="#dc2626">₹ {float(payroll.deductions or 0):,.2f}</font></b>', right_bold),
         ],
         [
-            Paragraph("<b>NET DISBURSED PAYABLE SALARY</b>", ParagraphStyle("PNet", parent=bold_body, fontSize=11, textColor=COLOR_PRIMARY_NAVY)),
-            Paragraph(f'<b><font color="#059669" size="12">₹ {float(payroll.final_salary or 0):,.2f}</font></b>', ParagraphStyle("PNetR", parent=right_bold, fontSize=12)),
-            Paragraph(f'<b><font color="{"#059669" if payroll.is_paid else "#dc2626"}">{"[PAID]" if payroll.is_paid else "[UNPAID]"}</font></b>', ParagraphStyle("PNetS", parent=right_bold)),
+            Paragraph(f"<b>NET SALARY DISBURSED</b><br/><font size='7' color='#64748b'>Payment Status: {'PAID' if payroll.is_paid else 'PENDING'}</font>", bold_body),
+            Paragraph(f'<font size="12" color="#059669"><b>₹ {float(payroll.final_salary or 0):,.2f}</b></font>', ParagraphStyle("N1", parent=right_bold, fontSize=12)),
+            Paragraph("", right_body),
         ],
     ]
 
     t_sal = Table(salary_data, colWidths=[270, 135, 135])
     t_sal.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
-        ('BOX', (0,0), (-1,-1), 1, COLOR_PRIMARY_NAVY),
-        ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
+        ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-3), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -3), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
         ('BACKGROUND', (0,-2), (-1,-2), colors.HexColor("#f1f5f9")),
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#ecfdf5") if payroll.is_paid else colors.HexColor("#fef2f2")),
-        ('LINEABOVE', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#ecfdf5")),
+        ('LINEABOVE', (0,-2), (-1,-2), 1, COLOR_PRIMARY_NAVY),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.5, colors.HexColor("#059669")),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 6),
         ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('LEFTPADDING', (0,0), (-1,-1), 8),
-        ('RIGHTPADDING', (0,0), (-1,-1), 8),
     ]))
     story.append(t_sal)
-    story.append(Spacer(1, 24))
+    story.append(Spacer(1, 20))
 
-    now_str = datetime.now().strftime("%Y-%m-%d %I:%M %p IST")
-    footer_data = [
-        [
-            Paragraph(f"Generated securely on: {now_str}<br/>System Status: <b>{'PAID' if payroll.is_paid else 'PAYMENT PENDING'}</b>", body_style),
-            Paragraph("____________________________<br/>Authorized HR / Finance Signatory", right_body),
-        ]
-    ]
-    t_foot = Table(footer_data, colWidths=[270, 270])
-    t_foot.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
-        ('LEFTPADDING', (0,0), (-1,-1), 0),
-        ('RIGHTPADDING', (0,0), (-1,-1), 0),
-    ]))
-    story.append(t_foot)
+    note_style = ParagraphStyle(
+        name="PSNote",
+        fontName="Helvetica-Oblique",
+        fontSize=7.5,
+        leading=10,
+        textColor=colors.HexColor("#64748b"),
+        alignment=1,
+    )
+    story.append(Paragraph("This is a computer-generated salary slip and does not require a physical signature.", note_style))
 
     doc.build(story)
     pdf_bytes = buffer.getvalue()
@@ -351,7 +436,7 @@ def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
 
 # ─── 2. Daily Attendance PDF Generator ────────────────────────────────────────
 def generate_daily_attendance_pdf(report_date: date, records: list, title: str = "DAILY ATTENDANCE REPORT", subtitle: str = None) -> bytes:
-    """Generates PDF for Daily Attendance with executive styling and KPI strip."""
+    """Generates PDF for Daily Attendance with executive styling, KPI strip, and clear multi-session timing."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -367,19 +452,18 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
     sub = subtitle or f"Report Date: {report_date.strftime('%A, %d %B %Y')} | Department: All"
     _add_executive_header(story, title, sub, styles, f"DATE: {report_date.strftime('%d-%m-%Y')}")
 
-    # Accumulate stats for KPI box
     total_logs = len(records)
-    present_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("present", "wfh"))
-    late_cnt = sum(1 for r in records if str(r.get("status") or "").lower() == "late")
-    absent_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("absent", "leave", "half_day", "halfday"))
-    holiday_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("holiday", "weekly_off"))
+    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
+    late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late")
+    absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("absent", "leave", "half_day", "halfday"))
+    holiday_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("holiday", "weekly_off"))
     total_hrs = sum(float(r.get("working_hours") or 0.0) for r in records)
     total_ot = sum(float(r.get("overtime_hours") or 0.0) for r in records)
 
     story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, holiday_cnt, total_hrs, total_ot))
     story.append(Spacer(1, 8))
 
-    header_style = ParagraphStyle("HDaily", fontName="Helvetica-Bold", fontSize=8, color=COLOR_WHITE, alignment=1)
+    header_style = ParagraphStyle("HDaily", fontName="Helvetica-Bold", fontSize=8, textColor=COLOR_WHITE, alignment=1)
     row_style = ParagraphStyle("RDaily", fontName="Helvetica", fontSize=8, textColor=COLOR_SECONDARY)
     row_center = ParagraphStyle("RDailyC", parent=row_style, alignment=1)
     row_right = ParagraphStyle("RDailyR", parent=row_style, alignment=2)
@@ -388,36 +472,29 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
         Paragraph("<b>ID</b>", header_style),
         Paragraph("<b>Employee Name</b>", header_style),
         Paragraph("<b>Department</b>", header_style),
-        Paragraph("<b>Check-In</b>", header_style),
-        Paragraph("<b>Check-Out</b>", header_style),
-        Paragraph("<b>Working Hours</b>", header_style),
+        Paragraph("<b>Check-In Time</b>", header_style),
+        Paragraph("<b>Check-Out Time &amp; Sessions</b>", header_style),
+        Paragraph("<b>Hours</b>", header_style),
         Paragraph("<b>Overtime</b>", header_style),
         Paragraph("<b>Status</b>", header_style),
         Paragraph("<b>Source</b>", header_style),
     ]]
 
     for r in records:
-        cin = r.get("check_in")
-        cout = r.get("check_out")
-        cnt = int(r.get("checkout_count") or 0)
-        cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
-
-        if cin and not cout:
-            cout_display = '<font color="#b45309"><b>Active Session</b></font>'
-        else:
-            raw_cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
-            if cnt > 1:
-                cout_display = f"{raw_cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
-            else:
-                cout_display = raw_cout_str
-
+        emp_code = r.get("employee_code") or f"EMP{int(r.get('employee_id') or 0):03d}"
+        cin_display, cout_display = format_punch_sessions_pdf(
+            r.get("check_in"),
+            r.get("check_out"),
+            r.get("punches"),
+            r.get("checkout_count") or 0
+        )
         status_badge = _format_status_badge(r.get("status"))
 
         table_data.append([
-            Paragraph(f"<b>EMP{int(r.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{emp_code}</b>", row_center),
             Paragraph(f"<b>{r.get('employee_name') or 'Unknown'}</b>", row_style),
             Paragraph(r.get("department") or "N/A", row_style),
-            Paragraph(cin_str, row_center),
+            Paragraph(cin_display, row_center),
             Paragraph(cout_display, row_center),
             Paragraph(f"{float(r.get('working_hours') or 0.00):.2f}h", row_right),
             Paragraph(f"{float(r.get('overtime_hours') or 0.00):.2f}h", row_right),
@@ -425,15 +502,19 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
             Paragraph(str(r.get("source") or "Biometric").capitalize(), row_center),
         ])
 
-    t = Table(table_data, colWidths=[55, 145, 105, 80, 95, 75, 70, 65, 52])
+    # Col widths sum to 742 pt
+    t = Table(table_data, colWidths=[50, 120, 80, 95, 145, 56, 66, 70, 60])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
         ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,0), 6),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
     ]))
     story.append(t)
 
@@ -461,7 +542,7 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, titl
     sub = subtitle or f"Period: {month_name} {year} | All Employees"
     _add_executive_header(story, title, sub, styles, f"MONTH: {month_name.upper()} {year}")
 
-    header_style = ParagraphStyle("HMon", fontName="Helvetica-Bold", fontSize=8.5, color=COLOR_WHITE, alignment=1)
+    header_style = ParagraphStyle("HMon", fontName="Helvetica-Bold", fontSize=8.5, textColor=COLOR_WHITE, alignment=1)
     row_style = ParagraphStyle("RMon", fontName="Helvetica", fontSize=8.5, textColor=COLOR_SECONDARY)
     row_center = ParagraphStyle("RMonC", parent=row_style, alignment=1)
     row_right = ParagraphStyle("RMonR", parent=row_style, alignment=2)
@@ -477,8 +558,9 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, titl
     ]]
 
     for s in summaries:
+        emp_code = s.get("employee_code") or f"EMP{int(s.get('employee_id') or 0):03d}"
         table_data.append([
-            Paragraph(f"<b>EMP{int(s.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{emp_code}</b>", row_center),
             Paragraph(f"<b>{s.get('employee_name')}</b>", row_style),
             Paragraph(s.get("department") or "N/A", row_style),
             Paragraph(f'<font color="{COLOR_STATUS_PRESENT}"><b>{float(s.get("present_days") or 0.0):.1f}</b></font>', row_center),
@@ -490,12 +572,15 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, titl
     t = Table(table_data, colWidths=[60, 160, 112, 60, 55, 55, 60])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
         ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 5),
         ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,0), 6),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
     ]))
     story.append(t)
 
@@ -506,7 +591,7 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, titl
 
 # ─── 4. Monthly Payroll Report PDF Generator ──────────────────────────────────
 def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
-    """Generates PDF for Monthly Payroll Report."""
+    """Generates an executive-grade PDF report for Monthly Payroll distribution."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -528,7 +613,7 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
         f"PERIOD: {month_name.upper()} {year}"
     )
 
-    header_style = ParagraphStyle("HPay", fontName="Helvetica-Bold", fontSize=8, color=COLOR_WHITE, alignment=1)
+    header_style = ParagraphStyle("HPay", fontName="Helvetica-Bold", fontSize=8, textColor=COLOR_WHITE, alignment=1)
     row_style = ParagraphStyle("RPay", fontName="Helvetica", fontSize=8, textColor=COLOR_SECONDARY)
     row_center = ParagraphStyle("RPayC", parent=row_style, alignment=1)
     row_right = ParagraphStyle("RPayR", parent=row_style, alignment=2)
@@ -564,9 +649,10 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
 
         is_paid = bool(p.get("is_paid"))
         status_html = '<font color="#059669"><b>PAID</b></font>' if is_paid else '<font color="#dc2626"><b>UNPAID</b></font>'
+        emp_code = p.get("employee_code") or f"EMP{int(p.get('employee_id') or 0):03d}"
 
         table_data.append([
-            Paragraph(f"<b>EMP{int(p.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{emp_code}</b>", row_center),
             Paragraph(f"<b>{p.get('employee_name')}</b>", row_style),
             Paragraph(p.get("department") or "N/A", row_style),
             Paragraph(f"{float(p.get('present_days') or 0.0):.1f}", row_center),
@@ -577,7 +663,6 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
             Paragraph(status_html, row_center),
         ])
 
-    # Totals Row
     table_data.append([
         Paragraph("", bold_right),
         Paragraph("<b>GRAND TOTALS</b>", ParagraphStyle("BTot", parent=row_style, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
@@ -593,6 +678,7 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
     t = Table(table_data, colWidths=[55, 140, 95, 60, 80, 80, 80, 92, 60])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
         ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
         ('ROWBACKGROUNDS', (0, 1), (-1, -2), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
@@ -601,6 +687,8 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,0), 6),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
     ]))
     story.append(t)
 
@@ -611,7 +699,7 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
 
 # ─── 5. Historical / Detailed Attendance PDF Generator ────────────────────────
 def generate_historical_attendance_pdf(start_date: date, end_date: date, records: list, title: str = "HISTORICAL ATTENDANCE REPORT", subtitle: str = None) -> bytes:
-    """Generates an executive PDF for Detailed Attendance logs with KPI strip."""
+    """Generates an executive PDF for Detailed Attendance logs with KPI strip and complete session timings."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -627,19 +715,18 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
     sub = subtitle or f"Period: {start_date.strftime('%d %B %Y')} to {end_date.strftime('%d %B %Y')} | Department: All"
     _add_executive_header(story, title, sub, styles, f"PERIOD: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
 
-    # Accumulate stats for KPI box
     total_logs = len(records)
-    present_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("present", "wfh"))
-    late_cnt = sum(1 for r in records if str(r.get("status") or "").lower() == "late")
-    absent_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("absent", "leave", "half_day", "halfday"))
-    holiday_cnt = sum(1 for r in records if str(r.get("status") or "").lower() in ("holiday", "weekly_off"))
+    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
+    late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late")
+    absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("absent", "leave", "half_day", "halfday"))
+    holiday_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("holiday", "weekly_off"))
     total_hrs = sum(float(r.get("working_hours") or 0.0) for r in records)
     total_ot = sum(float(r.get("overtime_hours") or 0.0) for r in records)
 
     story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, holiday_cnt, total_hrs, total_ot))
     story.append(Spacer(1, 8))
 
-    header_style = ParagraphStyle("HHist", fontName="Helvetica-Bold", fontSize=8, color=COLOR_WHITE, alignment=1)
+    header_style = ParagraphStyle("HHist", fontName="Helvetica-Bold", fontSize=8, textColor=COLOR_WHITE, alignment=1)
     row_style = ParagraphStyle("RHist", fontName="Helvetica", fontSize=8, textColor=COLOR_SECONDARY)
     row_center = ParagraphStyle("RHistC", parent=row_style, alignment=1)
     row_right = ParagraphStyle("RHistR", parent=row_style, alignment=2)
@@ -649,8 +736,8 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
         Paragraph("<b>ID</b>", header_style),
         Paragraph("<b>Employee Name</b>", header_style),
         Paragraph("<b>Department</b>", header_style),
-        Paragraph("<b>Check-In</b>", header_style),
-        Paragraph("<b>Check-Out</b>", header_style),
+        Paragraph("<b>Check-In Time</b>", header_style),
+        Paragraph("<b>Check-Out Time &amp; Sessions</b>", header_style),
         Paragraph("<b>Hours</b>", header_style),
         Paragraph("<b>Late</b>", header_style),
         Paragraph("<b>Overtime</b>", header_style),
@@ -664,19 +751,13 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
         else:
             date_str = str(r_date) if r_date else "--"
 
-        cin = r.get("check_in")
-        cout = r.get("check_out")
-        cin_str = cin.strftime("%I:%M %p") if hasattr(cin, "strftime") else (str(cin) if cin else "--:--")
-
-        if cin and not cout:
-            cout_str = '<font color="#b45309"><b>Active Session</b></font>'
-        else:
-            raw_cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
-            cnt = int(r.get("checkout_count") or 0)
-            if cnt > 1:
-                cout_str = f"{raw_cout_str}<br/><font size='6' color='#0284c7'><b>({cnt} checkouts)</b></font>"
-            else:
-                cout_str = raw_cout_str
+        emp_code = r.get("employee_code") or f"EMP{int(r.get('employee_id') or 0):03d}"
+        cin_str, cout_str = format_punch_sessions_pdf(
+            r.get("check_in"),
+            r.get("check_out"),
+            r.get("punches"),
+            r.get("checkout_count") or 0
+        )
 
         late_min = int(r.get("late_minutes") or 0)
         late_str = format_late_duration_pdf(late_min)
@@ -684,7 +765,7 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
 
         table_data.append([
             Paragraph(date_str, row_center),
-            Paragraph(f"<b>EMP{int(r.get('employee_id') or 0):03d}</b>", row_center),
+            Paragraph(f"<b>{emp_code}</b>", row_center),
             Paragraph(f"<b>{r.get('employee_name') or 'Unknown'}</b>", row_style),
             Paragraph(r.get("department") or "N/A", row_style),
             Paragraph(cin_str, row_center),
@@ -695,16 +776,19 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
             Paragraph(status_badge, row_center),
         ])
 
-    # Table column widths sum to 742 (landscape letter width is 792 - 50 margins = 742)
-    t = Table(table_data, colWidths=[65, 50, 135, 95, 75, 85, 55, 52, 60, 70])
+    # Table column widths sum to 742 pt (exact printable landscape width)
+    t = Table(table_data, colWidths=[60, 50, 110, 72, 95, 135, 46, 46, 58, 70])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
+        ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
         ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,0), 6),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
     ]))
     story.append(t)
 

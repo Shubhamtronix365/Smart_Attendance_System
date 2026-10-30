@@ -7,6 +7,46 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 # ─── Formatting Helpers ───────────────────────────────────────────────────────
+def format_time_str(val):
+    if not val:
+        return None
+    if isinstance(val, (datetime, date)):
+        if hasattr(val, "strftime"):
+            return val.strftime("%I:%M %p")
+    s = str(val).strip()
+    if " " in s or "T" in s:
+        try:
+            dt = datetime.fromisoformat(s.replace(" ", "T"))
+            return dt.strftime("%I:%M %p")
+        except Exception:
+            pass
+    if ":" in s and len(s) <= 8:
+        try:
+            parts = s.split(":")
+            dt = datetime(2026, 1, 1, int(parts[0]), int(parts[1]))
+            return dt.strftime("%I:%M %p")
+        except Exception:
+            pass
+    return s
+
+def _is_next_day(in_val, out_val):
+    try:
+        in_dt = in_val if isinstance(in_val, datetime) else (datetime.fromisoformat(str(in_val).replace(" ", "T")) if in_val else None)
+        out_dt = out_val if isinstance(out_val, datetime) else (datetime.fromisoformat(str(out_val).replace(" ", "T")) if out_val else None)
+        if in_dt and out_dt:
+            return out_dt.date() > in_dt.date()
+    except Exception:
+        pass
+    return False
+
+def _normalize_status(status_raw) -> str:
+    if hasattr(status_raw, "value"):
+        return str(status_raw.value).lower().strip()
+    s = str(status_raw or "absent").lower().strip()
+    if "." in s:
+        s = s.split(".")[-1]
+    return s
+
 def format_late_duration_excel(minutes) -> str:
     if not minutes or int(minutes) <= 0:
         return "—"
@@ -29,33 +69,22 @@ def format_sessions_summary(punches_data) -> str:
             return "—"
         
         parts = []
-        for s in sessions:
-            s_num = s.get("session", len(parts) + 1)
+        for idx, s in enumerate(sessions, 1):
+            s_num = s.get("session", idx)
             in_raw = s.get("in")
             out_raw = s.get("out")
             hrs = s.get("hours")
             
-            in_str = in_raw
-            if in_raw and (" " in in_raw or "T" in in_raw):
-                try:
-                    dt = datetime.fromisoformat(in_raw.replace(" ", "T"))
-                    in_str = dt.strftime("%I:%M %p")
-                except Exception:
-                    in_str = in_raw.split(" ")[-1]
-            
-            out_str = "Active"
+            in_str = format_time_str(in_raw) or "--:--"
             if out_raw:
-                if " " in out_raw or "T" in out_raw:
-                    try:
-                        dt = datetime.fromisoformat(out_raw.replace(" ", "T"))
-                        out_str = dt.strftime("%I:%M %p")
-                    except Exception:
-                        out_str = out_raw.split(" ")[-1]
-                else:
-                    out_str = out_raw
+                out_str = format_time_str(out_raw) or str(out_raw)
+                if _is_next_day(in_raw, out_raw):
+                    out_str += " (+1d)"
+            else:
+                out_str = "Active Session"
             
-            duration_str = f" ({hrs}h)" if hrs is not None else ""
-            parts.append(f"S{s_num}: {in_str} - {out_str}{duration_str}")
+            duration_str = f" ({float(hrs):.2f}h)" if hrs is not None else ""
+            parts.append(f"S{s_num}: In {in_str} → Out {out_str}{duration_str}")
             
         return " | ".join(parts) if parts else "—"
     except Exception:
@@ -91,7 +120,7 @@ TOTAL_BORDER = Border(
 )
 
 def _get_status_style(status_raw: str):
-    s = str(status_raw or "absent").lower().strip()
+    s = _normalize_status(status_raw)
     if s in ("present", "wfh"):
         return PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid"), Font(name=FONT_FAMILY, size=9.5, bold=True, color="065F46")
     elif s == "late":
@@ -167,7 +196,7 @@ def generate_daily_attendance_excel(report_date: date, records: list, title: str
         else:
             cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
 
-        emp_code = f"EMP{int(r.get('employee_id') or 0):03d}"
+        emp_code = r.get("employee_code") or f"EMP{int(r.get('employee_id') or 0):03d}"
         cnt = int(r.get("checkout_count") or 0)
         cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else ("Active" if (cin and not cout) else "0"))
 
@@ -211,7 +240,8 @@ def generate_daily_attendance_excel(report_date: date, records: list, title: str
 
         # Status Cell with styled pill fill
         status_fill, status_font = _get_status_style(r.get("status"))
-        status_cell = ws.cell(row=current_row, column=11, value=str(r.get("status") or "absent").upper())
+        status_norm = _normalize_status(r.get("status"))
+        status_cell = ws.cell(row=current_row, column=11, value=status_norm.upper())
         status_cell.alignment = ALIGN_CENTER
         status_cell.fill = status_fill
         status_cell.font = status_font
@@ -561,7 +591,7 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
         else:
             cout_str = cout.strftime("%I:%M %p") if hasattr(cout, "strftime") else (str(cout) if cout else "--:--")
 
-        emp_code = f"EMP{int(r.get('employee_id') or 0):03d}"
+        emp_code = r.get("employee_code") or f"EMP{int(r.get('employee_id') or 0):03d}"
         cnt = int(r.get("checkout_count") or 0)
         cnt_str = f"{cnt} Checkouts" if cnt > 1 else ("1 Checkout" if cnt == 1 else ("Active" if (cin and not cout) else "0"))
 
@@ -605,7 +635,8 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
 
         # Status cell with pill
         status_fill, status_font = _get_status_style(r.get("status"))
-        status_cell = ws.cell(row=current_row, column=13, value=str(r.get("status") or "absent").upper())
+        status_norm = _normalize_status(r.get("status"))
+        status_cell = ws.cell(row=current_row, column=13, value=status_norm.upper())
         status_cell.alignment = ALIGN_CENTER
         status_cell.fill = status_fill
         status_cell.font = status_font

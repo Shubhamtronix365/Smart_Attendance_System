@@ -272,6 +272,7 @@ async def export_attendance(
         mapped_records.append({
             "date": r.date,
             "employee_id": r.employee_id,
+            "employee_code": r.employee.employee_code if (r.employee and r.employee.employee_code) else f"EMP{r.employee_id:03d}",
             "employee_name": r.employee.name if r.employee else "Unknown",
             "department": r.employee.department if r.employee else "N/A",
             "check_in": r.check_in,
@@ -279,8 +280,10 @@ async def export_attendance(
             "working_hours": r.working_hours,
             "late_minutes": r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
             "overtime_hours": r.overtime_hours,
-            "status": r.status,
-            "source": r.source
+            "status": r.status.value if hasattr(r.status, "value") else str(r.status),
+            "source": r.source,
+            "checkout_count": getattr(r, "checkout_count", 0) or 0,
+            "punches": getattr(r, "punches", "[]") or "[]"
         })
 
     is_single_day = (start_date == end_date)

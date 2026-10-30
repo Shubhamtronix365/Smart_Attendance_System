@@ -180,3 +180,64 @@ def test_monthly_attendance_reports():
     assert pdf_bytes is not None
     assert pdf_bytes[:4] == b"%PDF"
 
+
+def test_pdf_multi_session_and_enum_status():
+    """Verify PDF multi-session timing and enum status normalization."""
+    from server.services.pdf_service import (
+        format_punch_sessions_pdf,
+        _normalize_status,
+        _format_status_badge,
+        generate_historical_attendance_pdf
+    )
+    from server.models import AttendanceStatus
+
+    # 1. Verify Enum status normalizes correctly
+    assert _normalize_status(AttendanceStatus.PRESENT) == "present"
+    assert _normalize_status(AttendanceStatus.LATE) == "late"
+    assert _normalize_status("AttendanceStatus.PRESENT") == "present"
+
+    badge_pres = _format_status_badge(AttendanceStatus.PRESENT)
+    assert "PRESENT" in badge_pres
+    assert "#059669" in badge_pres
+
+    badge_late = _format_status_badge(AttendanceStatus.LATE)
+    assert "LATE" in badge_late
+
+    # 2. Verify multi-session breakdown format
+    punches = [
+        {"session": 1, "in": "2026-10-28 11:27:10", "out": "2026-10-28 12:41:24", "hours": 1.24},
+        {"session": 2, "in": "2026-10-28 12:42:03", "out": "2026-10-28 20:42:03", "hours": 7.0}
+    ]
+    cin_disp, cout_disp = format_punch_sessions_pdf("11:27:10", "20:42:03", punches, 2)
+    assert "Session 1:" in cin_disp
+    assert "11:27 AM" in cin_disp
+    assert "Session 2:" in cin_disp
+    assert "12:42 PM" in cin_disp
+    assert "Session 1:" in cout_disp
+    assert "12:41 PM" in cout_disp
+    assert "1.24h" in cout_disp
+    assert "Session 2:" in cout_disp
+    assert "08:42 PM" in cout_disp
+    assert "7.00h" in cout_disp
+
+    # 3. Verify PDF generation with multi-session records
+    sample_records = [
+        {
+            "date": date(2026, 10, 28),
+            "employee_id": 16,
+            "employee_code": "EMP001",
+            "employee_name": "Tejas Daund",
+            "department": "Engineering",
+            "check_in": "2026-10-28 11:27:10",
+            "check_out": "2026-10-28 20:42:03",
+            "working_hours": 8.24,
+            "late_minutes": 147,
+            "overtime_hours": 0.24,
+            "status": AttendanceStatus.LATE,
+            "checkout_count": 2,
+            "punches": punches
+        }
+    ]
+    pdf_bytes = generate_historical_attendance_pdf(date(2026, 10, 1), date(2026, 10, 31), sample_records)
+    assert pdf_bytes is not None
+    assert pdf_bytes[:4] == b"%PDF"

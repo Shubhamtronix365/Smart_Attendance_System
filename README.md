@@ -57,8 +57,12 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Zero Sunday Late Penalty:** Voluntary Sunday work has no 9:00 AM late deduction or penalty (status `PRESENT`, 0 late minutes).
   - Integrated across all attendance registries, daily/monthly Excel & PDF exports, dashboard analytics, and payroll auto-computation.
 - 📄 **Executive Professional PDF Reports Redesign (ReportLab):**
-  - **Corporate Navy Header & Branding:** Executive deep navy banner (`#0f172a`), bright accent line (`#0284c7`), and dynamic generation metadata (Date, Generated For, Total Records, Confidentiality Notice).
-  - **Top KPI Summary Metric Cards:** Visual summary blocks at the top of Daily and Historical attendance PDFs displaying Total Records, Present, Late, Absent, Holidays, Total Worked Hours, and Overtime.
+  - **High-Contrast Visible Table Headers:** Crisp, pure white bold text (`textColor=COLOR_WHITE`) over deep corporate navy table headers (`#0f172a`) with vertical cell padding (6pt), eliminating dark-on-dark legibility issues.
+  - **Detailed Multi-Session Timing Breakdown:** When employees complete multiple check-ins/check-outs (e.g. Session 1 and Session 2), the Check-In and Check-Out columns explicitly show each session's timing and worked duration in clean, non-technical formatting:
+    - *Check-In:* `Session 1: 11:27 AM` | `Session 2: 12:42 PM`
+    - *Check-Out:* `Session 1: 12:41 PM (1.24h)` | `Session 2: 08:42 PM (7.00h)` (plus `(+1d)` next-day tags for cross-midnight overnight shifts).
+  - **Accurate Status Enum Normalization & KPI Calculations:** Robust `_normalize_status` helper resolves SQLAlchemy Enum instances and strings alike, preventing false `ABSENT` flags and ensuring top KPI summary counters accurately tally Present, Late, Absent, Holidays, and Overtime.
+  - **Real Employee Code Visibility:** Displays actual organizational IDs (e.g. `EMP001`) from employee profiles rather than raw database primary key sequences.
   - **Color-Coded Status Pills:** High-contrast colored status badges for `PRESENT` (emerald), `LATE` (amber), `ABSENT` (rose), `HOLIDAY` (blue), `LEAVE` (purple), and live `Active Session` (warm amber).
   - **Zebra Striping & Clean Typography:** Crisp alternating white and slate rows (`#ffffff` / `#f8fafc`), thin slate borders (`#e2e8f0`), exact point-width table column fits for zero text clipping on US Letter landscape/portrait layouts.
 - 📊 **Executive Excel Spreadsheet Exports (openpyxl):**
