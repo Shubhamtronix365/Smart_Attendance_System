@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.config import settings
 from server.models.employee import Employee
 from server.models.attendance import Attendance, AttendanceStatus
+from server.models.leave import Leave, LeaveStatus
+from server.utils.time_utils import get_current_local_date
 
 STANDARD_START = time(9, 0)
 STANDARD_END = time(17, 0)
@@ -120,6 +122,7 @@ async def record_attendance_punch(
         .where(
             and_(
                 Attendance.employee_id == employee.employee_id,
+                Attendance.check_in.is_not(None),
                 Attendance.check_out.is_(None)
             )
         )
@@ -250,8 +253,52 @@ async def record_attendance_punch(
     today_res = await db.execute(today_stmt)
     today_att = today_res.scalar_one_or_none()
 
-    # Subcase 2A: An attendance record already exists for today (re-checkin for Session 2, 3, 4, 5, etc.)
+    # Subcase 2A: An attendance record already exists for today
     if today_att:
+        # If today_att is an ABSENT placeholder created before punch (check_in is None), transform it to Session 1 check-in
+        if today_att.check_in is None:
+            check_in_time = punch_dt.time()
+            attendance_status = AttendanceStatus.PRESENT if is_sunday else determine_status(check_in_time, today)
+            late_mins = 0 if is_sunday else calculate_late_minutes(check_in_time, today)
+
+            sessions = [{
+                "session": 1,
+                "in": punch_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                "out": None,
+                "hours": 0.0
+            }]
+
+            today_att.check_in = punch_dt
+            today_att.check_out = None
+            today_att.working_hours = Decimal("0.00")
+            today_att.overtime_hours = Decimal("0.00")
+            today_att.late_minutes = late_mins
+            today_att.status = attendance_status
+            today_att.source = scan_source
+            today_att.punches = json.dumps(sessions)
+            today_att.checkout_count = 0
+            today_att.created_at = punch_dt
+            await db.commit()
+
+            if is_sunday:
+                late_str = " (Sunday Overtime Shift)"
+            else:
+                late_str = f" (Late by {late_mins}m)" if late_mins > 0 else ""
+
+            return {
+                "success": True,
+                "status": "check_in",
+                "message": f"Welcome {employee.name}! (Check-In #1){late_str}",
+                "employee_name": employee.name,
+                "method": scan_source,
+                "time": punch_dt.strftime("%H:%M:%S"),
+                "session_number": 1,
+                "working_hours": "0.00",
+                "overtime_hours": "0.00",
+                "checkout_count": 0
+            }
+
+        # Otherwise, today_att.check_in is not None -> genuine re-checkin for Session 2, 3, etc.
         sessions = []
         try:
             sessions = json.loads(today_att.punches or "[]")
@@ -353,3 +400,124 @@ async def record_attendance_punch(
         "overtime_hours": "0.00",
         "checkout_count": 0
     }
+
+
+async def sync_absent_records_for_date(
+    db: AsyncSession,
+    target_date: date,
+    department: Optional[str] = None
+) -> int:
+    """
+    Ensures all active staff employees who did not punch in on target_date have
+    an explicit record in the database:
+    - On Sundays (weekday == 6): Skipped (Sundays are weekly off/holidays, never absent).
+    - On working days (Mon-Sat): Active employees without records get ABSENT (or LEAVE if approved).
+    Future dates beyond today are never marked absent.
+    """
+    today = get_current_local_date()
+    if target_date > today or target_date.weekday() == 6:
+        return 0
+    return await sync_absent_records_for_range(db, target_date, target_date, department=department)
+
+
+async def sync_absent_records_for_range(
+    db: AsyncSession,
+    start_date: date,
+    end_date: date,
+    department: Optional[str] = None
+) -> int:
+    """
+    Bulk synchronizes ABSENT and LEAVE records for all active staff employees across [start_date, end_date].
+    - Excludes Sundays (weekday == 6) - no absence penalty on company holidays.
+    - Caps end_date to today (never marks future dates as absent).
+    - Respects employee joining_date (employees who haven't joined yet are not marked absent).
+    - Checks approved leaves to accurately assign LEAVE instead of ABSENT.
+    - Executed in a single bulk transaction with zero N+1 queries.
+    """
+    today = get_current_local_date()
+    effective_end = min(end_date, today)
+    if start_date > effective_end:
+        return 0
+
+    # 1. Fetch active staff employees
+    emp_stmt = select(Employee).where(
+        and_(
+            Employee.role != "admin",
+            Employee.is_active == True
+        )
+    )
+    if department:
+        emp_stmt = emp_stmt.where(Employee.department == department)
+    emp_res = await db.execute(emp_stmt)
+    active_employees = emp_res.scalars().all()
+    if not active_employees:
+        return 0
+
+    emp_ids = [e.employee_id for e in active_employees]
+
+    # 2. Fetch all existing attendance records in range
+    att_stmt = select(Attendance.employee_id, Attendance.date).where(
+        and_(
+            Attendance.employee_id.in_(emp_ids),
+            Attendance.date >= start_date,
+            Attendance.date <= effective_end
+        )
+    )
+    att_res = await db.execute(att_stmt)
+    existing_records = set((r[0], r[1]) for r in att_res.all())
+
+    # 3. Fetch all approved leaves overlapping range
+    leave_stmt = select(Leave.employee_id, Leave.start_date, Leave.end_date).where(
+        and_(
+            Leave.employee_id.in_(emp_ids),
+            Leave.start_date <= effective_end,
+            Leave.end_date >= start_date,
+            Leave.approval_status == LeaveStatus.APPROVED
+        )
+    )
+    leave_res = await db.execute(leave_stmt)
+    approved_leaves = leave_res.all()
+
+    # 4. Generate missing records
+    new_records: List[Attendance] = []
+    curr = start_date
+    delta_day = timedelta(days=1)
+
+    while curr <= effective_end:
+        # Skip Sundays
+        if curr.weekday() != 6:
+            for emp in active_employees:
+                # Respect joining date
+                if emp.joining_date and emp.joining_date > curr:
+                    continue
+                if (emp.employee_id, curr) not in existing_records:
+                    is_leave = any(
+                        l[0] == emp.employee_id and l[1] <= curr <= l[2]
+                        for l in approved_leaves
+                    )
+                    status_val = AttendanceStatus.LEAVE if is_leave else AttendanceStatus.ABSENT
+                    new_records.append(
+                        Attendance(
+                            employee_id=emp.employee_id,
+                            date=curr,
+                            check_in=None,
+                            check_out=None,
+                            working_hours=Decimal("0.00"),
+                            overtime_hours=Decimal("0.00"),
+                            late_minutes=0,
+                            status=status_val,
+                            source="system",
+                            punches="[]",
+                            checkout_count=0,
+                            created_at=datetime.combine(curr, time(9, 0))
+                        )
+                    )
+                    existing_records.add((emp.employee_id, curr))
+        curr += delta_day
+
+    if new_records:
+        db.add_all(new_records)
+        await db.commit()
+        return len(new_records)
+
+    return 0

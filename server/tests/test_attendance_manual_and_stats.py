@@ -166,3 +166,37 @@ def test_sessions_summary_formatter_for_excel():
     assert "S2:" in summary
     assert "8.77h" in summary
     assert "10.64h" in summary
+
+
+@pytest.mark.asyncio
+async def test_sync_absent_skips_sunday_and_future():
+    """Verify sync_absent_records_for_date skips Sundays and future dates."""
+    from datetime import date
+    from unittest.mock import AsyncMock
+    from server.services.attendance_service import sync_absent_records_for_date
+
+    mock_db = AsyncMock()
+    # 2026-10-25 was a Sunday (weekday == 6)
+    sunday_res = await sync_absent_records_for_date(mock_db, date(2026, 10, 25))
+    assert sunday_res == 0
+
+    # Far future date
+    future_res = await sync_absent_records_for_date(mock_db, date(2099, 1, 1))
+    assert future_res == 0
+
+
+def test_determine_status_logic():
+    """Verify attendance status determination on regular workdays vs Sundays."""
+    from datetime import date, time
+    from server.services.attendance_service import determine_status
+    from server.models.attendance import AttendanceStatus
+
+    # On regular workday (e.g. Friday 2026-10-23)
+    workday = date(2026, 10, 23)
+    assert determine_status(time(8, 45), workday) == AttendanceStatus.PRESENT
+    assert determine_status(time(9, 0), workday) == AttendanceStatus.PRESENT
+    assert determine_status(time(9, 15), workday) == AttendanceStatus.LATE
+
+    # On Sunday (2026-10-25)
+    sunday = date(2026, 10, 25)
+    assert determine_status(time(11, 30), sunday) == AttendanceStatus.PRESENT

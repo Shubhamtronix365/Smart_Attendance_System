@@ -42,6 +42,13 @@ async def get_daily_attendance_report(
     """
     if not report_date:
         report_date = date.today()
+
+    # Pre-sync absent records for target day
+    from server.services.attendance_service import sync_absent_records_for_date
+    try:
+        await sync_absent_records_for_date(db, report_date, department=department)
+    except Exception:
+        pass
         
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
         Attendance.date == report_date
@@ -177,6 +184,13 @@ async def get_detailed_attendance_logs_report(
     if not end_date:
         end_date = start_date
 
+    # Pre-sync absent records for date range
+    from server.services.attendance_service import sync_absent_records_for_range
+    try:
+        await sync_absent_records_for_range(db, start_date, end_date, department=department)
+    except Exception:
+        pass
+
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
         and_(Attendance.date >= start_date, Attendance.date <= end_date)
     )
@@ -285,6 +299,16 @@ async def get_monthly_attendance_report(
     export_format: str = Query("json", alias="format", pattern="^(json|pdf|excel)$"),
     db: AsyncSession = Depends(get_db)
 ):
+    from server.services.attendance_service import sync_absent_records_for_range
+    from server.utils.time_utils import get_current_local_date
+    try:
+        m_start = date(year, month, 1)
+        _, m_last = calendar.monthrange(year, month)
+        m_end = min(date(year, month, m_last), get_current_local_date())
+        if m_start <= m_end:
+            await sync_absent_records_for_range(db, m_start, m_end, department=department)
+    except Exception:
+        pass
     """
     Returns a monthly attendance summary.
     Supports filtering by department and individual employee.

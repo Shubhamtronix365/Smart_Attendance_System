@@ -56,6 +56,16 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **100% Sunday Overtime:** Any employee who checks in, checks out, or works on a Sunday receives **100% of their worked time directly as Overtime (`overtime_hours = working_hours`)** without requiring 8/9 standard work hours threshold.
   - **Zero Sunday Late Penalty:** Voluntary Sunday work has no 9:00 AM late deduction or penalty (status `PRESENT`, 0 late minutes).
   - Integrated across all attendance registries, daily/monthly Excel & PDF exports, dashboard analytics, and payroll auto-computation.
+- 🚫 **Automated Absence Tracking & Real-Time Roster Synchronization:**
+  - **Non-Punch Absence Logging:** If an active staff employee does not punch in on any standard workday (e.g. `23/10/2026`), the system automatically flags and logs them as `ABSENT` (or `LEAVE` if an approved leave overlaps that date), ensuring 100% complete and audit-ready attendance histories instead of omitted dates.
+  - **Live Today Pre-Seeding:** Active staff start each workday visible in live registries with an initial `ABSENT` status. As employees punch in on hardware (fingerprint/RFID) or web, their record automatically transitions to `PRESENT` (or `LATE` if after 9:00 AM) Session 1.
+  - **Sunday Holiday Immunity:** Sundays (`weekday == 6`) are strictly protected: employees who do not work on Sundays are categorized as `HOLIDAY` with 0 absence penalties.
+  - **Tenure & Joining Date Awareness:** Employees are only tracked for absences on or after their verified `joining_date`, preventing false absence marks prior to hire.
+  - **Manual Entry Absence Replacement:** Admins can manually enter attendance for an absent employee on any date, automatically upgrading the `ABSENT` placeholder to an active or completed attendance record in-place without duplicate record collisions.
+- 📈 **Comprehensive Total Absent Days Visibility in Reports:**
+  - **Single Employee Spotlight:** Displays a dedicated **Days Absent** KPI metric card alongside Logs Recorded, Days Present, Late Instances, Overtime Hours, and Total Hours.
+  - **Company-Wide Summary Strip:** Features an executive **Total Absences** metric card with `XCircle` indicator, keeping instantaneous count of all employee absences across any chosen date range.
+  - Full consistency across Web Reports, Detailed Logs, Daily & Monthly Summaries, Excel sheets, and executive PDF reports.
 - 📄 **Executive Professional PDF Reports Redesign (ReportLab):**
   - **High-Contrast Visible Table Headers:** Crisp, pure white bold text (`textColor=COLOR_WHITE`) over deep corporate navy table headers (`#0f172a`) with vertical cell padding (6pt), eliminating dark-on-dark legibility issues.
   - **Detailed Multi-Session Timing Breakdown:** When employees complete multiple check-ins/check-outs (e.g. Session 1 and Session 2), the Check-In and Check-Out columns explicitly show each session's timing and worked duration in clean, non-technical formatting:

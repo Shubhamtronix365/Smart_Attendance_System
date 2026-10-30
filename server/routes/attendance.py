@@ -19,6 +19,10 @@ from server.schemas.attendance import (
 import json
 from datetime import timedelta
 from server.utils.time_utils import get_current_local_date, get_current_local_time
+from server.services.attendance_service import (
+    sync_absent_records_for_date,
+    sync_absent_records_for_range,
+)
 from server.services.excel_service import (
     generate_daily_attendance_excel,
     generate_historical_attendance_excel,
@@ -174,6 +178,18 @@ async def list_attendance(
         _, last_day = calendar.monthrange(year, month)
         end_date = date(year, month, last_day)
 
+    # Auto-synchronize absent records so non-punching staff show as ABSENT
+    try:
+        if attendance_date:
+            await sync_absent_records_for_date(db, attendance_date, department=department)
+        elif start_date and end_date:
+            await sync_absent_records_for_range(db, start_date, end_date, department=department)
+        elif not start_date and not end_date:
+            today_dt = get_current_local_date()
+            await sync_absent_records_for_date(db, today_dt, department=department)
+    except Exception:
+        pass
+
     if attendance_date:
         stmt = stmt.where(Attendance.date == attendance_date)
     elif start_date and end_date:
@@ -254,6 +270,12 @@ async def export_attendance(
 
     if not end_date:
         end_date = start_date
+
+    # Auto-synchronize absent records for the export date range
+    try:
+        await sync_absent_records_for_range(db, start_date, end_date, department=department)
+    except Exception:
+        pass
 
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(
         and_(Attendance.date >= start_date, Attendance.date <= end_date)
@@ -416,6 +438,10 @@ async def get_today_stats(
         
     today = get_current_local_date()
     from server.services.attendance_service import calculate_late_minutes
+    try:
+        await sync_absent_records_for_date(db, today)
+    except Exception:
+        pass
     
     # Total active employees
     tot_stmt = select(func.count(Employee.employee_id)).where(Employee.is_active == True)
@@ -627,7 +653,7 @@ async def manual_entry(
     )
     att_res = await db.execute(att_stmt)
     existing = att_res.scalar_one_or_none()
-    if existing:
+    if existing and existing.check_in is not None:
         raise HTTPException(status_code=400, detail="Attendance record already exists for this date")
         
     # Calculate hours and late minutes if check-in and check-out are provided
@@ -663,22 +689,34 @@ async def manual_entry(
         if entry.check_out:
             checkout_cnt = 1
 
-    db_attendance = Attendance(
-        employee_id=entry.employee_id,
-        date=entry.date,
-        check_in=entry.check_in,
-        check_out=entry.check_out,
-        working_hours=working_hours,
-        overtime_hours=overtime_hours,
-        late_minutes=late_minutes,
-        status=status_to_save,
-        source="manual",
-        punches=json.dumps(manual_punches),
-        checkout_count=checkout_cnt,
-        created_at=datetime.utcnow()
-    )
+    if existing:
+        existing.check_in = entry.check_in
+        existing.check_out = entry.check_out
+        existing.working_hours = working_hours
+        existing.overtime_hours = overtime_hours
+        existing.late_minutes = late_minutes
+        existing.status = status_to_save
+        existing.source = "manual"
+        existing.punches = json.dumps(manual_punches)
+        existing.checkout_count = checkout_cnt
+        db_attendance = existing
+    else:
+        db_attendance = Attendance(
+            employee_id=entry.employee_id,
+            date=entry.date,
+            check_in=entry.check_in,
+            check_out=entry.check_out,
+            working_hours=working_hours,
+            overtime_hours=overtime_hours,
+            late_minutes=late_minutes,
+            status=status_to_save,
+            source="manual",
+            punches=json.dumps(manual_punches),
+            checkout_count=checkout_cnt,
+            created_at=datetime.utcnow()
+        )
+        db.add(db_attendance)
     
-    db.add(db_attendance)
     await db.commit()
     
     # Reload with joined employee

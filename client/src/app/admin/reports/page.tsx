@@ -13,6 +13,7 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
+  XCircle,
   X,
   TrendingUp,
   Briefcase,
@@ -503,6 +504,7 @@ export default function ReportsPage() {
   const detailedStats = useMemo(() => {
     const total = detailedData.length;
     let present = 0;
+    let absent = 0;
     let lateCount = 0;
     let lateMins = 0;
     let otHours = 0;
@@ -514,6 +516,8 @@ export default function ReportsPage() {
         present++;
       } else if (st === "halfday" || st === "half_day") {
         present += 0.5;
+      } else if (st === "absent") {
+        absent++;
       }
       if (r.lateMinutes > 0) {
         lateCount++;
@@ -530,6 +534,7 @@ export default function ReportsPage() {
     return {
       total,
       present,
+      absent,
       lateCount,
       lateMins,
       otHours,
@@ -1198,7 +1203,7 @@ export default function ReportsPage() {
 
               {/* Real Metrics Spotlight for Single Employee */}
               {activeReport === "detailed" && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4 pt-4 border-t border-white/[0.08]">
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 mt-4 pt-4 border-t border-white/[0.08]">
                   <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]">
                     <span className="text-white/40 text-[11px] block">Logs Recorded</span>
                     <span className="text-white font-bold text-base mt-0.5 block">
@@ -1209,6 +1214,12 @@ export default function ReportsPage() {
                     <span className="text-green-400/70 text-[11px] block">Days Present</span>
                     <span className="text-green-400 font-bold text-base mt-0.5 block">
                       {detailedStats.present}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                    <span className="text-red-400/70 text-[11px] block">Days Absent</span>
+                    <span className="text-red-400 font-bold text-base mt-0.5 block">
+                      {detailedStats.absent}
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]">
@@ -1241,7 +1252,7 @@ export default function ReportsPage() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6"
+                className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6"
               >
                 <div className="p-3.5 rounded-xl neo-card flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-cyan-400/10 text-cyan-300 flex items-center justify-center shrink-0">
@@ -1261,6 +1272,15 @@ export default function ReportsPage() {
                     <span className="text-green-400 font-bold text-base">
                       {detailedStats.present}
                     </span>
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl neo-card flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-red-400/10 text-red-400 flex items-center justify-center shrink-0">
+                    <XCircle size={16} />
+                  </div>
+                  <div>
+                    <span className="text-red-400/70 text-[11px] block">Total Absences</span>
+                    <span className="text-red-400 font-bold text-base">{detailedStats.absent}</span>
                   </div>
                 </div>
                 <div className="p-3.5 rounded-xl neo-card flex items-center gap-3">
