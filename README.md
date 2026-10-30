@@ -67,6 +67,8 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Company-Wide Summary Strip:** Features an executive **Total Absences** metric card with `XCircle` indicator, keeping instantaneous count of all employee absences across any chosen date range.
   - Full consistency across Web Reports, Detailed Logs, Daily & Monthly Summaries, Excel sheets, and executive PDF reports.
 - 📄 **Executive Professional PDF Reports Redesign (ReportLab):**
+  - **Top KPI Summary Dashboard Bar:** 8-column executive dashboard strip (Landscape Letter 742 pt) and 6-column dashboard (Portrait Letter 562 pt) presenting immediate metrics for Total Logs, Present, Absent, Late Arrivals + Duration, Leaves, Weekly Offs / Holidays, Total Worked Hours, and Overtime.
+  - **Comprehensive Grand Totals Row:** Bottom table footer row with bold navy borders, highlighting company totals for Working Hours, Overtime Hours, Present Count, Absent Count, Total Checkouts, and Late count/duration.
   - **High-Contrast Visible Table Headers:** Crisp, pure white bold text (`textColor=COLOR_WHITE`) over deep corporate navy table headers (`#0f172a`) with vertical cell padding (6pt), eliminating dark-on-dark legibility issues.
   - **Detailed Multi-Session Timing Breakdown:** When employees complete multiple check-ins/check-outs (e.g. Session 1 and Session 2), the Check-In and Check-Out columns explicitly show each session's timing and worked duration in clean, non-technical formatting:
     - *Check-In:* `Session 1: 11:27 AM` | `Session 2: 12:42 PM`
@@ -76,11 +78,12 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Color-Coded Status Pills:** High-contrast colored status badges for `PRESENT` (emerald), `LATE` (amber), `ABSENT` (rose), `HOLIDAY` (blue), `LEAVE` (purple), and live `Active Session` (warm amber).
   - **Zebra Striping & Clean Typography:** Crisp alternating white and slate rows (`#ffffff` / `#f8fafc`), thin slate borders (`#e2e8f0`), exact point-width table column fits for zero text clipping on US Letter landscape/portrait layouts.
 - 📊 **Executive Excel Spreadsheet Exports (openpyxl):**
+  - **Top Executive KPI Dashboard Cards (Rows 6–7):** Features a dedicated executive dashboard strip on rows 6-7 summarizing Total Logs/Staff, Present Count, Absent Count, Late Arrivals & Duration, Approved Leaves, Weekly Offs / Holidays, Total Checkouts, Cumulative Working Hours, and Overtime Hours.
+  - **Comprehensive Grand Totals Row:** Bottom accounting row with double borders (`TOTAL_BORDER`) and soft slate background (`#f1f5f9`), detailing grand totals for Working Hours, Overtime, Present count, Absent count, Total Checkouts, Late instances + elapsed time, and Leaves/Holidays.
   - **Branded Executive Title Block:** Bold navy title headers with system metadata and report scope.
-  - **Freeze Panes (`B7`):** Headers and metadata remain locked at the top during large dataset scrolling.
+  - **Freeze Panes (`B10`):** Headers and metadata remain locked at the top during large dataset scrolling.
   - **Soft Tinted Status Fills:** Clean pastel fills with matching dark bold text for all attendance statuses.
-  - **Automated Column Sizing:** Dynamic cell measurement algorithm setting column widths between 13 and 55 characters for instant readability in Microsoft Excel, Google Sheets, and LibreOffice.
-  - **Summary & Total Rows:** Double-bordered accounting totals (`TOTAL_BORDER`) summing total hours and overtime across records.
+  - **Automated Column Sizing:** Dynamic cell measurement algorithm setting column widths between 13 and 55 characters with title/KPI row isolation for instant readability in Microsoft Excel, Google Sheets, and LibreOffice.
 - 📱 **Enhanced Mobile & Multi-Device Responsiveness:**
   - **Adaptive Breakdowns & Modals:** `CheckoutHistoryModal` automatically reflows its summary metrics into single-column cards on mobile viewports (< 640px) and 3-column rows on desktop.
   - **Smooth Horizontal Data Tables:** Minimum table widths (`min-w-[600px]` to `min-w-[760px]`) inside `overflow-x-auto` wrappers ensure comprehensive attendance and report tables scroll fluidly without compressing columns or cutting off timestamps.

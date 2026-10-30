@@ -210,46 +210,109 @@ def _add_executive_header(story, title: str, subtitle: str, styles, right_meta: 
     story.append(Spacer(1, 4))
     story.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_ACCENT_BLUE, spaceBefore=2, spaceAfter=8))
 
-def _build_kpi_summary_bar(total_records: int, present: int, late: int, absent: int, holiday: int, total_hours: float, total_ot: float):
-    """Builds a compact, executive KPI dashboard strip table."""
+def _build_kpi_summary_bar(
+    total_records: int,
+    present: int,
+    late: int,
+    absent: int,
+    leave: int,
+    holiday: int,
+    total_hours: float,
+    total_ot: float,
+    total_late_min: int = 0
+):
+    """Builds an 8-column executive KPI dashboard strip table across 742 pt printable landscape width."""
     box_style_lbl = ParagraphStyle(
         name="KPILbl",
         fontName="Helvetica-Bold",
-        fontSize=7,
-        leading=9,
+        fontSize=6.5,
+        leading=8,
         textColor=colors.HexColor("#475569"),
         alignment=1,
     )
     box_style_val = ParagraphStyle(
         name="KPIVal",
         fontName="Helvetica-Bold",
-        fontSize=11,
-        leading=13,
+        fontSize=10,
+        leading=12,
         alignment=1,
     )
+    late_dur_str = format_late_duration_pdf(total_late_min)
+    late_sub = f"<br/><font size='5.5' color='#92400e'>({late_dur_str})</font>" if (total_late_min > 0 and late_dur_str != "—") else ""
 
     kpi_data = [
         [
             Paragraph("TOTAL LOGS", box_style_lbl),
             Paragraph("PRESENT", box_style_lbl),
+            Paragraph("ABSENT", box_style_lbl),
             Paragraph("LATE ARRIVALS", box_style_lbl),
-            Paragraph("ABSENT / LEAVE", box_style_lbl),
-            Paragraph("HOLIDAYS / OFF", box_style_lbl),
+            Paragraph("APPROVED LEAVE", box_style_lbl),
+            Paragraph("WEEKLY OFF / HOLIDAY", box_style_lbl),
             Paragraph("TOTAL WORKED", box_style_lbl),
             Paragraph("OVERTIME", box_style_lbl),
         ],
         [
             Paragraph(f"<b>{total_records}</b>", ParagraphStyle("K1", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
             Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">{present}</font></b>', box_style_val),
-            Paragraph(f'<b><font color="{COLOR_STATUS_LATE}">{late}</font></b>', box_style_val),
             Paragraph(f'<b><font color="{COLOR_STATUS_ABSENT}">{absent}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_LATE}">{late}</font></b>{late_sub}', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_LEAVE}">{leave}</font></b>', box_style_val),
             Paragraph(f'<b><font color="{COLOR_STATUS_HOLIDAY}">{holiday}</font></b>', box_style_val),
-            Paragraph(f"<b>{total_hours:.1f}h</b>", ParagraphStyle("K2", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
-            Paragraph(f'<b><font color="#7c3aed">+{total_ot:.1f}h</font></b>', box_style_val),
+            Paragraph(f"<b>{total_hours:.2f}h</b>", ParagraphStyle("K2", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
+            Paragraph(f'<b><font color="#7c3aed">+{total_ot:.2f}h</font></b>', box_style_val),
         ]
     ]
 
-    t_kpi = Table(kpi_data, colWidths=[105, 105, 105, 105, 105, 105, 110])
+    t_kpi = Table(kpi_data, colWidths=[92, 92, 92, 94, 92, 92, 94, 94])
+    t_kpi.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f8fafc")),
+        ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
+        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    return t_kpi
+
+
+def _build_monthly_kpi_bar(total_staff: int, total_pres: float, total_abs: float, total_lv: float, total_ot: float, avg_att_pct: float):
+    """Builds a 6-column compact executive KPI dashboard strip table across 562 pt printable portrait width."""
+    box_style_lbl = ParagraphStyle(
+        name="MKPILbl",
+        fontName="Helvetica-Bold",
+        fontSize=6.5,
+        leading=8,
+        textColor=colors.HexColor("#475569"),
+        alignment=1,
+    )
+    box_style_val = ParagraphStyle(
+        name="MKPIVal",
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        alignment=1,
+    )
+
+    kpi_data = [
+        [
+            Paragraph("TOTAL STAFF", box_style_lbl),
+            Paragraph("PRESENT DAYS", box_style_lbl),
+            Paragraph("ABSENT DAYS", box_style_lbl),
+            Paragraph("APPROVED LEAVE", box_style_lbl),
+            Paragraph("OVERTIME HOURS", box_style_lbl),
+            Paragraph("AVG ATTENDANCE", box_style_lbl),
+        ],
+        [
+            Paragraph(f"<b>{total_staff}</b>", ParagraphStyle("MK1", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
+            Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">{total_pres:.1f}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_ABSENT}">{total_abs:.1f}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_LEAVE}">{total_lv:.1f}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="#7c3aed">{total_ot:.2f}h</font></b>', box_style_val),
+            Paragraph(f"<b>{avg_att_pct:.1f}%</b>", ParagraphStyle("MK2", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
+        ]
+    ]
+
+    t_kpi = Table(kpi_data, colWidths=[93, 93, 93, 93, 95, 95])
     t_kpi.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f8fafc")),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
@@ -454,13 +517,16 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
 
     total_logs = len(records)
     present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
-    late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late")
-    absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("absent", "leave", "half_day", "halfday"))
+    late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late" or (r.get("late_minutes") and int(r.get("late_minutes")) > 0))
+    absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "absent")
+    leave_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "leave")
     holiday_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("holiday", "weekly_off"))
+    total_late_min = sum(int(r.get("late_minutes") or 0) for r in records)
     total_hrs = sum(float(r.get("working_hours") or 0.0) for r in records)
     total_ot = sum(float(r.get("overtime_hours") or 0.0) for r in records)
+    total_checkouts = sum(int(r.get("checkout_count") or (1 if r.get("check_out") else 0)) for r in records)
 
-    story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, holiday_cnt, total_hrs, total_ot))
+    story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, leave_cnt, holiday_cnt, total_hrs, total_ot, total_late_min))
     story.append(Spacer(1, 8))
 
     header_style = ParagraphStyle("HDaily", fontName="Helvetica-Bold", fontSize=8, textColor=COLOR_WHITE, alignment=1)
@@ -502,19 +568,37 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
             Paragraph(str(r.get("source") or "Biometric").capitalize(), row_center),
         ])
 
+    # Append Grand Total Summary Row
+    table_data.append([
+        Paragraph("<b>TOTALS</b>", row_center),
+        Paragraph("<b>GRAND TOTALS</b>", ParagraphStyle("B1", parent=row_style, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
+        Paragraph(f"<b>{total_logs} Staff Records</b>", ParagraphStyle("B2", parent=row_style, fontName="Helvetica-Bold", textColor=colors.HexColor("#475569"))),
+        Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">P: {present_cnt}</font> | <font color="{COLOR_STATUS_ABSENT}">A: {absent_cnt}</font></b>', row_center),
+        Paragraph(f'<b>Late: {late_cnt}</b> ({format_late_duration_pdf(total_late_min)})', row_center),
+        Paragraph(f"<b>{total_hrs:.2f}h</b>", ParagraphStyle("BHrs", parent=row_right, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
+        Paragraph(f'<b><font color="#7c3aed">+{total_ot:.2f}h</font></b>', ParagraphStyle("BOT", parent=row_right, fontName="Helvetica-Bold")),
+        Paragraph(f'<b>P:{present_cnt} A:{absent_cnt} L:{late_cnt}</b>', row_center),
+        Paragraph(f"<b>{total_checkouts} COs</b>", row_center),
+    ])
+
     # Col widths sum to 742 pt
     t = Table(table_data, colWidths=[50, 120, 80, 95, 145, 56, 66, 70, 60])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
         ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f1f5f9")),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
+        ('LINEBELOW', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
         ('TOPPADDING', (0,0), (-1,0), 6),
         ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('TOPPADDING', (0,-1), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,-1), (-1,-1), 5),
     ]))
     story.append(t)
 
@@ -541,6 +625,17 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, titl
     month_name = calendar.month_name[month]
     sub = subtitle or f"Period: {month_name} {year} | All Employees"
     _add_executive_header(story, title, sub, styles, f"MONTH: {month_name.upper()} {year}")
+
+    total_staff = len(summaries)
+    total_pres = sum(float(s.get("present_days") or 0.0) for s in summaries)
+    total_abs = sum(float(s.get("absent_days") or 0.0) for s in summaries)
+    total_lv = sum(float(s.get("leave_days") or 0.0) for s in summaries)
+    total_ot = sum(float(s.get("overtime_hours") or 0.00) for s in summaries)
+    total_w_days = total_pres + total_abs + total_lv
+    avg_att = (total_pres / total_w_days * 100.0) if total_w_days > 0 else 0.0
+
+    story.append(_build_monthly_kpi_bar(total_staff, total_pres, total_abs, total_lv, total_ot, avg_att))
+    story.append(Spacer(1, 8))
 
     header_style = ParagraphStyle("HMon", fontName="Helvetica-Bold", fontSize=8.5, textColor=COLOR_WHITE, alignment=1)
     row_style = ParagraphStyle("RMon", fontName="Helvetica", fontSize=8.5, textColor=COLOR_SECONDARY)
@@ -569,18 +664,33 @@ def generate_monthly_attendance_pdf(year: int, month: int, summaries: list, titl
             Paragraph(f'<font color="#7c3aed"><b>{float(s.get("overtime_hours") or 0.00):.2f}h</b></font>', row_right),
         ])
 
+    table_data.append([
+        Paragraph("<b>TOTALS</b>", row_center),
+        Paragraph(f"<b>GRAND TOTALS ({total_staff} Staff)</b>", ParagraphStyle("BM1", parent=row_style, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
+        Paragraph("<b>Company Roster</b>", ParagraphStyle("BM2", parent=row_style, fontName="Helvetica-Bold", textColor=colors.HexColor("#475569"))),
+        Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">{total_pres:.1f}</font></b>', row_center),
+        Paragraph(f'<b><font color="{COLOR_STATUS_ABSENT}">{total_abs:.1f}</font></b>', row_center),
+        Paragraph(f'<b><font color="{COLOR_STATUS_LEAVE}">{total_lv:.1f}</font></b>', row_center),
+        Paragraph(f'<b><font color="#7c3aed">{total_ot:.2f}h</font></b>', row_right),
+    ])
+
     t = Table(table_data, colWidths=[60, 160, 112, 60, 55, 55, 60])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
         ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f1f5f9")),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
+        ('LINEBELOW', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 5),
         ('BOTTOMPADDING', (0,0), (-1,-1), 5),
         ('TOPPADDING', (0,0), (-1,0), 6),
         ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('TOPPADDING', (0,-1), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,-1), (-1,-1), 6),
     ]))
     story.append(t)
 
@@ -717,13 +827,16 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
 
     total_logs = len(records)
     present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
-    late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late")
-    absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("absent", "leave", "half_day", "halfday"))
+    late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late" or (r.get("late_minutes") and int(r.get("late_minutes")) > 0))
+    absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "absent")
+    leave_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "leave")
     holiday_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("holiday", "weekly_off"))
+    total_late_min = sum(int(r.get("late_minutes") or 0) for r in records)
     total_hrs = sum(float(r.get("working_hours") or 0.0) for r in records)
     total_ot = sum(float(r.get("overtime_hours") or 0.0) for r in records)
+    total_checkouts = sum(int(r.get("checkout_count") or (1 if r.get("check_out") else 0)) for r in records)
 
-    story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, holiday_cnt, total_hrs, total_ot))
+    story.append(_build_kpi_summary_bar(total_logs, present_cnt, late_cnt, absent_cnt, leave_cnt, holiday_cnt, total_hrs, total_ot, total_late_min))
     story.append(Spacer(1, 8))
 
     header_style = ParagraphStyle("HHist", fontName="Helvetica-Bold", fontSize=8, textColor=COLOR_WHITE, alignment=1)
@@ -776,19 +889,38 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
             Paragraph(status_badge, row_center),
         ])
 
+    # Append Grand Total Summary Row
+    table_data.append([
+        Paragraph("<b>TOTALS</b>", row_center),
+        Paragraph("<b>ALL</b>", row_center),
+        Paragraph("<b>GRAND TOTALS</b>", ParagraphStyle("BH1", parent=row_style, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
+        Paragraph(f"<b>{total_logs} Logs</b>", ParagraphStyle("BH2", parent=row_style, fontName="Helvetica-Bold", textColor=colors.HexColor("#475569"))),
+        Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">P: {present_cnt}</font> | <font color="{COLOR_STATUS_ABSENT}">A: {absent_cnt}</font></b>', row_center),
+        Paragraph(f'<b>COs: {total_checkouts}</b> | Lv: {leave_cnt} | Hol: {holiday_cnt}', row_center),
+        Paragraph(f"<b>{total_hrs:.2f}h</b>", ParagraphStyle("BHHrs", parent=row_right, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
+        Paragraph(f"<b>{format_late_duration_pdf(total_late_min)}</b>", row_center),
+        Paragraph(f'<b><font color="#7c3aed">+{total_ot:.2f}h</font></b>', ParagraphStyle("BHOT", parent=row_right, fontName="Helvetica-Bold")),
+        Paragraph(f'<b>P:{present_cnt} A:{absent_cnt} L:{late_cnt}</b>', row_center),
+    ])
+
     # Table column widths sum to 742 pt (exact printable landscape width)
     t = Table(table_data, colWidths=[60, 50, 110, 72, 95, 135, 46, 46, 58, 70])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), COLOR_PRIMARY_NAVY),
         ('TEXTCOLOR', (0,0), (-1,0), COLOR_WHITE),
         ('BOX', (0,0), (-1,-1), 1, COLOR_BORDER),
-        ('INNERGRID', (0,0), (-1,-1), 0.5, COLOR_BORDER),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('INNERGRID', (0,0), (-1,-2), 0.5, COLOR_BORDER),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [COLOR_WHITE, COLOR_ZEBRA_LIGHT]),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#f1f5f9")),
+        ('LINEABOVE', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
+        ('LINEBELOW', (0,-1), (-1,-1), 1.5, COLOR_PRIMARY_NAVY),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 4),
         ('BOTTOMPADDING', (0,0), (-1,-1), 4),
         ('TOPPADDING', (0,0), (-1,0), 6),
         ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('TOPPADDING', (0,-1), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,-1), (-1,-1), 5),
     ]))
     story.append(t)
 
