@@ -10,6 +10,7 @@ from server.dependencies.auth import get_current_user, require_admin
 from server.models import Leave, LeaveStatus, LeaveType, Employee, Attendance, AttendanceStatus
 from server.schemas.leave import LeaveOut, LeaveCreate, LeaveRejection, LeaveBalance
 from server.routes.websocket import ws_manager
+from server.utils.logger import log_info, log_warning
 
 router = APIRouter(prefix="/leave", tags=["Leaves"])
 
@@ -90,6 +91,21 @@ async def submit_leave_request(
     stmt = select(Leave).options(joinedload(Leave.employee)).where(Leave.leave_id == db_leave.leave_id)
     res = await db.execute(stmt)
     r = res.scalar_one()
+
+    log_info(
+        "LEAVE",
+        "LEAVE_REQUESTED",
+        f"Leave application #{r.leave_id} submitted by {r.employee.name if r.employee else current_user.name}.\nType: {r.leave_type}, Period: {r.start_date} to {r.end_date}, Reason: {r.reason or 'None'}.",
+        leave_id=r.leave_id,
+        employee_id=current_user.employee_code or str(current_user.employee_id),
+        employee_name=r.employee.name if r.employee else current_user.name,
+        leave_type=r.leave_type,
+        start_date=str(r.start_date),
+        end_date=str(r.end_date),
+        source="EMPLOYEE_PORTAL",
+        action="Submit Leave Request",
+        result="PENDING"
+    )
 
     # Broadcast real-time websocket event
     try:
@@ -265,6 +281,22 @@ async def approve_leave(
     app_res = await db.execute(app_stmt)
     approver_name = app_res.scalar()
 
+    log_info(
+        "LEAVE",
+        "LEAVE_APPROVED",
+        f"Leave request #{r.leave_id} approved by administrator {approver_name or admin.name} for employee {r.employee.name if r.employee else r.employee_id}.\nPeriod: {r.start_date} to {r.end_date} ({r.leave_type}). Attendance records synchronized.",
+        leave_id=r.leave_id,
+        employee_id=r.employee.employee_code if (r.employee and r.employee.employee_code) else str(r.employee_id),
+        employee_name=r.employee.name if r.employee else "Unknown",
+        admin_id=admin.employee_code or str(admin.employee_id),
+        leave_type=r.leave_type,
+        start_date=str(r.start_date),
+        end_date=str(r.end_date),
+        source="WEB_ADMIN",
+        action="Approve Leave",
+        result="APPROVED"
+    )
+
     # Broadcast real-time websocket event for instant UI sync
     try:
         await ws_manager.broadcast_to_clients({
@@ -327,6 +359,20 @@ async def reject_leave(
     app_stmt = select(Employee.name).where(Employee.employee_id == admin.employee_id)
     app_res = await db.execute(app_stmt)
     approver_name = app_res.scalar()
+
+    log_info(
+        "LEAVE",
+        "LEAVE_REJECTED",
+        f"Leave request #{r.leave_id} rejected by administrator {approver_name or admin.name} for employee {r.employee.name if r.employee else r.employee_id}.\nReason: {r.rejection_reason or 'No reason specified'}.",
+        leave_id=r.leave_id,
+        employee_id=r.employee.employee_code if (r.employee and r.employee.employee_code) else str(r.employee_id),
+        employee_name=r.employee.name if r.employee else "Unknown",
+        admin_id=admin.employee_code or str(admin.employee_id),
+        rejection_reason=r.rejection_reason or "None",
+        source="WEB_ADMIN",
+        action="Reject Leave",
+        result="REJECTED"
+    )
 
     # Broadcast real-time websocket event for instant UI sync
     try:

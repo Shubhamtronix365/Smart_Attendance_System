@@ -12,6 +12,7 @@ from server.models import Employee, Attendance, AttendanceStatus
 from server.services.attendance_service import determine_status, calculate_hours, record_attendance_punch
 from server.routes.device import enrollment_session, get_next_free_fingerprint_id
 from server.utils.time_utils import get_current_local_time, get_current_local_date
+from server.utils.logger import log_info, log_warning, log_error
 
 logger = logging.getLogger("smart_attendance.websocket")
 router = APIRouter(tags=["WebSockets"])
@@ -58,6 +59,15 @@ class ConnectionManager:
     async def connect_device(self, device_id: str, websocket: WebSocket):
         await websocket.accept()
         self.active_devices[device_id] = websocket
+        log_info(
+            "DEVICE",
+            "DEVICE_CONNECTED",
+            f"Biometric hardware device '{device_id}' connected and communication established successfully.",
+            device_id=device_id,
+            status="ONLINE",
+            source="WEBSOCKET",
+            result="SUCCESS"
+        )
         logger.info(f"Hardware device '{device_id}' connected via WebSocket. Total devices: {len(self.active_devices)}")
         # Notify web clients that hardware is now online
         await self.broadcast_to_clients({
@@ -69,6 +79,15 @@ class ConnectionManager:
     def disconnect_device(self, device_id: str):
         if device_id in self.active_devices:
             del self.active_devices[device_id]
+            log_warning(
+                "DEVICE",
+                "DEVICE_DISCONNECTED",
+                f"Communication with biometric device '{device_id}' lost or terminated.",
+                device_id=device_id,
+                status="OFFLINE",
+                source="WEBSOCKET",
+                result="DISCONNECTED"
+            )
             logger.info(f"Hardware device '{device_id}' disconnected. Remaining devices: {len(self.active_devices)}")
         # Notify web clients
         import asyncio
@@ -246,6 +265,15 @@ async def websocket_device_endpoint(
     """
     # Verify API key
     if api_key and api_key != settings.DEVICE_API_KEY:
+        log_warning(
+            "SECURITY",
+            "UNAUTHORIZED_DEVICE_ACCESS",
+            f"Device WebSocket connection attempt rejected for '{device_id}'. Invalid API key provided.",
+            device_id=device_id,
+            source="WEBSOCKET",
+            result="REJECTED",
+            reason="Invalid device API key"
+        )
         await websocket.close(code=1008, reason="Unauthorized device key")
         return
 

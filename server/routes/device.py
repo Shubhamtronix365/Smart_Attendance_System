@@ -10,12 +10,22 @@ from server.database.connection import get_db
 from server.dependencies.auth import get_password_hash
 from server.models import Employee, Attendance, AttendanceStatus
 from server.services.attendance_service import determine_status, calculate_hours, calculate_late_minutes, record_attendance_punch
+from server.utils.logger import log_info, log_warning, log_error, log_debug
 
 router = APIRouter(prefix="/device", tags=["Device (ESP32 Tronix)"])
 
 # ─── Auth Helper ─────────────────────────────────────────────────────────────
 def verify_device_key(x_device_key: Optional[str] = Header(None)):
     if not x_device_key or x_device_key != settings.DEVICE_API_KEY:
+        log_warning(
+            "SECURITY",
+            "UNAUTHORIZED_DEVICE_ACCESS",
+            "Hardware device API request rejected due to invalid or missing X-Device-Key header.",
+            source="DEVICE_GATEWAY",
+            action="API Authentication",
+            result="REJECTED",
+            reason="Invalid or missing X-Device-Key"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid or missing X-Device-Key header"
@@ -147,6 +157,16 @@ async def device_checkin(
 
     if not employee:
         identifier = f"Fingerprint #{payload.fingerprint_id}" if payload.fingerprint_id else f"RFID '{payload.rfid_uid}'"
+        log_warning(
+            "BIOMETRIC",
+            "IDENTITY_NOT_RECOGNIZED",
+            f"Biometric/RFID scan received from device ({identifier}), but the identifier does not match any registered active employee.",
+            employee_id="UNKNOWN",
+            source="Biometric Device" if payload.fingerprint_id else "RFID Scanner",
+            action="Verification",
+            result="REJECTED",
+            reason=f"{identifier} not registered in database or employee deactivated"
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{identifier} not registered or employee deactivated"
@@ -245,6 +265,18 @@ async def start_enrollment(
     enrollment_session.message = f"Starting enrollment for {payload.name}. Assigned slot #{target_fid}."
     enrollment_session.updated_at = datetime.utcnow()
 
+    log_info(
+        "ENROLLMENT",
+        "ENROLLMENT_STARTED",
+        f"Interactive biometric enrollment initiated for employee {payload.name} (Code: {payload.employee_code}).\nAllocated hardware sensor slot #{target_fid}.",
+        employee_id=payload.employee_code,
+        employee_name=payload.name,
+        slot_id=target_fid,
+        source="WEB_ADMIN",
+        action="Start Biometric Enrollment",
+        result="SUCCESS"
+    )
+
     # Broadcast command directly to all connected ESP32 devices via WebSocket
     try:
         from server.routes.websocket import ws_manager
@@ -331,6 +363,15 @@ async def cancel_enrollment():
     enrollment_session.lcd_line1 = "Employee System"
     enrollment_session.lcd_line2 = "Ready"
     enrollment_session.message = "Registration cancelled."
+
+    log_info(
+        "ENROLLMENT",
+        "ENROLLMENT_CANCELLED",
+        "Interactive biometric enrollment session cancelled by administrator.",
+        source="WEB_ADMIN",
+        action="Cancel Enrollment",
+        result="CANCELLED"
+    )
 
     try:
         from server.routes.websocket import ws_manager
@@ -429,6 +470,21 @@ async def finalize_enrollment(
     await db.commit()
     await db.refresh(new_emp)
 
+    log_info(
+        "ENROLLMENT",
+        "ENROLLMENT_COMPLETED",
+        f"Employee profile created successfully for {new_emp.name} (Code: {new_emp.employee_code}).\nSensor Slot: #{new_emp.fingerprint_id}, RFID: {new_emp.rfid_uid or 'N/A'}.",
+        employee_id=new_emp.employee_code,
+        employee_name=new_emp.name,
+        department=new_emp.department,
+        designation=new_emp.designation,
+        slot_id=new_emp.fingerprint_id,
+        rfid_uid=new_emp.rfid_uid,
+        source="WEB_ADMIN",
+        action="Finalize Employee Registration",
+        result="SUCCESS"
+    )
+
     enrollment_session.reset()
 
     # Broadcast employee creation so web clients refresh
@@ -494,6 +550,17 @@ async def delete_sensor_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
         employee.fingerprint_id = None
         await db.commit()
     
+    log_info(
+        "BIOMETRIC",
+        "SENSOR_SLOT_DELETED",
+        f"Fingerprint slot #{slot_id} deleted from physical sensor and unlinked from employee.",
+        slot_id=slot_id,
+        employee_id=employee.employee_code if employee else None,
+        source="WEB_ADMIN",
+        action="Delete Sensor Slot",
+        result="SUCCESS"
+    )
+
     try:
         from server.routes.websocket import ws_manager
         await ws_manager.broadcast_to_devices({
@@ -517,6 +584,15 @@ async def clear_all_sensor_slots(db: AsyncSession = Depends(get_db)):
     # Wipe fingerprint_id from ALL employees (active and inactive)
     await db.execute(update(Employee).values(fingerprint_id=None))
     await db.commit()
+
+    log_warning(
+        "BIOMETRIC",
+        "SENSOR_DATABASE_CLEARED",
+        "Master sensor wipe executed. All fingerprint templates erased from physical sensor and database slots reset.",
+        source="WEB_ADMIN",
+        action="Clear All Sensor Slots",
+        result="SUCCESS"
+    )
 
     try:
         from server.routes.websocket import ws_manager

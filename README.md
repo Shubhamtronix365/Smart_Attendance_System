@@ -88,6 +88,16 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Adaptive Breakdowns & Modals:** `CheckoutHistoryModal` automatically reflows its summary metrics into single-column cards on mobile viewports (< 640px) and 3-column rows on desktop.
   - **Smooth Horizontal Data Tables:** Minimum table widths (`min-w-[600px]` to `min-w-[760px]`) inside `overflow-x-auto` wrappers ensure comprehensive attendance and report tables scroll fluidly without compressing columns or cutting off timestamps.
   - **Adaptive Export Actions Bar:** Filter and export button groups (`Print`, `Excel`, `PDF`) automatically wrap or expand on small mobile screens.
+- 📡 **Universal Application Logging & Observability Architecture:**
+  - **Standardized Production Logging Format:** Every single system event explains **WHAT** happened, **WHY** it happened, **WHAT ACTION WAS TAKEN**, and **WHAT THE RESULT WAS** in a clean, human-readable structured block or machine-readable JSON format (`LOG_FORMAT=text` or `LOG_FORMAT=json`).
+  - **Automated Security & Secret Redaction:** Built-in recursive data sanitization (`sanitize_dict`) strictly redacts passwords, tokens, API keys, hashes, and biometric templates, ensuring zero secret leakage to log outputs.
+  - **Context-Correlated Request IDs:** Asyncio `contextvars` automatically generate and propagate unique `X-Request-ID` correlation identifiers through HTTP middleware and all downstream services.
+  - **End-to-End Operational Observability:**
+    - *Startup & Shutdown:* Logs database connection establishment, biometric handshake, and background tasks.
+    - *Biometrics & Devices:* Identifies employee check-ins, unrecognized scans, unauthorized device access, slot assignments, and sensor wipes.
+    - *Attendance Records:* Logs automatic check-ins/outs, 2-minute duplicate debounce rejects, cross-midnight closures, manual admin records, checkpoint edits, and record deletions.
+    - *Security & Access Control:* Logs successful and failed logins, admin authorization enforcement, password changes, and credential updates.
+    - *Leaves & Payroll:* Tracks leave applications, approvals, rejections, batch payroll generations, and manual payroll adjustments.
 
 ---
 
@@ -128,7 +138,11 @@ Smart_Attendance_System/
 │   ├── routes/              # FastAPI router modules (auth, employees, attendance, leave, payroll, reports, device)
 │   ├── services/            # Core services (attendance_service, payroll_service, pdf_service, excel_service)
 │   ├── dependencies/        # Route dependencies (auth, role guard, device key guard)
-│   ├── utils/               # Helper utilities (time calculations)
+│   ├── utils/               # Helper utilities (time calculations, centralized logger)
+│   │   ├── time_utils.py    # Date and shift duration helpers
+│   │   └── logger.py        # Centralized executive/developer structured logger
+│   ├── tests/               # Backend automated pytest suite
+│   │   └── test_logger.py   # Logging format & sanitization tests
 │   └── migrations/          # Alembic async migration environment
 ├── myenv/                   # Python virtual environment (NOT committed)
 ├── requirements.txt         # Backend libraries
@@ -172,6 +186,7 @@ Smart_Attendance_System/
    STANDARD_WORK_HOURS=8
    LATE_THRESHOLD_MINUTES=30
    OT_MULTIPLIER=1.5
+   LOG_FORMAT=text
    FRONTEND_URL=http://localhost:3000
    ```
    *(Update `DATABASE_URL` with your actual pgAdmin PostgreSQL username, password, host, and port)*

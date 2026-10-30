@@ -9,6 +9,7 @@ from server.database.connection import get_db
 from server.dependencies.auth import require_admin, get_password_hash
 from server.models import Employee, Attendance, AttendanceStatus, Payroll
 from server.schemas.employee import EmployeeCreate, EmployeeUpdate, EmployeeOut, EmployeeSummary
+from server.utils.logger import log_info, log_warning
 
 router = APIRouter(prefix="/employees", tags=["Employees"], dependencies=[Depends(require_admin)])
 
@@ -120,6 +121,20 @@ async def create_employee(
     db.add(db_employee)
     await db.commit()
     await db.refresh(db_employee)
+
+    log_info(
+        "EMPLOYEE",
+        "EMPLOYEE_CREATED",
+        f"Employee profile created for {db_employee.name} (Code: {db_employee.employee_code or db_employee.employee_id}, Email: {db_employee.email}).\nDept: {db_employee.department}, Role: {db_employee.role}.",
+        employee_id=db_employee.employee_code or str(db_employee.employee_id),
+        employee_name=db_employee.name,
+        department=db_employee.department,
+        role=db_employee.role,
+        source="WEB_ADMIN",
+        action="Create Employee",
+        result="SUCCESS"
+    )
+
     return db_employee
 
 @router.get("/{employee_id}", response_model=EmployeeOut)
@@ -250,6 +265,20 @@ async def update_employee(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Database constraint conflict while updating employee"
         )
+
+    log_info(
+        "EMPLOYEE",
+        "EMPLOYEE_UPDATED",
+        f"Employee profile updated for {employee.name} (ID: {employee.employee_code or employee.employee_id}).\nDept: {employee.department}, Role: {employee.role}.",
+        employee_id=employee.employee_code or str(employee.employee_id),
+        employee_name=employee.name,
+        department=employee.department,
+        role=employee.role,
+        source="WEB_ADMIN",
+        action="Update Employee",
+        result="SUCCESS"
+    )
+
     return employee
 
 @router.delete("/all/clear")
@@ -281,6 +310,16 @@ async def delete_all_employees(
         )
 
     await db.commit()
+
+    log_warning(
+        "EMPLOYEE",
+        "ALL_EMPLOYEES_CLEARED",
+        f"Master employee purge executed by administrator. Deactivated {count} employees and wiped biometric templates.",
+        count=count,
+        source="WEB_ADMIN",
+        action="Clear All Employees",
+        result="SUCCESS"
+    )
 
     try:
         from server.routes.websocket import ws_manager
@@ -329,6 +368,17 @@ async def delete_employee(
     )
 
     await db.commit()
+
+    log_warning(
+        "EMPLOYEE",
+        "EMPLOYEE_DEACTIVATED",
+        f"Employee {employee.name} (Code: {employee.employee_code or employee.employee_id}) deactivated by administrator and hardware credentials unlinked.",
+        employee_id=employee.employee_code or str(employee.employee_id),
+        employee_name=employee.name,
+        source="WEB_ADMIN",
+        action="Deactivate Employee",
+        result="SUCCESS"
+    )
 
     try:
         from server.routes.websocket import ws_manager

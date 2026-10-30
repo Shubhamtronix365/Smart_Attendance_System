@@ -2,6 +2,8 @@
 Smart Attendance System - FastAPI Backend
 Main application entry point.
 """
+import time
+import uuid
 import logging
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
@@ -10,6 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.config import settings
 from server.database.connection import engine
+from server.utils.logger import (
+    log_info,
+    log_warning,
+    log_error,
+    log_critical,
+    log_debug,
+    current_request_id,
+    get_logger,
+)
 from server.routes.auth import router as auth_router
 from server.routes.employees import router as employees_router
 from server.routes.attendance import router as attendance_router
@@ -22,8 +33,7 @@ from server.routes.database import router as database_router
 from server.routes.websocket import router as websocket_router
 
 # Setup logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("smart_attendance")
+logger = get_logger()
 
 app = FastAPI(
     title="Smart Attendance System API",
@@ -50,12 +60,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API Observability & Request Correlation Middleware
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    # Extract or generate Request Correlation ID
+    req_id = request.headers.get("x-request-id") or f"req_{uuid.uuid4().hex[:12]}"
+    token = current_request_id.set(req_id)
+
+    start_time = time.perf_counter()
+    path = request.url.path
+    method = request.method
+    client_ip = request.client.host if request.client else "unknown"
+
+    is_health_or_ping = path in ("/ping", "/api/ping", "/health", "/api/health")
+
+    try:
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        response.headers["X-Request-ID"] = req_id
+
+        # High-frequency keep-alive ping monitors logged at DEBUG level to avoid flooding logs
+        if is_health_or_ping:
+            log_debug("API", "HEALTH_PING", f"Keep-alive ping to {path} handled in {duration_ms}ms.", path=path, status=response.status_code, duration_ms=duration_ms)
+        else:
+            status_code = response.status_code
+            if status_code >= 500:
+                log_error("API", "HTTP_SERVER_ERROR", f"HTTP {method} {path} returned server error {status_code} ({duration_ms}ms).", path=path, method=method, status=status_code, duration_ms=duration_ms, client_ip=client_ip, result="SERVER_ERROR")
+            elif status_code >= 400:
+                log_warning("API", "HTTP_CLIENT_ERROR", f"HTTP {method} {path} returned client error/warning {status_code} ({duration_ms}ms).", path=path, method=method, status=status_code, duration_ms=duration_ms, client_ip=client_ip, result="CLIENT_ERROR")
+            else:
+                log_info("API", "HTTP_REQUEST_COMPLETED", f"HTTP {method} {path} processed successfully in {duration_ms}ms.", path=path, method=method, status=status_code, duration_ms=duration_ms, client_ip=client_ip, result="SUCCESS")
+        return response
+    except Exception as exc:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        log_error("API", "HTTP_REQUEST_FAILED", f"Unhandled exception occurred while processing {method} {path}: {str(exc)}", exc_info=exc, path=path, method=method, duration_ms=duration_ms, client_ip=client_ip, result="FAILED")
+        raise
+    finally:
+        current_request_id.reset(token)
+
 # Global Exception Handlers
 from sqlalchemy.exc import IntegrityError
 
 @app.exception_handler(IntegrityError)
 async def integrity_exception_handler(request: Request, exc: IntegrityError):
-    logger.error(f"Database IntegrityError caught: {str(exc)}", exc_info=True)
+    log_error(
+        "DATABASE",
+        "INTEGRITY_VIOLATION",
+        f"Database constraint violation caught during request to {request.method} {request.url.path}: {str(exc)}",
+        exc_info=exc,
+        path=request.url.path,
+        method=request.method,
+        action="Transaction rolled back",
+        result="FAILED"
+    )
     resp = JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": "A database constraint violation occurred (e.g. duplicate email, RFID card, or fingerprint slot)."}
@@ -70,7 +127,18 @@ async def integrity_exception_handler(request: Request, exc: IntegrityError):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global error handler caught: {str(exc)}", exc_info=True)
+    log_error(
+        "SYSTEM",
+        "UNEXPECTED_ERROR",
+        f"An unexpected error occurred while processing an attendance or API operation: {str(exc)}",
+        exc_info=exc,
+        path=request.url.path,
+        method=request.method,
+        error_type=type(exc).__name__,
+        reason=str(exc),
+        action="Operation failed. Investigation required.",
+        result="FAILED"
+    )
     resp = JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An unexpected error occurred on the server. Please try again later."}
@@ -86,7 +154,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Lifespan events
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Starting up Smart Attendance System API...")
+    log_info(
+        "SYSTEM",
+        "APPLICATION_STARTING",
+        "Smart Attendance System backend is starting up and initializing runtime dependencies...",
+        action="Initializing system",
+        result="IN_PROGRESS"
+    )
     # Verify database connection
     try:
         from sqlalchemy import text, update
@@ -131,15 +205,37 @@ async def startup_event():
                 pass
 
             await session.commit()
-        logger.info("Successfully connected to database, verified columns, backfilled late minutes, and released inactive sensor slots.")
+        log_info(
+            "SYSTEM",
+            "APPLICATION_STARTED",
+            "The Smart Attendance System has started successfully.\n\nDatabase: CONNECTED\nBiometric Service: INITIALIZED\nBackground Tasks: RUNNING",
+            database="CONNECTED",
+            biometric_service="INITIALIZED",
+            background_tasks="RUNNING",
+            action="Application initialization completed.",
+            result="READY"
+        )
     except Exception as e:
-        logger.critical(f"Database connection failed during startup: {str(e)}")
+        log_critical(
+            "SYSTEM",
+            "STARTUP_FAILED",
+            f"Database connection failed during application startup: {str(e)}",
+            exc_info=e,
+            action="Application startup failed or running in degraded state",
+            result="DATABASE_UNREACHABLE",
+            next_step="Check Neon PostgreSQL credentials, network reachability, and DATABASE_URL"
+        )
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    logger.info("Shutting down API. Disposing engine...")
+    log_info(
+        "SYSTEM",
+        "APPLICATION_SHUTDOWN",
+        "Smart Attendance System backend is shutting down gracefully. Disposing database engine and releasing background connections.",
+        action="Disposing engine",
+        result="SHUTDOWN_COMPLETED"
+    )
     await engine.dispose()
-    logger.info("Engine disposed.")
 
 # Mount Routers under /api prefix
 app.include_router(auth_router, prefix="/api")

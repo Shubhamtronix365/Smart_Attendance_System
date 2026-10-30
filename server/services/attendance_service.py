@@ -10,6 +10,7 @@ from server.models.employee import Employee
 from server.models.attendance import Attendance, AttendanceStatus
 from server.models.leave import Leave, LeaveStatus
 from server.utils.time_utils import get_current_local_date
+from server.utils.logger import log_info, log_warning, log_error, log_debug
 
 STANDARD_START = time(9, 0)
 STANDARD_END = time(17, 0)
@@ -116,6 +117,8 @@ async def record_attendance_punch(
     4. Exact cumulative working time, overtime summation, and total checkouts counter
     5. Sunday work calculation: 100% of hours worked on Sunday count as Overtime with 0 late penalty!
     """
+    emp_code = employee.employee_code or f"EMP{employee.employee_id:03d}"
+
     # ─── 1. Check for an ACTIVE (open) session ─────────────────────────────────
     open_stmt = (
         select(Attendance)
@@ -167,6 +170,17 @@ async def record_attendance_punch(
 
         # A. Anti-Double-Scan guard (2 minutes = 120 seconds)
         if elapsed_sec < 120:
+            log_warning(
+                "ATTENDANCE",
+                "DUPLICATE_PUNCH",
+                f"Attendance was not recorded.\nEmployee {emp_code} ({employee.name}) already has a recent scan for today within the 2-minute cooldown period.",
+                employee_id=emp_code,
+                employee_name=employee.name,
+                source=scan_source.upper(),
+                action="Duplicate attendance attempt rejected.",
+                result="IGNORED",
+                reason=f"Cooldown active ({int(elapsed_sec)}s < 120s since last punch at {curr_in_dt.strftime('%I:%M %p')})"
+            )
             return {
                 "success": True,
                 "status": "already_marked",
@@ -208,6 +222,20 @@ async def record_attendance_punch(
             await db.commit()
 
             ot_note = f" (Sunday OT: {working_hours:.1f}h)" if is_shift_sunday else f", {ot_hours:.1f}h OT"
+            log_info(
+                "ATTENDANCE",
+                "BIOMETRIC_CHECK_OUT" if scan_source.lower() == "biometric" else "CHECK_OUT",
+                f"Employee {emp_code} ({employee.name}) identified successfully.\nScan verification passed.\nAttendance check-out #{checkouts} recorded at {punch_dt.strftime('%I:%M %p')}.\n\nWorked {session_hours:.2f}h this session (Total worked today: {working_hours:.2f}h{ot_note}).",
+                employee_id=emp_code,
+                employee_name=employee.name,
+                source=scan_source.upper(),
+                action="Automatic check-out",
+                session_duration=f"{session_hours:.2f}h",
+                total_worked_hours=f"{working_hours:.2f}h",
+                overtime_hours=f"{open_att.overtime_hours}h",
+                checkout_count=checkouts,
+                result="SUCCESS"
+            )
             return {
                 "success": True,
                 "status": "check_out",
@@ -234,6 +262,16 @@ async def record_attendance_punch(
             open_att.late_minutes = 0
             open_att.status = AttendanceStatus.PRESENT
         await db.commit()
+        log_warning(
+            "ATTENDANCE",
+            "ABANDONED_SHIFT_CLOSED",
+            f"An unclosed attendance session for employee {emp_code} ({employee.name}) from {curr_in_dt.strftime('%Y-%m-%d %I:%M %p')} was detected (> 20 hours old).\nPrevious session auto-closed with 8h standard shift duration to permit new check-in.",
+            employee_id=emp_code,
+            employee_name=employee.name,
+            source=scan_source.upper(),
+            action="Auto-close abandoned previous shift",
+            result="PREVIOUS_SHIFT_CLOSED"
+        )
 
     # ─── 2. No Active Session -> This is a CHECK-IN ───────────────────────────
     today = punch_dt.date()
@@ -285,6 +323,20 @@ async def record_attendance_punch(
             else:
                 late_str = f" (Late by {late_mins}m)" if late_mins > 0 else ""
 
+            log_info(
+                "ATTENDANCE",
+                "BIOMETRIC_CHECK_IN" if scan_source.lower() == "biometric" else "CHECK_IN",
+                f"Employee {emp_code} ({employee.name}) identified successfully.\nBiometric/scan verification passed.\nAttendance check-in recorded at {punch_dt.strftime('%I:%M %p')}.{late_str}",
+                employee_id=emp_code,
+                employee_name=employee.name,
+                source=scan_source.upper(),
+                action="Automatic check-in",
+                session_number=1,
+                status=attendance_status.value,
+                late_minutes=late_mins,
+                result="SUCCESS"
+            )
+
             return {
                 "success": True,
                 "status": "check_in",
@@ -309,6 +361,17 @@ async def record_attendance_punch(
         if today_att.check_out:
             elapsed_out = (punch_dt - today_att.check_out).total_seconds()
             if elapsed_out < 120:
+                log_warning(
+                    "ATTENDANCE",
+                    "DUPLICATE_PUNCH",
+                    f"Attendance was not recorded.\nEmployee {emp_code} ({employee.name}) already has a recent checkout scan within the 2-minute cooldown period.",
+                    employee_id=emp_code,
+                    employee_name=employee.name,
+                    source=scan_source.upper(),
+                    action="Duplicate check-in attempt rejected.",
+                    result="IGNORED",
+                    reason=f"Cooldown active ({int(elapsed_out)}s < 120s since checkout at {today_att.check_out.strftime('%I:%M %p')})"
+                )
                 return {
                     "success": True,
                     "status": "already_marked",
@@ -341,6 +404,17 @@ async def record_attendance_punch(
         await db.commit()
 
         sunday_tag = " (Sunday OT Shift)" if is_sunday else ""
+        log_info(
+            "ATTENDANCE",
+            "BIOMETRIC_CHECK_IN" if scan_source.lower() == "biometric" else "CHECK_IN",
+            f"Employee {emp_code} ({employee.name}) identified successfully.\nAttendance check-in for Session #{session_num} recorded at {punch_dt.strftime('%I:%M %p')}.{sunday_tag}",
+            employee_id=emp_code,
+            employee_name=employee.name,
+            source=scan_source.upper(),
+            action=f"Check-in Session #{session_num}",
+            session_number=session_num,
+            result="SUCCESS"
+        )
         return {
             "success": True,
             "status": "check_in",
@@ -382,6 +456,25 @@ async def record_attendance_punch(
     )
     db.add(new_attendance)
     await db.commit()
+
+    if is_sunday:
+        late_str = " (Sunday Overtime Shift)"
+    else:
+        late_str = f" (Late by {late_mins}m)" if late_mins > 0 else ""
+
+    log_info(
+        "ATTENDANCE",
+        "BIOMETRIC_CHECK_IN" if scan_source.lower() == "biometric" else "CHECK_IN",
+        f"Employee {emp_code} ({employee.name}) identified successfully.\nBiometric/scan verification passed.\nFirst check-in of the day recorded at {punch_dt.strftime('%I:%M %p')}.{late_str}",
+        employee_id=emp_code,
+        employee_name=employee.name,
+        source=scan_source.upper(),
+        action="Automatic check-in",
+        session_number=1,
+        status=attendance_status.value,
+        late_minutes=late_mins,
+        result="SUCCESS"
+    )
 
     if is_sunday:
         late_str = " (Sunday Overtime Shift)"
@@ -518,6 +611,16 @@ async def sync_absent_records_for_range(
     if new_records:
         db.add_all(new_records)
         await db.commit()
+        log_info(
+            "ATTENDANCE",
+            "ATTENDANCE_SYNC_COMPLETED",
+            f"Automated absence synchronization completed across range {start_date} to {effective_end}.\n{len(new_records)} missing attendance record(s) generated.",
+            source="SYSTEM_SCHEDULER",
+            start_date=str(start_date),
+            end_date=str(effective_end),
+            records_generated=len(new_records),
+            result="SUCCESS"
+        )
         return len(new_records)
 
     return 0

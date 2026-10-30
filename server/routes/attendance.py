@@ -31,6 +31,7 @@ from server.services.pdf_service import (
     generate_daily_attendance_pdf,
     generate_historical_attendance_pdf,
 )
+from server.utils.logger import log_info, log_warning, log_error
 
 router = APIRouter(prefix="/attendance", tags=["Attendance"])
 
@@ -654,6 +655,19 @@ async def manual_entry(
     att_res = await db.execute(att_stmt)
     existing = att_res.scalar_one_or_none()
     if existing and existing.check_in is not None:
+        log_warning(
+            "ATTENDANCE",
+            "DUPLICATE_ENTRY_REJECTED",
+            f"Manual attendance entry rejected because a record already exists for employee {employee.employee_code or employee.employee_id} ({employee.name}) on date {entry.date}.",
+            employee_id=employee.employee_code or str(employee.employee_id),
+            employee_name=employee.name,
+            admin_id=admin.employee_code or str(admin.employee_id),
+            date=str(entry.date),
+            source="MANUAL",
+            action="Duplicate Check",
+            result="REJECTED",
+            reason="Existing record found for the date"
+        )
         raise HTTPException(status_code=400, detail="Attendance record already exists for this date")
         
     # Calculate hours and late minutes if check-in and check-out are provided
@@ -725,6 +739,22 @@ async def manual_entry(
     )
     res_reload = await db.execute(stmt_reload)
     record = res_reload.scalar_one()
+
+    log_info(
+        "ATTENDANCE",
+        "MANUAL_ENTRY",
+        f"Manual attendance record recorded by administrator {admin.name} for employee {record.employee.employee_code or record.employee_id} ({record.employee.name}).\nStatus: {status_to_save.value if hasattr(status_to_save, 'value') else status_to_save}, Working Hours: {working_hours or '0.00'}.",
+        employee_id=record.employee.employee_code or str(record.employee.employee_id),
+        employee_name=record.employee.name,
+        admin_id=admin.employee_code or str(admin.employee_id),
+        date=str(record.date),
+        check_in=record.check_in.strftime("%H:%M:%S") if record.check_in else "None",
+        check_out=record.check_out.strftime("%H:%M:%S") if record.check_out else "None",
+        working_hours=str(working_hours or "0.00"),
+        source="MANUAL",
+        action="Manual Attendance Record",
+        result="SUCCESS"
+    )
     
     return AttendanceOut(
         attendance_id=record.attendance_id,
@@ -825,6 +855,19 @@ async def update_attendance(
         
     await db.commit()
     await db.refresh(record)
+
+    log_info(
+        "ATTENDANCE",
+        "MANUAL_ATTENDANCE_UPDATE",
+        f"Attendance record #{record.attendance_id} updated by administrator {admin.name} for employee {record.employee.employee_code if record.employee else record.employee_id} ({record.employee.name if record.employee else 'Unknown'}).\nStatus: {record.status.value if hasattr(record.status, 'value') else record.status}, Hours: {record.working_hours or '0.00'}.",
+        attendance_id=record.attendance_id,
+        employee_id=record.employee.employee_code if record.employee else str(record.employee_id),
+        admin_id=admin.employee_code or str(admin.employee_id),
+        date=str(record.date),
+        source="MANUAL",
+        action="Record Modification",
+        result="SUCCESS"
+    )
     
     from server.services.attendance_service import calculate_late_minutes
     return AttendanceOut(
@@ -972,6 +1015,21 @@ async def update_attendance_sessions(
     await db.commit()
     await db.refresh(record)
 
+    log_info(
+        "ATTENDANCE",
+        "SESSIONS_UPDATED",
+        f"Checkpoint punch sessions modified by administrator {admin.name} for record #{record.attendance_id} (Employee: {record.employee.name if record.employee else record.employee_id}).\nSessions: {len(cleaned_sessions)}, Total Hours: {record.working_hours}, Checkouts: {record.checkout_count}.",
+        attendance_id=record.attendance_id,
+        employee_id=record.employee.employee_code if record.employee else str(record.employee_id),
+        admin_id=admin.employee_code or str(admin.employee_id),
+        date=str(record.date),
+        session_count=len(cleaned_sessions),
+        total_working_hours=str(record.working_hours),
+        source="MANUAL",
+        action="Checkpoint Sessions Modification",
+        result="SUCCESS"
+    )
+
     from server.services.attendance_service import calculate_late_minutes
     return AttendanceOut(
         attendance_id=record.attendance_id,
@@ -1006,6 +1064,20 @@ async def delete_attendance(
         
     await db.delete(record)
     await db.commit()
+
+    log_warning(
+        "ATTENDANCE",
+        "ATTENDANCE_RECORD_DELETED",
+        f"Attendance record #{attendance_id} deleted by administrator {admin.name} for employee ID {record.employee_id} (Date: {record.date}).",
+        attendance_id=attendance_id,
+        employee_id=str(record.employee_id),
+        admin_id=admin.employee_code or str(admin.employee_id),
+        date=str(record.date),
+        source="MANUAL",
+        action="Record Deletion",
+        result="SUCCESS"
+    )
+
     return {"message": "Attendance record deleted successfully"}
 
 @router.get("/{employee_id}/history", response_model=List[AttendanceOut])

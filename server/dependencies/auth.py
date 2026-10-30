@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.config import settings
 from server.database.connection import get_db
 from server.models import Employee
+from server.utils.logger import log_warning
 
 # OAuth2 Scheme to look up Bearer token in the Authorization header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -95,6 +96,16 @@ def require_admin(current_user: Employee = Depends(get_current_user)) -> Employe
     Dependency that enforces the logged-in user has an 'admin' role.
     """
     if current_user.role != "admin":
+        log_warning(
+            "SECURITY",
+            "UNAUTHORIZED_ACCESS_ATTEMPT",
+            f"User {current_user.name} ({current_user.email}) attempted to access a restricted administrative resource without sufficient privileges.",
+            employee_id=current_user.employee_code or str(current_user.employee_id),
+            role=current_user.role,
+            action="Permission Check",
+            result="BLOCKED",
+            reason="Admin privileges required"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access forbidden: Admin privilege required"
@@ -106,6 +117,15 @@ def verify_device_key(x_device_key: str = Header(...)):
     Dependency to verify the API key provided in the header by ESP32 device.
     """
     if x_device_key != settings.DEVICE_API_KEY:
+        log_warning(
+            "SECURITY",
+            "UNAUTHORIZED_DEVICE_ACCESS",
+            "Device key verification failed: invalid or unauthorized header key.",
+            source="DEVICE_GATEWAY",
+            action="Device Key Verification",
+            result="BLOCKED",
+            reason="Invalid device key"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid device key verification failed"

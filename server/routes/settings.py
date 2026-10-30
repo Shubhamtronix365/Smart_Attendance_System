@@ -6,6 +6,7 @@ from server.config import settings
 from server.dependencies.auth import require_admin
 from server.models import Employee
 from server.schemas.settings import SettingsSchema
+from server.utils.logger import log_info, log_warning
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -85,6 +86,19 @@ async def update_settings(
         settings.OT_MULTIPLIER = payload.ot_multiplier
         settings.DEVICE_API_KEY = payload.device_api_key
         settings.DEVICE_ID = payload.device_id
+
+        log_info(
+            "CONFIG",
+            "CONFIG_UPDATED",
+            f"System configuration updated by administrator {current_user.name}.\nStandard Work Hours: {payload.standard_work_hours}h, Late Threshold: {payload.late_threshold_minutes}m, OT Multiplier: {payload.ot_multiplier}x.",
+            admin_id=current_user.employee_code or str(current_user.employee_id),
+            standard_work_hours=payload.standard_work_hours,
+            late_threshold_minutes=payload.late_threshold_minutes,
+            ot_multiplier=payload.ot_multiplier,
+            source="ADMIN_PANEL",
+            action="Update Configuration",
+            result="SUCCESS"
+        )
         
         return SettingsSchema(
             standard_work_hours=settings.STANDARD_WORK_HOURS,

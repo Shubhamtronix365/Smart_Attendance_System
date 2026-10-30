@@ -14,6 +14,7 @@ from server.services.payroll_service import (
     preview_individual_payroll
 )
 from server.services.pdf_service import generate_payslip_pdf
+from server.utils.logger import log_info, log_warning
 
 router = APIRouter(prefix="/payroll", tags=["Payroll"])
 
@@ -40,6 +41,21 @@ async def generate_payroll_endpoint(
     )
     res = await db.execute(stmt)
     records = res.scalars().all()
+
+    total_amount = sum(float(r.final_salary or 0) for r in records)
+    log_info(
+        "PAYROLL",
+        "PAYROLL_GENERATED",
+        f"Payroll batch generated successfully for {month}/{year} by administrator {admin.name}.\nProcessed {len(records)} active employee records. Total payroll: Rs. {total_amount:,.2f}.",
+        month=month,
+        year=year,
+        admin_id=admin.employee_code or str(admin.employee_id),
+        employee_count=len(records),
+        total_payout=f"Rs. {total_amount:,.2f}",
+        source="WEB_ADMIN",
+        action="Batch Payroll Generation",
+        result="SUCCESS"
+    )
     
     return [
         PayrollOut(
@@ -385,6 +401,22 @@ async def save_manual_payroll(
 
     await db.commit()
     await db.refresh(payroll)
+
+    log_info(
+        "PAYROLL",
+        "PAYROLL_MANUAL_UPDATE",
+        f"Payroll record #{payroll.payroll_id} updated/saved manually by administrator {admin.name} for employee {employee.employee_code or employee.employee_id} ({employee.name}).\nPeriod: {payroll.month}/{payroll.year}, Final Salary: Rs. {float(payroll.final_salary):,.2f}.",
+        payroll_id=payroll.payroll_id,
+        employee_id=employee.employee_code or str(employee.employee_id),
+        employee_name=employee.name,
+        admin_id=admin.employee_code or str(admin.employee_id),
+        period=f"{payroll.month}/{payroll.year}",
+        final_salary=str(payroll.final_salary),
+        source="WEB_ADMIN",
+        action="Manual Payroll Save",
+        result="SUCCESS"
+    )
+
     return {
         "success": True,
         "message": f"Manual payroll successfully saved for {employee.name}",

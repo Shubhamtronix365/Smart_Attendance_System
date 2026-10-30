@@ -14,6 +14,7 @@ from server.models import Employee
 from server.schemas.employee import LoginRequest, TokenSchema, EmployeeOut
 from typing import Optional
 from pydantic import BaseModel, Field, EmailStr
+from server.utils.logger import log_info, log_warning
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -47,6 +48,15 @@ async def login(
     employee = result.scalar_one_or_none()
     
     if not employee or not employee.hashed_password:
+        log_warning(
+            "AUTH",
+            "LOGIN_FAILED",
+            f"Login attempt failed for '{login_data.email}'. Account does not exist or is inactive.",
+            username=login_data.email,
+            action="Login",
+            result="FAILED",
+            reason="Account does not exist or is deactivated"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -54,6 +64,17 @@ async def login(
         
     # Verify password
     if not verify_password(login_data.password, employee.hashed_password):
+        log_warning(
+            "AUTH",
+            "LOGIN_FAILED",
+            f"Login attempt failed for employee '{employee.email}' (ID: {employee.employee_code or employee.employee_id}). Incorrect password entered.",
+            employee_id=employee.employee_code or str(employee.employee_id),
+            employee_name=employee.name,
+            username=employee.email,
+            action="Login",
+            result="FAILED",
+            reason="Incorrect password"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -71,6 +92,17 @@ async def login(
         samesite="none",
         secure=True,  # Required for cross-origin HTTPS
     )
+
+    log_info(
+        "AUTH",
+        "USER_LOGIN_SUCCESS",
+        f"User {employee.name} ({employee.email}) logged into the system successfully.\nRole: {employee.role.upper()}.",
+        employee_id=employee.employee_code or str(employee.employee_id),
+        employee_name=employee.name,
+        role=employee.role,
+        action="Login",
+        result="SUCCESS"
+    )
     
     return {
         "access_token": access_token,
@@ -83,6 +115,13 @@ async def login(
 async def logout(response: Response):
     """Clears the session token by deleting the cookie."""
     response.delete_cookie(key="access_token", samesite="none", secure=True)
+    log_info(
+        "AUTH",
+        "USER_LOGOUT",
+        "User logged out successfully. Session cookie cleared.",
+        action="Logout",
+        result="SUCCESS"
+    )
     return {"message": "Successfully logged out"}
 
 @router.get("/me", response_model=EmployeeOut)
@@ -107,6 +146,17 @@ async def change_password(
     current_user.hashed_password = get_password_hash(payload.new_password)
     current_user.plain_password = payload.new_password
     await db.commit()
+
+    log_info(
+        "AUTH",
+        "PASSWORD_CHANGED",
+        f"Password updated successfully for employee {current_user.name} ({current_user.email}).",
+        employee_id=current_user.employee_code or str(current_user.employee_id),
+        employee_name=current_user.name,
+        action="Change Password",
+        result="SUCCESS"
+    )
+
     return {"message": "Password updated successfully"}
 
 @router.put("/credentials")
@@ -154,6 +204,18 @@ async def update_credentials(
     await db.commit()
     await db.refresh(current_user)
 
+    log_info(
+        "AUTH",
+        "CREDENTIALS_UPDATED",
+        f"Account credentials updated for {current_user.name} ({current_user.email}). Email updated: {email_updated}, Password updated: {pwd_updated}.",
+        employee_id=current_user.employee_code or str(current_user.employee_id),
+        employee_name=current_user.name,
+        email_changed=email_updated,
+        password_changed=pwd_updated,
+        action="Update Credentials",
+        result="SUCCESS"
+    )
+
     # Re-issue access token with new email if email changed
     new_token = create_access_token(data={"sub": current_user.email})
 
@@ -200,4 +262,15 @@ async def reset_password(
     user.hashed_password = get_password_hash(payload.new_password)
     user.plain_password = payload.new_password
     await db.commit()
+
+    log_warning(
+        "AUTH",
+        "PASSWORD_RESET",
+        f"Password reset performed for account {user.email} (ID: {user.employee_code or user.employee_id}).",
+        employee_id=user.employee_code or str(user.employee_id),
+        employee_name=user.name,
+        action="Password Reset",
+        result="SUCCESS"
+    )
+
     return {"message": f"Password reset successfully for {user.email}"}
