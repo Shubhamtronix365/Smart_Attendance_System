@@ -519,9 +519,9 @@ export default function ReportsPage() {
       } else if (st === "absent") {
         absent++;
       }
-      if (r.lateMinutes > 0) {
+      if (Number(r.lateMinutes) > 0 || st === "late") {
         lateCount++;
-        lateMins += Number(r.lateMinutes);
+        lateMins += Number(r.lateMinutes) || 0;
       }
       if (r.otHours && r.otHours !== "—") {
         otHours += parseFloat(String(r.otHours).replace("h", "")) || 0;

@@ -193,7 +193,7 @@ def generate_daily_attendance_excel(report_date: date, records: list, title: str
 
     # Pre-calculate Totals & Metrics
     total_logs = len(records)
-    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
+    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh", "late", "half_day", "halfday"))
     late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late" or (r.get("late_minutes") and int(r.get("late_minutes")) > 0))
     absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "absent")
     leave_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "leave")
@@ -683,7 +683,7 @@ def generate_historical_attendance_excel(start_date: date, end_date: date, recor
 
     # Pre-calculate Totals & Metrics
     total_logs = len(records)
-    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
+    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh", "late", "half_day", "halfday"))
     late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late" or (r.get("late_minutes") and int(r.get("late_minutes")) > 0))
     absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "absent")
     leave_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "leave")

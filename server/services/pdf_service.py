@@ -239,6 +239,7 @@ def _build_kpi_summary_bar(
     )
     late_dur_str = format_late_duration_pdf(total_late_min)
     late_sub = f"<br/><font size='5.5' color='#92400e'>({late_dur_str})</font>" if (total_late_min > 0 and late_dur_str != "—") else ""
+    pres_sub = f"<br/><font size='5.5' color='#059669'>(incl. late)</font>" if (late > 0 and late != present) else ""
 
     kpi_data = [
         [
@@ -253,7 +254,7 @@ def _build_kpi_summary_bar(
         ],
         [
             Paragraph(f"<b>{total_records}</b>", ParagraphStyle("K1", parent=box_style_val, textColor=COLOR_PRIMARY_NAVY)),
-            Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">{present}</font></b>', box_style_val),
+            Paragraph(f'<b><font color="{COLOR_STATUS_PRESENT}">{present}</font></b>{pres_sub}', box_style_val),
             Paragraph(f'<b><font color="{COLOR_STATUS_ABSENT}">{absent}</font></b>', box_style_val),
             Paragraph(f'<b><font color="{COLOR_STATUS_LATE}">{late}</font></b>{late_sub}', box_style_val),
             Paragraph(f'<b><font color="{COLOR_STATUS_LEAVE}">{leave}</font></b>', box_style_val),
@@ -516,7 +517,7 @@ def generate_daily_attendance_pdf(report_date: date, records: list, title: str =
     _add_executive_header(story, title, sub, styles, f"DATE: {report_date.strftime('%d-%m-%Y')}")
 
     total_logs = len(records)
-    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
+    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh", "late", "half_day", "halfday"))
     late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late" or (r.get("late_minutes") and int(r.get("late_minutes")) > 0))
     absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "absent")
     leave_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "leave")
@@ -826,7 +827,7 @@ def generate_historical_attendance_pdf(start_date: date, end_date: date, records
     _add_executive_header(story, title, sub, styles, f"PERIOD: {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
 
     total_logs = len(records)
-    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh"))
+    present_cnt = sum(1 for r in records if _normalize_status(r.get("status")) in ("present", "wfh", "late", "half_day", "halfday"))
     late_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "late" or (r.get("late_minutes") and int(r.get("late_minutes")) > 0))
     absent_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "absent")
     leave_cnt = sum(1 for r in records if _normalize_status(r.get("status")) == "leave")
