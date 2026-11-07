@@ -14,7 +14,13 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 - 🕒 **Autonomous DS3231 RTC Clock & Local Name Display:** Employee roster is permanently cached in ESP32 Flash; scanning an employee displays their Name and accurate RTC time on the 16x2 LCD with **zero dependency on Wi-Fi or server**.
 - 📡 **Real-time Attendance Tracking & Shift Rules:** Standard 9:00 AM – 5:00 PM shift schedule. Any login after 9:00 AM is logged as `LATE` and displays exact elapsed late minutes/hours. Shifts automatically deduct a **1-hour free lunch break** from total duration (net 7h standard work day), computing overtime past 7 net hours.
 - ⚙️ **Per-Employee Custom Penalty & OT Rates & Modes:** Admin can configure individual overtime rates and calculation modes (**As Per Day** vs **As Per Hr**) and late arrival penalties (e.g. ₹300 or ₹500 per day or per hour) for each employee separately in their profile.
-- 🧮 **Interactive Manual Payroll Calculator:** Dedicated admin modal allowing live calculation previews (`/preview/{id}`), manual adjustments of working/present/late days, overtime pay, bonuses, late deductions, and custom audit remarks with instant net salary recalculation and permanent saving (`/manual-save`). Built with safe backdrop event isolation and Enter-key guards to prevent accidental window dismissal while typing.
+- 🧮 **Authoritative Manual Payroll Engine & Real-Time Calculation Breakdown:** Dedicated interactive admin calculator modal that automatically pulls live database records for the selected month (base salary, present/absent days, late marks, approved leaves, payable overtime, approved reimbursements, and advance salary balance). Displays an instant itemized breakdown before approval, supports isolated parameter adjustments without mutating historical records, and commits atomic snapshots via `/api/payroll/finalize-save`.
+- 📅 **Company Holiday Calendar:** Administrator can manage company-wide holidays (create, edit, delete) with monthly visual calendar and upcoming list views. Holidays are excluded from scheduled working-day calculations, protected against duplicate date entries, and never overwrite existing attendance records or mutate historical payroll.
+- ☀️ **Sunday Attendance — Record Only (Zero Payroll Impact):** Employees can punch in and punch out on Sundays. Punches are permanently recorded for administrative and historical tracking under status `weekly_off` (`WEEKLY_OFF`). Sundays strictly generate **0 payable overtime**, **0 late marks**, **0 absent marks**, and have **zero impact on working days, deductions, or payroll**.
+- 🏷️ **Billable vs Non-Billable Employee Classification:** Administrator can mark any employee as Billable or Non-Billable. Stored directly in the employee profile, completely independent of attendance records or presence percentages, and filterable across employee registries and reports.
+- 🧾 **Reimbursements Module with Secure Document Attachments:** Complete employee reimbursement workflow. Staff submit claims with category, amount, description, and supporting files (PDF, JPG, PNG <= 5MB). Stored in secure private disk storage (`uploads/reimbursements/`) and streamed exclusively through authenticated endpoints (`/api/reimbursements/{id}/document`). Admins review and approve/reject with notes; approved reimbursements are automatically pulled into payroll additions.
+- 💸 **Advance Salary Disbursal & Recovery Engine:** Track multiple advance salary disbursements per employee with persistent cumulative balance accounting. In monthly payroll, admins can select **Full Recovery**, **Partial Recovery**, or **No Recovery**, automatically carrying forward any remaining balance.
+- ⚖️ **Late Mark & Leave Dispute Amendments:** Employees can submit written justification explanations for late marks from their attendance dashboard. Admins can review pending disputes and approve (waiving the late mark and penalty) or reject with explanatory notes.
 - 🗑️ **Full Hardware & Cloud Sync Management:** Add, Edit, Delete specific employee, or **Delete All Employees** (bulk wipe) directly from the Web Admin GUI, propagating immediate sensor deletion commands to hardware.
 - 💰 **Auto & Manual Payroll Calculation** based on monthly attendance records, overtime allowances, deductions, and approved leaves.
 - 📊 **Dashboard Analytics** with interactive weekly and monthly charts.
@@ -51,11 +57,10 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
   - **Web Reports:** Detailed and Daily report tables now show the `X checkouts` pill badge for multiple sessions, opening the interactive session breakdown modal on click.
   - **Excel Exports (`.xlsx`):** Features dedicated `Checkouts` count column and a comprehensive `Sessions Breakdown` column (e.g. `Session 1: 01:46 PM - 10:32 PM (8.77h) | Session 2: 10:32 PM - 09:11 AM (10.64h)`).
   - **PDF Reports (`.pdf`):** Check-Out column highlights total completed checkouts (e.g. `(2 checkouts)`), alongside formatted late durations.
-- ☀️ **Sunday Overtime & Weekly Holiday Engine:**
-  - **Weekly Off / Holiday Calculation:** Sundays are treated as non-working holidays. Employees who do not work on Sunday have their holiday calculated automatically (status `HOLIDAY`), with zero absence penalty and zero salary deductions.
-  - **100% Sunday Overtime:** Any employee who checks in, checks out, or works on a Sunday receives **100% of their worked time directly as Overtime (`overtime_hours = working_hours`)** without requiring 8/9 standard work hours threshold.
-  - **Zero Sunday Late Penalty:** Voluntary Sunday work has no 9:00 AM late deduction or penalty (status `PRESENT`, 0 late minutes).
-  - Integrated across all attendance registries, daily/monthly Excel & PDF exports, dashboard analytics, and payroll auto-computation.
+- ☀️ **Sunday Attendance: Record Only Engine:**
+  - **Weekly Off Classification:** Sundays are treated as non-working weekly offs. If an employee punches in on a Sunday, the attendance record is categorized with status `weekly_off` (`WEEKLY_OFF`).
+  - **Zero Payroll Impact:** Punches on Sundays are preserved for operational transparency but strictly generate **0 payable overtime**, **0 late penalties**, **0 absent marks**, and have zero effect on working days or payroll calculations.
+  - **Non-Punch Sunday Immunity:** Employees who do not punch in on Sundays are marked as `weekly_off` / `holiday` with 0 absent penalties.
 - 🚫 **Automated Absence Tracking & Real-Time Roster Synchronization:**
   - **Non-Punch Absence Logging:** If an active staff employee does not punch in on any standard workday (e.g. `23/10/2026`), the system automatically flags and logs them as `ABSENT` (or `LEAVE` if an approved leave overlaps that date), ensuring 100% complete and audit-ready attendance histories instead of omitted dates.
   - **Live Today Pre-Seeding:** Active staff start each workday visible in live registries with an initial `ABSENT` status. As employees punch in on hardware (fingerprint/RFID) or web, their record automatically transitions to `PRESENT` (or `LATE` if after 9:00 AM) Session 1.
@@ -124,26 +129,47 @@ Smart_Attendance_System/
 ├── client/                  # Next.js 14 Frontend
 │   └── src/
 │       ├── app/             # App Router pages
-│       ├── components/      # Reusable UI components
-│       ├── services/        # Axios API services
-│       ├── hooks/           # Custom React hooks
-│       └── assets/          # Images, fonts
+│       │   ├── admin/       # Admin portals (dashboard, attendance, employees, payroll, holidays, reimbursements, advances, amendments, reports, settings, database)
+│       │   └── employee/    # Employee portals (dashboard, attendance, leaves, holidays, reimbursements, advances)
+│       ├── components/      # Reusable UI components & layouts (AdminSidebar, EmployeeSidebar, Navbar, Modals)
+│       ├── services/        # Axios API services (api.ts with typed modular clients)
+│       ├── hooks/           # Custom React hooks (useAuth, useNotifications, etc.)
+│       └── assets/          # Images, fonts, styles
 ├── server/                  # FastAPI Backend
-│   ├── main.py              # FastAPI app initialization, CORS, exception handlers
+│   ├── main.py              # FastAPI app initialization, CORS, router mounting, exception handlers
 │   ├── config.py            # Pydantic Settings class
 │   ├── database/
 │   │   └── connection.py    # Async db engine, sessionmaker, Base class, get_db
-│   ├── models/              # SQLAlchemy models (Employee, Attendance, Leave, Payroll)
-│   ├── schemas/             # Pydantic request/response validation schemas
-│   ├── routes/              # FastAPI router modules (auth, employees, attendance, leave, payroll, reports, device)
-│   ├── services/            # Core services (attendance_service, payroll_service, pdf_service, excel_service)
+│   ├── models/              # SQLAlchemy ORM models
+│   │   ├── employee.py      # Employee model (with is_billable, relations)
+│   │   ├── attendance.py    # Attendance & Session models (with WEEKLY_OFF status)
+│   │   ├── payroll.py       # Payroll model (snapshot, rates, reimbursements, advance balances)
+│   │   ├── holiday.py       # Company Holiday model (unique per date & company)
+│   │   ├── advance.py       # SalaryAdvance & AdvanceRecovery models
+│   │   ├── reimbursement.py  # Reimbursement claims model
+│   │   └── amendment.py     # Late & Leave dispute amendment models
+│   ├── schemas/             # Pydantic v2 validation schemas
+│   │   ├── employee.py, attendance.py, payroll.py
+│   │   ├── holiday.py, advance.py, reimbursement.py, amendment.py
+│   ├── routes/              # FastAPI router endpoints
+│   │   ├── auth.py, employees.py, attendance.py, leave.py, payroll.py
+│   │   ├── holiday.py, reimbursement.py, advance.py, amendment.py
+│   │   ├── reports.py, device.py, settings.py, database.py
+│   ├── services/            # Core business services
+│   │   ├── attendance_service.py # Shift rules, Sunday weekly-off immunity, absence sync
+│   │   ├── payroll_service.py    # Authoritative payroll math engine, daily OT flooring, advance recovery
+│   │   ├── pdf_service.py        # ReportLab payslips & attendance reports
+│   │   └── excel_service.py      # openpyxl multi-session attendance & payroll exports
 │   ├── dependencies/        # Route dependencies (auth, role guard, device key guard)
 │   ├── utils/               # Helper utilities (time calculations, centralized logger)
-│   │   ├── time_utils.py    # Date and shift duration helpers
-│   │   └── logger.py        # Centralized executive/developer structured logger
+│   │   ├── time_utils.py    # Date, working days, and shift duration helpers
+│   │   └── logger.py        # Centralized executive structured logger
 │   ├── tests/               # Backend automated pytest suite
+│   │   ├── test_payroll_comprehensive.py # Overtime, absent deductions, late deductions, advances
+│   │   ├── test_attendance_manual_and_stats.py # Attendance, Sunday rules, statistics
 │   │   └── test_logger.py   # Logging format & sanitization tests
 │   └── migrations/          # Alembic async migration environment
+├── uploads/                 # Secure document storage (reimbursements, not committed to git)
 ├── myenv/                   # Python virtual environment (NOT committed)
 ├── requirements.txt         # Backend libraries
 ├── alembic.ini              # Alembic config file
@@ -229,7 +255,8 @@ Smart_Attendance_System/
 - **Run Backend:** `uvicorn main:app --reload` (inside `server/`)
 - **Run Frontend:** `npm run dev` (inside `client/`)
 - **Run Migrations:** `alembic upgrade head` (from project root)
-- **Run Tests:** `python -m pytest server/tests/` (from project root with active virtual env)
+- **Run Backend Tests:** `pytest -v server/tests/` (verifies overtime calculation, absent/late deductions, advance recovery, and Sunday rules)
+- **Frontend Typecheck:** `npx tsc --noEmit` (inside `client/`)
 
 
 ---
@@ -240,11 +267,13 @@ Smart_Attendance_System/
 - `fastapi` & `uvicorn` — Web server & API routing
 - `sqlalchemy` & `asyncpg` — Async PostgreSQL ORM and database driver
 - `alembic` — Database migrations
-- `python-jose` & `passlib` — JWT token generation & bcrypt password hashing
+- `python-jose` & `passlib` & `bcrypt` — JWT token generation & secure bcrypt password hashing
+- `python-multipart` — Multipart form-data parser for reimbursement receipt file uploads
 - `pydantic` & `pydantic-settings` — Data validation and configuration management
-- `reportlab` — PDF generation (payslips)
+- `reportlab` — PDF generation (itemized payslips and executive attendance reports)
 - `openpyxl` — Excel spreadsheet creation (reports)
 - `httpx` — Asynchronous HTTP clients
+- `pytest` & `pytest-asyncio` — Automated unit and integration test framework
 
 ### Frontend (NPM)
 - `next` (v14.2.35) — React framework with App Router
@@ -292,15 +321,40 @@ Smart_Attendance_System/
 - Admin credential management in **Settings** allows changing login email and updating the administrator password directly.
 
 ### Employees (Admin only)
-- `GET /api/employees` — List all active employees (supports pagination, search, and department filters).
-- `POST /api/employees` — Create new employee profile.
-- `GET /api/employees/{id}` — Get employee details.
-- `PUT /api/employees/{id}` — Update employee details.
+- `GET /api/employees` — List all active employees (supports pagination, search, department filters, and `is_billable` boolean filter).
+- `POST /api/employees` — Create new employee profile with `is_billable` classification.
+- `GET /api/employees/{id}` — Get employee details including billable status.
+- `PUT /api/employees/{id}` — Update employee details including `is_billable` flag.
 - `DELETE /api/employees/{id}` — Soft delete (sets `is_active=False`).
 - `GET /api/employees/{id}/summary` — Overview of attendance logs and payroll.
 
+### Company Holiday Calendar (Admin & Employee)
+- `GET /api/holidays` — List company holidays filterable by `year`, `month`, and `company_name`.
+- `POST /api/holidays` — Add a new company holiday with date, name, description, holiday type, and company name (Admin only; prevents duplicates).
+- `GET /api/holidays/{id}` — Get holiday details.
+- `PUT /api/holidays/{id}` — Edit an existing company holiday (Admin only).
+- `DELETE /api/holidays/{id}` — Delete a company holiday (Admin only).
+
+### Employee Reimbursements (Admin & Employee)
+- `GET /api/reimbursements` — List reimbursement claims (filter by `status`, `employee_id`, `from_date`, `to_date`).
+- `POST /api/reimbursements` — Submit a new reimbursement request with `amount`, `category`, `description`, and `document` attachment (PDF, JPG, PNG <= 5MB).
+- `GET /api/reimbursements/{id}` — Retrieve reimbursement claim details.
+- `PUT /api/reimbursements/{id}/status` — Review and update claim status (`approved` or `rejected`) with `admin_comments` (Admin only).
+- `GET /api/reimbursements/{id}/document` — Securely stream receipt file attachment with token-based access control (no unrestricted public URLs).
+
+### Advance Salary Management (Admin & Employee)
+- `GET /api/advances` — List salary advance disbursements with cumulative balance metrics.
+- `POST /api/advances` — Disburse a new salary advance with `amount`, `disbursed_date`, `notes`, and optional recovery terms (Admin only).
+- `GET /api/advances/employee/{employee_id}/balance` — Get real-time outstanding advance balance for an employee.
+- `GET /api/advances/my` — Employee view of their personal salary advances and remaining balance.
+
+### Late Mark & Leave Dispute Amendments
+- `GET /api/amendments/late` — List late mark explanation disputes (Admin review).
+- `POST /api/amendments/late` — Employee submits explanation/reason for a late mark on an attendance record.
+- `PUT /api/amendments/late/{id}/review` — Admin reviews explanation and approves (waiving late penalty) or rejects dispute.
+
 ### Attendance
-- `GET /api/attendance` — Get history with multi-filter support (`date`, `start_date`, `end_date`, `month`, `year`, `department`, `employee_id`, `status`, `size` up to 1000).
+- `GET /api/attendance` — Get history with multi-filter support (`date`, `start_date`, `end_date`, `month`, `year`, `department`, `employee_id`, `status`, `size` up to 1000). Sundays are categorized under `weekly_off` with zero overtime and zero penalties.
 - `GET /api/attendance/export` — Export attendance (single day or full month from day 1 to end date) into Excel (.xlsx) or PDF (.pdf) format with complete check-in / check-out timestamps.
 - `GET /api/attendance/today` — Active check-ins logged for the current date.
 - `GET /api/attendance/live` — Feed of the last 20 check-in/out events.
@@ -368,15 +422,19 @@ Smart_Attendance_System/
 - `GET /api/attendance/my-stats` — Logged-in employee's monthly present/absent/late/leave statistics.
 - `GET /api/payroll/my` — Logged-in employee's payroll and payslip history.
 - `GET /api/leave/my-balance` — Logged-in employee's quota balance.
+- `GET /api/advances/my` — Logged-in employee's advance balance and history.
+- `GET /api/reimbursements` — Logged-in employee's reimbursement submissions.
 
-### Payroll
-- `POST /api/payroll/generate/{year}/{month}` — Generate payroll for all active employees (Admin only).
-- `GET /api/payroll` — List payroll summary lines.
-- `GET /api/payroll/my` — List current employee's payslips.
-- `GET /api/payroll/preview/{employee_id}` — Preview individual employee's dynamic calculation breakdown (working days, present/late days, overtime pay, custom late deductions) for a specific year and month.
-- `POST /api/payroll/manual-save` — Save or override an individual employee's customized payroll line item with bonus, remarks, and net salary. Supports robust parameter aliases (`working_days`/`total_working_days`, `final_salary`/`net_salary`) and automatic calculation of absent days.
-- `PUT /api/payroll/{id}/mark_paid` — Mark payroll line item status as paid/unpaid (Admin only).
-- `GET /api/payroll/payslip/{payroll_id}` — Binary PDF payslip download.
+### Payroll & Calculation Engine
+- `POST /api/payroll/generate/{year}/{month}` — Batch generate monthly payroll for all active employees (Admin only).
+- `GET /api/payroll` — List finalized payroll lines with itemized earnings, deductions, and snapshots.
+- `GET /api/payroll/my` — List current logged-in employee's payslips.
+- `GET /api/payroll/calculate-preview` — Authoritative preview endpoint returning the complete mathematical calculation breakdown for an employee, year, month, and custom rates without modifying database state.
+- `POST /api/payroll/finalize-save` — Save and finalize an authoritative payroll record with full JSON calculation snapshot, advance salary recovery execution, and reimbursement reconciliation.
+- `GET /api/payroll/preview/{employee_id}` — Legacy preview endpoint maintained for backward compatibility.
+- `POST /api/payroll/manual-save` — Save or override an individual employee's customized payroll line item.
+- `PUT /api/payroll/{id}/mark_paid` — Mark payroll status as paid/unpaid (Admin only).
+- `GET /api/payroll/payslip/{payroll_id}` — Itemized binary PDF payslip download.
 
 ### Reports (Admin only)
 - `GET /api/reports/attendance/detailed-logs` — Detailed punch-by-punch attendance records across any date range or month.
@@ -404,81 +462,82 @@ Smart_Attendance_System/
 
 ## Payroll Calculation Engine & Payslip Structure
 
-The system automatically calculates monthly payroll by bridging daily biometric attendance logs with contractual salary parameters, shift rules, and statutory deductions.
+The authoritative payroll calculation engine connects actual monthly attendance records, leave quotas, company holidays, advance salary accounts, and approved expense reimbursements into an exact mathematical breakdown. Hardcoded, generic, or fabricated values are completely removed.
 
 ---
 
 ### 1. Calculation Logic & Mathematical Formulas
 
 1. **Standard Working Days ($W$):**  
-   Calculated based on calendar month days, counting Monday through Saturday (excluding Sundays). For example, a standard month has **26 working days**.
+   Calculated from the total days in the pay period month, strictly excluding weekly offs (Sundays) and approved company holidays:
+   $$W = \text{Total Month Days} - \text{Sundays} - \text{Company Holidays}$$
 
-2. **Daily & Hourly Rates:**  
-   $$\text{Daily Rate} = \frac{\text{Basic Salary}}{W}$$
-   $$\text{Hourly Rate} = \frac{\text{Daily Rate}}{8\text{ hours}}$$
+2. **Simple Absent Day Deduction:**  
+   Calculated using a direct flat rate entered or configured by the administrator per absent day (no complex base salary percentage or artificial multiplier):
+   $$\text{Absent Deduction} = \text{Total Absent Days} \times \text{Admin Absent Rate}$$
 
-3. **Overtime Earnings ($\text{OT Pay}$):**  
-   Employees who work beyond standard shift hours accumulate overtime duration (after deducting a 1-hour lunch break).
-   - **Mode Selection:** Supports dual calculation modes via interactive selection buttons — **As Per Hr** ($\text{₹/h}$) or **As Per Day** ($\text{₹/day}$).
-   - **As Per Hr Mode:** If custom OT rate is configured, $\text{OT Pay} = \text{OT Hours} \times \text{Custom Rate}$, otherwise $\text{OT Pay} = \text{OT Hours} \times (\text{Hourly Rate} \times 1.5)$.
-   - **As Per Day Mode:** If custom OT rate is configured, $\text{OT Pay} = \text{OT Days} \times \text{Custom Rate}$, otherwise $\text{OT Pay} = \text{OT Days} \times (\text{Daily Rate} \times 1.5)$.
+3. **Simple Late Mark Deduction:**  
+   Calculated using a direct flat penalty per late arrival entry (excluding waived disputes and Sunday check-ins):
+   $$\text{Late Deduction} = \text{Applicable Late Entries} \times \text{Admin Late Rate}$$
 
+4. **Strict Daily Overtime Eligibility & Flooring:**  
+   Overtime is calculated on a strict day-by-day basis:
+   - **Eligibility Threshold:** Only shift durations exceeding the standard shift threshold by strictly **more than 1 hour** ($> 60\text{ minutes}$) qualify for overtime pay.
+   - **Integer Flooring:** Eligible overtime minutes are floored to the nearest full integer hour:
+     $$\text{Daily Payable OT Hours} = \left\lfloor \frac{\text{Daily Excess Minutes}}{60} \right\rfloor$$
+   - **Zero Daily Carryover:** Excess minutes under 60 (or remaining fractional minutes) cannot be accumulated or carried across calendar days.
+   - **Sunday Overtime:** Punches on Sundays strictly yield **0 payable overtime hours**.
+   - **Total Overtime Addition:**
+     $$\text{OT Pay} = \left( \sum \text{Daily Payable OT Hours} \right) \times \text{Admin OT Rate}$$
 
+5. **Approved Expense Reimbursements:**  
+   Only reimbursement requests reviewed and marked with status `approved` are eligible. Pending and rejected claims are strictly excluded:
+   $$\text{Reimbursements Addition} = \sum \text{Approved Employee Claims}$$
 
-4. **Absent Days & Unpaid Leave Deductions:**  
-   $$\text{Absent Days} = \max(0, W - \text{Present Days} - \text{Approved Leaves})$$
-   $$\text{Absent Deduction} = \text{Absent Days} \times \text{Daily Rate}$$
+6. **Advance Salary Disbursal & Recovery:**  
+   Tracks historical advance disbursements. During monthly payroll processing, the administrator chooses the recovery option:
+   - **Full Recovery:** Recovers $100\%$ of the outstanding advance balance (capped at net payable capacity).
+   - **Partial Recovery:** Recovers an admin-specified fixed amount.
+   - **No Recovery:** Defers deduction, recovering ₹0 for the current cycle.
+   $$\text{Advance Balance Remaining} = \text{Prior Balance} - \text{Advance Recovered}$$
 
-5. **Late Arrival Deductions:**  
-   If the employee profile has a configured late penalty rate:
-   - **Per-day penalty:** $\text{Late Days} \times \text{Late Rate}$
-   - **Per-hour penalty:** $\text{Late Hours} \times \text{Late Rate}$
-
-6. **Statutory Deductions:**  
-   - **Provident Fund (PF):** Standard $6\%$ of Basic Salary ($\text{Basic Salary} \times 0.06$).
-   - **Professional Tax (PT):** Flat statutory state labor employment tax (e.g. ₹200/month).
-
-7. **Net Take-Home Salary:**  
-   $$\text{Total Earnings} = \text{Basic Salary} + \text{OT Pay} + \text{Bonus}$$
-   $$\text{Total Deductions} = \text{PF} + \text{Professional Tax} + \text{Other Deductions (Absenteeism + Late Penalties)}$$
-   $$\text{Net Salary} = \text{Total Earnings} - \text{Total Deductions}$$
+7. **Net Payable Salary Breakdown:**  
+   $$\text{Total Additions} = \text{Base Salary} + \text{OT Pay} + \text{Approved Reimbursements} + \text{Bonus}$$
+   $$\text{Total Deductions} = \text{Absent Deduction} + \text{Late Deduction} + \text{Advance Recovered} + \text{Other Deductions}$$
+   $$\text{Final Payable Salary} = \max(0, \text{Total Additions} - \text{Total Deductions})$$
 
 ---
 
-### 2. Standard Payslip Modal Breakdown (Example: Generic Employee)
+### 2. Itemized Payslip Breakdown (Real Production Example)
 
-The table below details every field displayed inside the interactive Payslip preview modal for a representative employee:
+The table below illustrates an exact itemized payslip breakdown for an employee in a 31-day month (October 2026, 26 scheduled work days, base salary ₹17,000):
 
-| Field | Example Value | Category | Detailed Description |
+| Component | Amount | Type | Calculation / Rule Applied |
 | :--- | :---: | :---: | :--- |
-| **Employee Header** | `Alex Taylor` <br> `EMP001 · Engineering · October 2026` | Header | Employee name, alphanumeric employee code, department, and pay period month. |
-| **Basic Salary** | **+ ₹12,000** | Earning | Fixed base monthly contract salary agreed for full monthly attendance. |
-| **OT Pay** | **+ ₹145** | Earning | Overtime compensation for approved extra hours worked ($1.45\text{ hrs} \times ₹100/\text{hr} = ₹145$). |
-| **PF Deduction** | **− ₹720** | Deduction | Employee Provident Fund statutory retirement contribution ($6\%$ of ₹12,000). |
-| **Professional Tax** | **− ₹200** | Deduction | Mandatory state employment tax standard deduction. |
-| **Other Deductions** | **− ₹4,499** | Deduction | Salary docked for unpaid absence ($10\text{ days}$) and any late arrival penalties. |
-| **Present Days** | **16 / 26** | Attendance | Attended 16 days out of 26 scheduled working days in the month ($10\text{ days absent}$). |
-| **OT Hours** | **1.45h** | Attendance | Cumulative overtime logged across all shifts. |
-| **Net Salary** | **₹6,726** | **Take-Home** | Final net payment transferred to employee's bank account. |
+| **Basic Salary** | **+ ₹17,000** | Earning | Fixed contractual monthly base salary from employee master record. |
+| **Overtime Pay** | **+ ₹410** | Earning | 2 payable OT hours ($2\text{ hrs} \times ₹205/\text{hr}$). (Day 1: 1h 45m $\rightarrow$ 1h; Day 2: 2h 10m $\rightarrow$ 2h; Day 3: 45m $\rightarrow$ 0h). |
+| **Approved Reimbursements** | **+ ₹1,250** | Earning | Approved travel & client meal expense claims with verified receipts. |
+| **Performance Bonus** | **+ ₹500** | Earning | Discretionary monthly incentive awarded by administrator. |
+| **Absent Days Deduction** | **− ₹3,280** | Deduction | 5 unexcused absent days ($5\text{ days} \times ₹656/\text{day}$). |
+| **Late Mark Deduction** | **− ₹1,000** | Deduction | 5 applicable late marks ($5\text{ entries} \times ₹200/\text{entry}$). |
+| **Advance Salary Recovery** | **− ₹2,000** | Deduction | Partial recovery chosen from prior ₹5,000 advance balance (₹3,000 carries forward). |
+| **Other Deductions** | **− ₹0** | Deduction | Explicit manual adjustment (if any). |
+| **Net Disbursed Salary** | **₹12,880** | **Take-Home** | Net salary disbursed to employee's bank account. |
 
 #### Complete Mathematical Verification:
-1. **Total Earnings:**  
-   $$\text{Basic Salary (₹12,000)} + \text{OT Pay (₹145)} = \mathbf{₹12,145}$$
+1. **Total Additions:**  
+   $$\text{Basic (₹17,000)} + \text{OT Pay (₹410)} + \text{Reimbursements (₹1,250)} + \text{Bonus (₹500)} = \mathbf{₹19,160}$$
 2. **Total Deductions:**  
-   $$\text{PF (₹720)} + \text{PT (₹200)} + \text{Other Deductions (₹4,499)} = \mathbf{₹5,419}$$
+   $$\text{Absent (₹3,280)} + \text{Late (₹1,000)} + \text{Advance (₹2,000)} = \mathbf{₹6,280}$$
 3. **Net Take-Home Salary:**  
-   $$\text{Total Earnings (₹12,145)} - \text{Total Deductions (₹5,419)} = \mathbf{₹6,726}$$
+   $$\text{Total Additions (₹19,160)} - \text{Total Deductions (₹6,280)} = \mathbf{₹12,880}$$
 
 ---
 
-### 3. Admin Adjustment & Manual Override Workflow
+### 3. State Isolation & Audit Snapshots
 
-If special circumstances require adjustment (such as forgiving an absence, awarding a festival bonus, or modifying penalty deductions):
-1. Navigate to **Admin Portal $\rightarrow$ Payroll**.
-2. Locate the employee row and click the **Adjust** button.
-3. The **Manual Payroll Calculator** modal opens with safe backdrop event isolation and keyboard input guards.
-4. Admins can update **Present Days**, **Bonus**, **Deductions**, or **Overtime Rate**, view the live recalculated net salary, add an audit remark, and save directly to the database.
-5. Click **Download PDF** to export an official signed payslip voucher.
+- **State Isolation:** Modifying parameters or previewing calculations inside the **Manual Payroll Calculator** modal operates on isolated component state and read-only backend preview endpoints (`/api/payroll/calculate-preview`). It never modifies historical payroll, live attendance punches, or employee configurations until explicitly finalized.
+- **Audit Snapshots:** When finalized via `/api/payroll/finalize-save`, the backend executes an atomic transaction writing the payroll record, archiving a complete JSON calculation snapshot (`calculation_snapshot`), recording the advance recovery ledger entry, and marking included reimbursements as paid.
 
 ---
 

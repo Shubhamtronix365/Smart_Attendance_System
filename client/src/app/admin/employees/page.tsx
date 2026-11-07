@@ -7,6 +7,7 @@ import {
   Filter, Fingerprint, User, Mail, Phone, Building2, Briefcase,
   DollarSign, Calendar, CheckCircle2, XCircle, AlertTriangle,
   MoreVertical, Lock, Eye, EyeOff, Cpu, Radio, Clock, TrendingUp, AlertCircle,
+  Tag
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -33,6 +34,7 @@ interface Employee {
   rfidUid?: string;
   joiningDate: string;
   status: "active" | "inactive";
+  isBillable?: boolean;
   avatar: string;
   password?: string;
 }
@@ -103,9 +105,7 @@ function SelectField({ label, id, value, onChange, options, icon }: {
     <div>
       <label htmlFor={id} className="text-white/50 text-xs font-medium mb-1.5 block">{label}</label>
       <div className="relative">
-        {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 pointer-events-none">{icon}</div>
-        )}
+        {icon && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25">{icon}</div>}
         <select
           id={id}
           value={value}
@@ -117,12 +117,9 @@ function SelectField({ label, id, value, onChange, options, icon }: {
             background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.1)",
           }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,245,255,0.4)")}
-          onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
         >
-          <option value="" className="bg-[#0a0f1e]">Select...</option>
           {options.map((o) => (
-            <option key={o} value={o} className="bg-[#0a0f1e]">{o}</option>
+            <option key={o} value={o} className="bg-[#0a0f1e] text-white">{o}</option>
           ))}
         </select>
         <ChevronRight size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none rotate-90" />
@@ -131,7 +128,7 @@ function SelectField({ label, id, value, onChange, options, icon }: {
   );
 }
 
-// ─── Add/Edit Modal ───────────────────────────────────────────────────────────
+// ─── Employee Modal ───────────────────────────────────────────────────────────
 interface EmployeeModalProps {
   mode: "add" | "edit";
   employee?: Employee;
@@ -147,12 +144,17 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
     department: employee?.department || "",
     designation: employee?.designation || "",
     basicSalary: employee?.basicSalary || 0,
+    overtimeRate: employee?.overtimeRate || 0,
+    overtimeType: employee?.overtimeType || "per_hour",
+    lateDeductionRate: employee?.lateDeductionRate || 0,
+    lateDeductionType: employee?.lateDeductionType || "per_day",
     fingerprintId: employee?.fingerprintId || "",
     joiningDate: employee?.joiningDate || new Date().toISOString().split("T")[0],
     status: employee?.status || "active",
+    isBillable: employee?.isBillable !== false,
     password: mode === "add" ? "password123" : "",
   });
-  const set = (k: keyof Employee) => (v: string | number) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof Employee) => (v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,9 +216,46 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
               <FormField label="Basic Salary (₹)" id="emp-salary" type="number" value={String(form.basicSalary || "")}
                 onChange={(v) => set("basicSalary")(Number(v))}
                 placeholder="75000" icon={<DollarSign size={14} />} required />
+
+              {/* Billable Classification */}
+              <div className="sm:col-span-2 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <label className="text-white text-xs font-semibold block flex items-center gap-1.5">
+                    <Tag size={13} className="text-emerald-400" /> Billable Classification
+                  </label>
+                  <p className="text-white/40 text-[11px] mt-0.5">
+                    Classification is independent of attendance and preserved in financial audits
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, isBillable: true }))}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      form.isBillable !== false
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                        : "text-white/40 border border-white/5 hover:text-white"
+                    }`}
+                  >
+                    Billable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, isBillable: false }))}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      form.isBillable === false
+                        ? "bg-slate-500/20 text-slate-300 border border-slate-500/40"
+                        : "text-white/40 border border-white/5 hover:text-white"
+                    }`}
+                  >
+                    Non-Billable
+                  </button>
+                </div>
+              </div>
+
               <FormField label="Overtime Rate (₹/hr) — Custom" id="emp-ot-rate" type="number"
                 value={String(form.overtimeRate ?? "")} onChange={(v) => set("overtimeRate")(v ? Number(v) : 0)}
-                placeholder="e.g. 250 (Leave 0 for default 1.5x)" icon={<TrendingUp size={14} />} />
+                placeholder="e.g. 250 (Leave 0 for default shift rate)" icon={<TrendingUp size={14} />} />
               <SelectField label="Overtime Mode" id="emp-ot-type"
                 value={form.overtimeType || "per_hour"} onChange={set("overtimeType")}
                 options={["per_hour", "per_day"]} icon={<TrendingUp size={14} />} />
@@ -258,54 +297,7 @@ function EmployeeModal({ mode, employee, onClose, onSave }: EmployeeModalProps) 
   );
 }
 
-// ─── Edit Drawer ──────────────────────────────────────────────────────────────
-function EditDrawer({ employee, onClose, onSave }: {
-  employee: Employee; onClose: () => void; onSave: (emp: Partial<Employee>) => void;
-}) {
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50"
-        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
-        onClick={(e) => e.target === e.currentTarget && onClose()}
-      >
-        <motion.div
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          exit={{ x: "100%" }}
-          transition={{ type: "spring", stiffness: 300, damping: 32 }}
-          className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto"
-          style={{
-            background: "rgba(10,15,30,0.99)",
-            borderLeft: "1px solid rgba(255,255,255,0.1)",
-            boxShadow: "-24px 0 80px rgba(0,0,0,0.5)",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-6 py-5"
-            style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            <div>
-              <h3 className="text-white font-black text-lg">Edit Employee</h3>
-              <p className="text-white/40 text-xs">{employee.empId}</p>
-            </div>
-            <button onClick={onClose}
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
-              <X size={16} />
-            </button>
-          </div>
-          <div className="p-6">
-            <EmployeeModal mode="edit" employee={employee} onClose={onClose} onSave={onSave} />
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-}
-
-// ─── Delete Confirmation Dialog ───────────────────────────────────────────────
+// ─── Delete Dialog ────────────────────────────────────────────────────────────
 function DeleteDialog({ employee, onClose, onConfirm }: {
   employee: Employee; onClose: () => void; onConfirm: () => void;
 }) {
@@ -324,54 +316,36 @@ function DeleteDialog({ employee, onClose, onConfirm }: {
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="w-full max-w-sm rounded-3xl p-8 text-center"
+          className="w-full max-w-md rounded-3xl p-6 text-center"
           style={{
             background: "rgba(10,15,30,0.98)",
-            border: "1px solid rgba(239,68,68,0.25)",
-            boxShadow: "0 0 60px rgba(239,68,68,0.1)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            boxShadow: "0 0 60px rgba(239,68,68,0.15)",
           }}
         >
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
-            style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)" }}
-          >
-            <AlertTriangle size={28} className="text-red-400" />
-          </motion.div>
-          <h3 className="text-white font-black text-xl mb-2">Delete from Database & Sensor?</h3>
-          <p className="text-white/60 text-sm mb-4 leading-relaxed">
-            This will permanently delete <span className="text-white font-bold">{employee.name}</span> (<span className="font-mono text-cyan-400">{employee.empId}</span>) from the database.
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}>
+            <AlertTriangle size={24} className="text-red-400" />
+          </div>
+          <h3 className="text-white font-black text-lg mb-1">Delete Employee?</h3>
+          <p className="text-white/50 text-sm mb-6">
+            Are you sure you want to delete <strong className="text-white">{employee.name}</strong> ({employee.empId})? This action cannot be undone.
           </p>
-          {employee.fingerprintId ? (
-            <div className="mb-6 p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-left flex items-start gap-3">
-              <Fingerprint className="text-red-400 shrink-0 mt-0.5" size={18} />
-              <div>
-                <p className="text-red-300 text-xs font-bold">Physical Sensor Model Wipe</p>
-                <p className="text-white/60 text-[11px] mt-0.5">
-                  Slot <span className="text-red-400 font-mono font-bold">#{employee.fingerprintId}</span> will be permanently erased from the physical R307 sensor and ESP32 local flash.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-6 p-3 rounded-2xl bg-white/5 border border-white/10 text-left text-xs text-white/50">
-              No fingerprint template registered on the sensor.
-            </div>
-          )}
           <div className="flex gap-3">
-            <button onClick={onClose}
-              className="flex-1 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 border border-white/10 transition-all">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 border border-white/10 transition-all"
+            >
               Cancel
             </button>
             <motion.button
               onClick={onConfirm}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              className="flex-1 py-3 rounded-xl text-sm font-bold text-white shadow-lg shadow-red-500/20"
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all"
               style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)" }}
             >
-              Delete from Sensor & DB
+              Delete
             </motion.button>
           </div>
         </motion.div>
@@ -380,12 +354,12 @@ function DeleteDialog({ employee, onClose, onConfirm }: {
   );
 }
 
-// ─── Delete All Confirmation Dialog ───────────────────────────────────────────
+// ─── Delete All Dialog ────────────────────────────────────────────────────────
 function DeleteAllDialog({ count, onClose, onConfirm }: {
   count: number; onClose: () => void; onConfirm: () => void;
 }) {
   const [confirmText, setConfirmText] = useState("");
-  const isReady = confirmText.trim().toUpperCase() === "DELETE";
+  const isReady = confirmText === "DELETE";
 
   return (
     <AnimatePresence>
@@ -394,7 +368,7 @@ function DeleteAllDialog({ count, onClose, onConfirm }: {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}
+        style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(12px)" }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
         <motion.div
@@ -462,7 +436,6 @@ function DeleteAllDialog({ count, onClose, onConfirm }: {
 function EmployeeRow({ emp, index, onEdit, onDelete }: {
   emp: Employee; index: number; onEdit: () => void; onDelete: () => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showRowPassword, setShowRowPassword] = useState(false);
   return (
     <motion.tr
@@ -496,13 +469,6 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
                   <Radio size={10} /> {emp.rfidUid}
                 </span>
               )}
-              {((emp.lateDeductionRate ?? 0) > 0 || (emp.overtimeRate ?? 0) > 0) && (
-                <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded font-mono" title="Custom late penalty & overtime rates">
-                  {emp.lateDeductionRate ? `Late: -₹${emp.lateDeductionRate}/${emp.lateDeductionType === "per_hour" ? "hr" : "day"}` : ""}
-                  {emp.lateDeductionRate && emp.overtimeRate ? " • " : ""}
-                  {emp.overtimeRate ? `OT: ₹${emp.overtimeRate}/${emp.overtimeType === "per_day" ? "day" : "hr"}` : ""}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -528,6 +494,19 @@ function EmployeeRow({ emp, index, onEdit, onDelete }: {
         </span>
       </td>
       <td className="px-4 py-3.5 text-white/50 text-sm hidden xl:table-cell">{emp.designation}</td>
+      
+      {/* Billable Classification Badge */}
+      <td className="px-4 py-3.5">
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+          emp.isBillable !== false
+            ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+            : "text-slate-400 bg-slate-500/10 border border-slate-500/20"
+        }`}>
+          <Tag size={10} />
+          {emp.isBillable !== false ? "Billable" : "Non-Billable"}
+        </span>
+      </td>
+
       <td className="px-4 py-3.5 hidden xl:table-cell">
         <span className={`flex items-center gap-1.5 w-fit px-2.5 py-1 rounded-full text-xs font-semibold ${
           emp.status === "active"
@@ -568,6 +547,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [deptFilter, setDeptFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [billableFilter, setBillableFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [showHardwareModal, setShowHardwareModal] = useState(false);
@@ -598,6 +578,7 @@ export default function EmployeesPage() {
         rfidUid: emp.rfid_uid || "",
         joiningDate: emp.joining_date || "",
         status: emp.is_active ? "active" : "inactive",
+        isBillable: emp.is_billable !== false,
         avatar: (emp.name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
         password: emp.plain_password || "",
       }));
@@ -610,42 +591,6 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     fetchEmployees();
-
-    let ws: WebSocket | null = null;
-    try {
-      let wsUrl = "";
-      if (typeof window !== "undefined") {
-        if (process.env.NEXT_PUBLIC_API_URL) {
-          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
-          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-        } else {
-          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-          const host = window.location.hostname || "localhost";
-          wsUrl = `${protocol}//${host}:8000/ws/client`;
-        }
-        ws = new WebSocket(wsUrl);
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.event === "employee_deleted" && data.employee_id) {
-              setEmployees((prev) => prev.filter((e) => e.id !== String(data.employee_id)));
-            } else if (data.event === "all_employees_cleared") {
-              setEmployees([]);
-            } else if (data.event === "attendance_updated") {
-              fetchEmployees();
-            }
-          } catch (e) {
-            // ignore
-          }
-        };
-      }
-    } catch (err) {
-      console.warn("WebSocket init error", err);
-    }
-
-    return () => {
-      if (ws) ws.close();
-    };
   }, [fetchEmployees]);
 
   // Filtered employees
@@ -657,18 +602,20 @@ export default function EmployeesPage() {
         e.email.toLowerCase().includes(debouncedSearch.toLowerCase());
       const matchDept = !deptFilter || e.department === deptFilter;
       const matchStatus = !statusFilter || e.status === statusFilter;
-      return matchSearch && matchDept && matchStatus;
+      const matchBillable = !billableFilter ||
+        (billableFilter === "billable" && e.isBillable !== false) ||
+        (billableFilter === "non-billable" && e.isBillable === false);
+      return matchSearch && matchDept && matchStatus && matchBillable;
     });
-  }, [employees, debouncedSearch, deptFilter, statusFilter]);
+  }, [employees, debouncedSearch, deptFilter, statusFilter, billableFilter]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Reset page on filter change
-  useEffect(() => setPage(1), [debouncedSearch, deptFilter, statusFilter]);
+  useEffect(() => setPage(1), [debouncedSearch, deptFilter, statusFilter, billableFilter]);
 
   const handleAdd = useCallback(async (data: Partial<Employee>) => {
-    // Instant modal close for lightning-fast responsiveness
     setShowModal(false);
     try {
       const backendData = {
@@ -684,7 +631,8 @@ export default function EmployeesPage() {
         late_deduction_type: data.lateDeductionType || "per_day",
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,
         role: "employee",
-        password: "password123", // default password
+        is_billable: data.isBillable !== false,
+        password: "password123",
       };
       await employeesApi.create(backendData);
       success("Employee added successfully.");
@@ -699,7 +647,6 @@ export default function EmployeesPage() {
   const handleEdit = useCallback(async (data: Partial<Employee>) => {
     if (!editEmployee) return;
     const targetId = editEmployee.id;
-    // Instant optimistic update in local state for instantaneous feedback
     setEmployees((prev) =>
       prev.map((emp) =>
         emp.id === targetId
@@ -716,33 +663,35 @@ export default function EmployeesPage() {
               lateDeductionRate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : emp.lateDeductionRate,
               lateDeductionType: data.lateDeductionType ?? emp.lateDeductionType,
               fingerprintId: data.fingerprintId !== undefined ? String(data.fingerprintId) : emp.fingerprintId,
+              isBillable: data.isBillable !== undefined ? data.isBillable : emp.isBillable,
               avatar: (data.name || emp.name).split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
             }
           : emp
       )
     );
     setEditEmployee(null);
-    success("Employee details updated.");
 
     try {
       const backendData: Record<string, any> = {
         name: data.name,
         email: data.email,
-        phone: data.phone || "",
-        department: data.department || "",
-        designation: data.designation || "",
-        salary: Number(data.basicSalary) || 0,
-        overtime_rate: data.overtimeRate !== undefined ? Number(data.overtimeRate) : 0,
-        overtime_type: data.overtimeType || "per_hour",
-        late_deduction_rate: data.lateDeductionRate !== undefined ? Number(data.lateDeductionRate) : 0,
-        late_deduction_type: data.lateDeductionType || "per_day",
+        phone: data.phone,
+        department: data.department,
+        designation: data.designation,
+        salary: data.basicSalary,
+        overtime_rate: data.overtimeRate,
+        overtime_type: data.overtimeType,
+        late_deduction_rate: data.lateDeductionRate,
+        late_deduction_type: data.lateDeductionType,
         fingerprint_id: data.fingerprintId ? Number(data.fingerprintId) : null,
+        is_billable: data.isBillable !== undefined ? data.isBillable : true,
       };
-      if (data.employeeCode) backendData.employee_code = data.employeeCode;
-      if (data.rfidUid) backendData.rfid_uid = data.rfidUid;
-      if (data.password && data.password.trim()) backendData.password = data.password.trim();
-
+      if (data.password) {
+        backendData.password = data.password;
+      }
       await employeesApi.update(targetId, backendData);
+      success("Employee details updated successfully.");
+      fetchEmployees();
     } catch (err: any) {
       console.error("Error updating employee", err);
       error(err.response?.data?.detail || "Failed to update employee.");
@@ -753,7 +702,6 @@ export default function EmployeesPage() {
   const handleDelete = useCallback(async () => {
     if (!deleteEmployee) return;
     const target = deleteEmployee;
-    // Realtime optimistic removal
     setEmployees((prev) => prev.filter((e) => e.id !== target.id));
     setDeleteEmployee(null);
 
@@ -770,7 +718,6 @@ export default function EmployeesPage() {
 
   const handleDeleteAll = useCallback(async () => {
     setShowDeleteAllModal(false);
-    // Realtime optimistic wipe
     setEmployees([]);
     try {
       const res = await employeesApi.deleteAll();
@@ -794,7 +741,7 @@ export default function EmployeesPage() {
           {/* Page header */}
           <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
             <h1 className="text-3xl font-black text-white mb-1">Employee Management</h1>
-            <p className="text-white/40">Manage your organization&apos;s workforce — {employees.length} total employees</p>
+            <p className="text-white/40">Manage your organization&apos;s workforce with Billable / Non-billable tracking — {employees.length} total employees</p>
           </motion.div>
 
           {/* Toolbar */}
@@ -818,8 +765,6 @@ export default function EmployeesPage() {
                   background: "rgba(255,255,255,0.05)",
                   border: "1px solid rgba(255,255,255,0.1)",
                 }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(0,245,255,0.4)")}
-                onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
               />
             </div>
 
@@ -835,6 +780,23 @@ export default function EmployeesPage() {
               >
                 <option value="" className="bg-[#0a0f1e]">All Departments</option>
                 {DEPARTMENTS.map((d) => <option key={d} value={d} className="bg-[#0a0f1e]">{d}</option>)}
+              </select>
+              <ChevronRight size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none rotate-90" />
+            </div>
+
+            {/* Classification filter (Billable / Non-Billable) */}
+            <div className="relative">
+              <Tag size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+              <select
+                id="billable-filter"
+                value={billableFilter}
+                onChange={(e) => setBillableFilter(e.target.value)}
+                className="pl-8 pr-8 py-2.5 text-white text-sm outline-none rounded-xl appearance-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+              >
+                <option value="" className="bg-[#0a0f1e]">All Classifications</option>
+                <option value="billable" className="bg-[#0a0f1e]">Billable</option>
+                <option value="non-billable" className="bg-[#0a0f1e]">Non-Billable</option>
               </select>
               <ChevronRight size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none rotate-90" />
             </div>
@@ -856,28 +818,25 @@ export default function EmployeesPage() {
               <ChevronRight size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none rotate-90" />
             </div>
 
-            {/* Buttons */}
+            {/* Action Buttons */}
             <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 sm:ml-auto w-full sm:w-auto">
-              <div className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-300" title="Occupied slots in physical R307 fingerprint sensor">
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border border-cyan-500/20 bg-cyan-500/5 text-cyan-300">
                 <Fingerprint size={13} className="text-cyan-400" />
                 <span>Sensor: {employees.filter(e => e.fingerprintId).length}/127 Slots</span>
               </div>
 
               <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
                 <motion.button
-                  id="delete-all-btn"
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => setShowDeleteAllModal(true)}
                   className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-all text-center"
-                  title="Wipe all fingerprints from hardware sensor and database"
                 >
                   <Trash2 size={14} />
                   <span>Wipe All</span>
                 </motion.button>
 
                 <motion.button
-                  id="smart-enroll-btn"
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => setShowHardwareModal(true)}
@@ -893,44 +852,22 @@ export default function EmployeesPage() {
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => setShowModal(true)}
-                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black w-full sm:w-auto"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black w-full sm:w-auto text-center"
                 style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
               >
-                <Plus size={15} />
-                Add Employee
+                <Plus size={16} />
+                <span>Add Employee</span>
               </motion.button>
             </div>
           </motion.div>
 
           {/* Table */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="neo-card overflow-hidden"
-          >
-            {/* Result count */}
-            <div className="px-6 py-3 flex items-center justify-between"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <p className="text-white/40 text-xs">
-                Showing <span className="text-white font-semibold">{paginated.length}</span> of{" "}
-                <span className="text-white font-semibold">{filtered.length}</span> employees
-              </p>
-              {(debouncedSearch || deptFilter || statusFilter) && (
-                <button
-                  onClick={() => { setSearch(""); setDeptFilter(""); setStatusFilter(""); }}
-                  className="text-cyan-400/60 hover:text-cyan-400 text-xs transition-colors"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
-
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="neo-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                    {["Employee", "Email", "Password", "Department", "Designation", "Status", ""].map((h) => (
+                    {["Employee", "Email", "Password", "Department", "Designation", "Classification", "Status", ""].map((h) => (
                       <th key={h} className="px-4 py-3 text-left text-white/30 text-xs font-semibold uppercase tracking-wider">
                         {h}
                       </th>
@@ -970,7 +907,6 @@ export default function EmployeesPage() {
                 </p>
                 <div className="flex items-center gap-2">
                   <button
-                    id="page-prev"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/5 transition-all"
@@ -980,7 +916,6 @@ export default function EmployeesPage() {
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                     <button
                       key={p}
-                      id={`page-${p}`}
                       onClick={() => setPage(p)}
                       className="w-8 h-8 rounded-lg text-sm font-medium transition-all"
                       style={{
@@ -993,7 +928,6 @@ export default function EmployeesPage() {
                     </button>
                   ))}
                   <button
-                    id="page-next"
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/5 transition-all"
@@ -1039,7 +973,7 @@ export default function EmployeesPage() {
         )}
       </AnimatePresence>
 
-      {/* ESP32 Tronix Hardware Enrollment Modal */}
+      {/* ESP32 Hardware Enrollment Modal */}
       <HardwareEnrollmentModal
         isOpen={showHardwareModal}
         onClose={() => setShowHardwareModal(false)}

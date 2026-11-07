@@ -16,19 +16,23 @@ router = APIRouter(prefix="/employees", tags=["Employees"], dependencies=[Depend
 @router.get("", response_model=List[EmployeeOut])
 async def list_employees(
     department: Optional[str] = None,
+    is_billable: Optional[bool] = None,
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Lists all employees, with optional department filter, 
-    general search (name/email/ID), and pagination.
+    Lists all employees, with optional department filter,
+    is_billable filter, general search (name/email/ID), and pagination.
     """
     stmt = select(Employee).where(Employee.is_active == True)
     
     if department:
         stmt = stmt.where(Employee.department == department)
+
+    if is_billable is not None:
+        stmt = stmt.where(Employee.is_billable == is_billable)
         
     if search:
         search_filter = f"%{search}%"
@@ -114,6 +118,7 @@ async def create_employee(
         fingerprint_id=emp_data.fingerprint_id,
         rfid_uid=emp_data.rfid_uid.strip().upper() if emp_data.rfid_uid else None,
         role=emp_data.role,
+        is_billable=emp_data.is_billable if emp_data.is_billable is not None else True,
         hashed_password=hashed_pwd,
         plain_password=plain_pwd
     )

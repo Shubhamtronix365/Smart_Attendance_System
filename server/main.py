@@ -30,6 +30,10 @@ from server.routes.payroll import router as payroll_router
 from server.routes.reports import router as reports_router
 from server.routes.settings import router as settings_router
 from server.routes.database import router as database_router
+from server.routes.holiday import router as holiday_router
+from server.routes.reimbursement import router as reimbursement_router
+from server.routes.advance import router as advance_router
+from server.routes.amendment import router as amendment_router
 from server.routes.websocket import router as websocket_router
 
 # Setup logger
@@ -247,6 +251,10 @@ app.include_router(payroll_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(database_router, prefix="/api")
+app.include_router(holiday_router, prefix="/api")
+app.include_router(reimbursement_router, prefix="/api")
+app.include_router(advance_router, prefix="/api")
+app.include_router(amendment_router, prefix="/api")
 app.include_router(websocket_router)
 
 @app.api_route("/", methods=["GET", "HEAD"])

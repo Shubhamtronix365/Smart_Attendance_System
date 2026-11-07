@@ -1394,7 +1394,7 @@ export default function ReportsPage() {
               onClose={() => setSelectedPunchesRecord(null)}
               record={selectedPunchesRecord}
               isAdmin={true}
-              onUpdate={() => fetchReports()}
+              onUpdate={() => fetchReport()}
             />
           )}
         </AnimatePresence>

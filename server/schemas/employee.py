@@ -18,6 +18,7 @@ class EmployeeBase(BaseModel):
     fingerprint_id: Optional[int] = None
     rfid_uid: Optional[str] = Field(None, max_length=50)
     role: str = Field("employee", pattern="^(admin|employee)$")
+    is_billable: Optional[bool] = Field(True, description="Billable or non-billable employee classification")
 
 class EmployeeCreate(EmployeeBase):
     password: Optional[str] = None
@@ -37,6 +38,7 @@ class EmployeeUpdate(BaseModel):
     fingerprint_id: Optional[int] = None
     rfid_uid: Optional[str] = Field(None, max_length=50)
     role: Optional[str] = Field(None, pattern="^(admin|employee)$")
+    is_billable: Optional[bool] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
 

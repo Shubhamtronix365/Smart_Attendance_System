@@ -432,6 +432,33 @@ def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
 
     # Earnings & Deductions Breakdown
     h_style = ParagraphStyle("PSHead", fontName="Helvetica-Bold", fontSize=9, textColor=COLOR_WHITE)
+    
+    # Calculate itemized amounts
+    basic_val = float(payroll.basic_salary or 0)
+    ot_hrs = float(getattr(payroll, "payable_ot_hours", None) or payroll.overtime_hours or 0)
+    ot_rate_val = float(getattr(payroll, "ot_rate", 0) or 0)
+    ot_pay_val = float(payroll.overtime_pay or 0)
+    reimb_val = float(getattr(payroll, "reimbursement_amount", 0) or 0)
+    bonus_val = float(getattr(payroll, "bonus", 0) or 0)
+    
+    abs_days = float(payroll.absent_days or 0)
+    abs_rate_val = float(getattr(payroll, "absent_rate", 0) or 0)
+    abs_ded_val = float(getattr(payroll, "absent_deduction", 0) or (abs_days * abs_rate_val if abs_rate_val > 0 else 0))
+    
+    late_entries = int(payroll.late_days or 0)
+    late_rate_val = float(getattr(payroll, "late_rate", 0) or 0)
+    late_ded_val = float(payroll.late_deduction or (late_entries * late_rate_val if late_rate_val > 0 else 0))
+    
+    adv_rec_val = float(getattr(payroll, "advance_recovered", 0) or 0)
+    
+    total_allowances = basic_val + ot_pay_val + reimb_val + bonus_val
+    total_deductions_val = abs_ded_val + late_ded_val + adv_rec_val
+    # If generic deductions was set and larger, include difference as other deductions
+    recorded_deductions = float(payroll.deductions or 0)
+    other_ded_val = max(0.0, recorded_deductions - total_deductions_val)
+    if other_ded_val > 0:
+        total_deductions_val += other_ded_val
+
     salary_data = [
         [
             Paragraph("<b>SALARY COMPONENT &amp; DESCRIPTION</b>", h_style),
@@ -440,30 +467,77 @@ def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
         ],
         [
             Paragraph("Basic Monthly Salary", body_style),
-            Paragraph(f"₹ {float(payroll.basic_salary or 0):,.2f}", right_body),
+            Paragraph(f"₹ {basic_val:,.2f}", right_body),
             Paragraph("—", right_body),
-        ],
-        [
-            Paragraph(f"Overtime Pay ({float(payroll.overtime_hours or 0):.2f} hrs)", body_style),
-            Paragraph(f"₹ {float(payroll.overtime_pay or 0):,.2f}", right_body),
-            Paragraph("—", right_body),
-        ],
-        [
-            Paragraph("Unpaid Absences &amp; Late Penalty Deductions", body_style),
-            Paragraph("—", right_body),
-            Paragraph(f'<font color="#dc2626">₹ {float(payroll.deductions or 0):,.2f}</font>', right_body),
-        ],
-        [
-            Paragraph("<b>TOTALS</b>", bold_body),
-            Paragraph(f"<b>₹ {(float(payroll.basic_salary or 0) + float(payroll.overtime_pay or 0)):,.2f}</b>", right_bold),
-            Paragraph(f'<b><font color="#dc2626">₹ {float(payroll.deductions or 0):,.2f}</font></b>', right_bold),
-        ],
-        [
-            Paragraph(f"<b>NET SALARY DISBURSED</b><br/><font size='7' color='#64748b'>Payment Status: {'PAID' if payroll.is_paid else 'PENDING'}</font>", bold_body),
-            Paragraph(f'<font size="12" color="#059669"><b>₹ {float(payroll.final_salary or 0):,.2f}</b></font>', ParagraphStyle("N1", parent=right_bold, fontSize=12)),
-            Paragraph("", right_body),
         ],
     ]
+
+    if ot_pay_val > 0 or ot_hrs > 0:
+        rate_str = f" @ ₹{ot_rate_val:,.2f}/hr" if ot_rate_val > 0 else ""
+        salary_data.append([
+            Paragraph(f"Payable Overtime ({ot_hrs:.1f} hrs{rate_str})", body_style),
+            Paragraph(f"₹ {ot_pay_val:,.2f}", right_body),
+            Paragraph("—", right_body),
+        ])
+
+    if reimb_val > 0:
+        salary_data.append([
+            Paragraph("Approved Employee Reimbursements", body_style),
+            Paragraph(f"₹ {reimb_val:,.2f}", right_body),
+            Paragraph("—", right_body),
+        ])
+
+    if bonus_val > 0:
+        salary_data.append([
+            Paragraph("Incentives / Discretionary Bonus", body_style),
+            Paragraph(f"₹ {bonus_val:,.2f}", right_body),
+            Paragraph("—", right_body),
+        ])
+
+    if abs_ded_val > 0 or abs_days > 0:
+        rate_str = f" ({int(abs_days)} days @ ₹{abs_rate_val:,.2f}/day)" if abs_rate_val > 0 else f" ({int(abs_days)} days)"
+        salary_data.append([
+            Paragraph(f"Unpaid Absence Deduction{rate_str}", body_style),
+            Paragraph("—", right_body),
+            Paragraph(f'<font color="#dc2626">₹ {abs_ded_val:,.2f}</font>', right_body),
+        ])
+
+    if late_ded_val > 0 or late_entries > 0:
+        rate_str = f" ({late_entries} entries @ ₹{late_rate_val:,.2f}/entry)" if late_rate_val > 0 else f" ({late_entries} entries)"
+        salary_data.append([
+            Paragraph(f"Late Check-In Penalty{rate_str}", body_style),
+            Paragraph("—", right_body),
+            Paragraph(f'<font color="#dc2626">₹ {late_ded_val:,.2f}</font>', right_body),
+        ])
+
+    if adv_rec_val > 0:
+        salary_data.append([
+            Paragraph("Salary Advance Recovery", body_style),
+            Paragraph("—", right_body),
+            Paragraph(f'<font color="#dc2626">₹ {adv_rec_val:,.2f}</font>', right_body),
+        ])
+
+    if other_ded_val > 0:
+        salary_data.append([
+            Paragraph("Other Authorized Adjustments / Deductions", body_style),
+            Paragraph("—", right_body),
+            Paragraph(f'<font color="#dc2626">₹ {other_ded_val:,.2f}</font>', right_body),
+        ])
+
+    # Totals Row
+    salary_data.append([
+        Paragraph("<b>TOTALS</b>", bold_body),
+        Paragraph(f"<b>₹ {total_allowances:,.2f}</b>", right_bold),
+        Paragraph(f'<b><font color="#dc2626">₹ {total_deductions_val:,.2f}</font></b>', right_bold),
+    ])
+
+    # Net Salary Disbursed Row
+    final_net = float(payroll.final_salary or (total_allowances - total_deductions_val))
+    salary_data.append([
+        Paragraph(f"<b>NET SALARY DISBURSED</b><br/><font size='7' color='#64748b'>Payment Status: {'PAID' if payroll.is_paid else 'PENDING'}</font>", bold_body),
+        Paragraph(f'<font size="12" color="#059669"><b>₹ {final_net:,.2f}</b></font>', ParagraphStyle("N1", parent=right_bold, fontSize=12)),
+        Paragraph("", right_body),
+    ])
 
     t_sal = Table(salary_data, colWidths=[270, 135, 135])
     t_sal.setStyle(TableStyle([

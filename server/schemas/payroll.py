@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any, List, Dict
 from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, model_validator
-from typing import Optional, Any
 
 class PayrollBase(BaseModel):
     employee_id: int
@@ -14,11 +13,17 @@ class PayrollBase(BaseModel):
     late_days: Optional[int] = 0
     leave_days: int = 0
     overtime_hours: Decimal = Decimal("0.00")
-    overtime_days: Optional[Decimal] = Decimal("0.00")
-    overtime_type: Optional[str] = "per_hour"
+    payable_ot_hours: Optional[Decimal] = Decimal("0.00")
     basic_salary: Optional[Decimal] = None
-    overtime_pay: Decimal = Decimal("0.00")
+    absent_rate: Optional[Decimal] = Decimal("0.00")
+    absent_deduction: Optional[Decimal] = Decimal("0.00")
+    late_rate: Optional[Decimal] = Decimal("0.00")
     late_deduction: Optional[Decimal] = Decimal("0.00")
+    ot_rate: Optional[Decimal] = Decimal("0.00")
+    overtime_pay: Decimal = Decimal("0.00")
+    reimbursement_amount: Optional[Decimal] = Decimal("0.00")
+    advance_recovered: Optional[Decimal] = Decimal("0.00")
+    advance_balance_remaining: Optional[Decimal] = Decimal("0.00")
     deductions: Decimal = Decimal("0.00")
     bonus: Optional[Decimal] = Decimal("0.00")
     remarks: Optional[str] = None
@@ -29,41 +34,48 @@ class ManualPayrollSaveRequest(BaseModel):
     employee_id: int
     month: int
     year: int
-    working_days: int = 26
-    present_days: int = 0
-    absent_days: Optional[int] = 0
-    late_days: Optional[int] = 0
-    leave_days: Optional[int] = 0
-    overtime_hours: Decimal = Decimal("0.00")
-    overtime_days: Optional[Decimal] = Decimal("0.00")
-    overtime_type: Optional[str] = "per_hour"
-    basic_salary: Decimal = Decimal("0.00")
-    overtime_pay: Decimal = Decimal("0.00")
-    late_deduction: Decimal = Decimal("0.00")
-    deductions: Decimal = Decimal("0.00")
-    bonus: Optional[Decimal] = Decimal("0.00")
+    absent_rate: Decimal = Decimal("0.00")
+    late_rate: Decimal = Decimal("0.00")
+    ot_rate: Decimal = Decimal("0.00")
+    advance_recovery_choice: str = "none"  # "full" | "partial" | "none"
+    advance_recovery_amount: Decimal = Decimal("0.00")
+    bonus: Decimal = Decimal("0.00")
+    other_deductions: Decimal = Decimal("0.00")
     remarks: Optional[str] = None
-    final_salary: Decimal = Decimal("0.00")
-    is_paid: Optional[bool] = False
+    is_paid: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def populate_defaults_and_aliases(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            # Support total_working_days alias
-            if "working_days" not in data and "total_working_days" in data:
-                data["working_days"] = data["total_working_days"]
-            # Support net_salary alias
-            if "final_salary" not in data and "net_salary" in data:
-                data["final_salary"] = data["net_salary"]
-            # Compute absent_days if not provided
-            if "absent_days" not in data or data.get("absent_days") is None:
-                w = int(data.get("working_days", 26) or 26)
-                p = int(data.get("present_days", 0) or 0)
-                data["absent_days"] = max(0, w - p)
-            if "leave_days" not in data or data.get("leave_days") is None:
-                data["leave_days"] = 0
+            # Backward-compat with older payload formats
+            if "absent_rate" not in data:
+                data["absent_rate"] = Decimal("0.00")
+            if "late_rate" not in data:
+                data["late_rate"] = Decimal("0.00")
+            if "ot_rate" not in data:
+                data["ot_rate"] = Decimal("0.00")
+            if "advance_recovery_choice" not in data:
+                data["advance_recovery_choice"] = "none"
+            if "advance_recovery_amount" not in data:
+                data["advance_recovery_amount"] = Decimal("0.00")
+            if "bonus" not in data:
+                data["bonus"] = Decimal("0.00")
+            if "other_deductions" not in data:
+                data["other_deductions"] = Decimal("0.00")
         return data
+
+class PayrollCalculatePreviewRequest(BaseModel):
+    employee_id: int
+    month: int
+    year: int
+    absent_rate: Optional[Decimal] = Decimal("0.00")
+    late_rate: Optional[Decimal] = Decimal("0.00")
+    ot_rate: Optional[Decimal] = Decimal("0.00")
+    advance_recovery_choice: Optional[str] = "none"
+    advance_recovery_amount: Optional[Decimal] = Decimal("0.00")
+    bonus: Optional[Decimal] = Decimal("0.00")
+    other_deductions: Optional[Decimal] = Decimal("0.00")
 
 class PayrollCreate(PayrollBase):
     pass
@@ -74,8 +86,10 @@ class PayrollUpdate(BaseModel):
 class PayrollOut(PayrollBase):
     payroll_id: int
     generated_at: datetime
+    approved_at: Optional[datetime] = None
     employee_name: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None
+    calculation_snapshot: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

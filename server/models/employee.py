@@ -14,14 +14,15 @@ class Employee(Base):
     department = Column(String(100), nullable=True)
     designation = Column(String(100), nullable=True)
     salary = Column(Numeric(12, 2), nullable=False)
-    overtime_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Custom OT rate (e.g. 250/hr or 1500/day). If 0 or null, falls back to 1.5x formula
+    overtime_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Custom OT rate
     overtime_type = Column(String(30), nullable=True, default="per_hour")  # "per_hour" (default) or "per_day"
-    late_deduction_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Deduction amount per late instance/day (e.g. 300, 500)
-    late_deduction_type = Column(String(30), nullable=True, default="per_day")  # "per_day" (flat penalty) or "per_hour" (penalty per late hour)
+    late_deduction_rate = Column(Numeric(10, 2), nullable=True, default=0)  # Deduction amount per late instance/day
+    late_deduction_type = Column(String(30), nullable=True, default="per_day")
     fingerprint_id = Column(Integer, unique=True, nullable=True)  # ID stored in sensor (1-127)
     rfid_uid = Column(String(50), unique=True, nullable=True)  # RC522 RFID Card UID (e.g. 'A1 B2 C3 D4')
     joining_date = Column(Date, default=date.today)
     is_active = Column(Boolean, default=True)
+    is_billable = Column(Boolean, default=True, nullable=False)  # Billable vs Non-Billable employee classification
     hashed_password = Column(String, nullable=True)  # for web login
     plain_password = Column(String, nullable=True)  # for admin viewing
     role = Column(String(20), default="employee")  # "admin" | "employee"
@@ -36,3 +37,7 @@ class Employee(Base):
         cascade="all, delete-orphan"
     )
     payrolls = relationship("Payroll", back_populates="employee", cascade="all, delete-orphan")
+    advances = relationship("SalaryAdvance", back_populates="employee", cascade="all, delete-orphan")
+    reimbursements = relationship("Reimbursement", back_populates="employee", cascade="all, delete-orphan")
+    late_amendments = relationship("LateAmendment", back_populates="employee", cascade="all, delete-orphan")
+    leave_amendments = relationship("LeaveAmendment", back_populates="employee", cascade="all, delete-orphan")

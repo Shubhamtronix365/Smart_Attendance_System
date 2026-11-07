@@ -7,7 +7,10 @@ import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard,
   CalendarCheck,
+  Calendar,
   Clock,
+  Receipt,
+  CreditCard,
   DollarSign,
   User,
   LogOut,
@@ -19,7 +22,10 @@ import {
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, href: "/employee/dashboard" },
   { id: "attendance", label: "Attendance", icon: CalendarCheck, href: "/employee/attendance" },
+  { id: "holidays", label: "Holidays", icon: Calendar, href: "/employee/holidays" },
   { id: "leave", label: "Leave Requests", icon: Clock, href: "/employee/leave" },
+  { id: "reimbursements", label: "Reimbursements", icon: Receipt, href: "/employee/reimbursements" },
+  { id: "advances", label: "Salary Advances", icon: CreditCard, href: "/employee/advances" },
   { id: "payroll", label: "Payroll & Payslips", icon: DollarSign, href: "/employee/payroll" },
   { id: "profile", label: "My Profile", icon: User, href: "/employee/profile" },
 ];
@@ -63,6 +69,7 @@ export default function EmployeeSidebar() {
         />
       )}
 
+      {/* Sidebar Container */}
       <motion.aside
         animate={{ width: sidebarWidth }}
         transition={{ type: "spring", stiffness: 200, damping: 26 }}
@@ -75,7 +82,7 @@ export default function EmployeeSidebar() {
           backdropFilter: "blur(24px)",
         }}
       >
-        {/* Header / Logo */}
+        {/* Header */}
         <div
           className="flex items-center gap-3 px-4 h-16 shrink-0 relative"
           style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
@@ -104,7 +111,6 @@ export default function EmployeeSidebar() {
                   background: "linear-gradient(135deg, #00f5ff, #7c3aed)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
                 }}
               >
                 SmartAttend

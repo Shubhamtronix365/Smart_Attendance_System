@@ -20,6 +20,9 @@ out/
 .env.local
 .env.*.local
 
+# Uploads & Media
+uploads/
+
 # IDE
 .vscode/
 .idea/

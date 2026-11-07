@@ -12,6 +12,7 @@ class AttendanceStatus(str, enum.Enum):
     LEAVE = "leave"
     WFH = "wfh"
     HOLIDAY = "holiday"
+    WEEKLY_OFF = "weekly_off"
 
 class Attendance(Base):
     __tablename__ = "attendance"
@@ -36,3 +37,4 @@ class Attendance(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     employee = relationship("Employee", back_populates="attendances")
+    amendments = relationship("LateAmendment", back_populates="attendance", cascade="all, delete-orphan")

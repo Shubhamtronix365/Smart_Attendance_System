@@ -4,10 +4,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown, FileText, Loader2, Download,
-  ChevronRight, X, Printer, DollarSign, Check,
+  ChevronRight, X, Printer, DollarSign,
   ToggleLeft, ToggleRight, Zap, Calculator, Sliders,
-  AlertCircle, CheckCircle2, RefreshCw, Clock, ArrowRight,
-  TrendingUp, Calendar
+  AlertCircle, CheckCircle2, RefreshCw, Clock,
+  Calendar, ShieldCheck, CreditCard, Receipt
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -26,11 +26,19 @@ interface PayrollRow {
   avatar: string;
   basicSalary: number;
   presentDays: number;
+  absentDays: number;
+  absentDeduction: number;
   otHours: number;
   otPay: number;
+  lateDays: number;
+  lateDeduction: number;
+  reimbursementAmount: number;
+  advanceRecovered: number;
+  bonus: number;
   deductions: number;
   netSalary: number;
   status: "paid" | "unpaid";
+  calculationSnapshot?: any;
 }
 
 const MONTH_NAMES = [
@@ -49,13 +57,20 @@ for (let y = currentYear; y >= currentYear - 1; y--) {
 // ─── Payslip Modal ────────────────────────────────────────────────────────────
 function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string; onClose: () => void }) {
   const { success, error } = useToast();
-  const breakdown = [
-    { label:"Basic Salary",     value: row.basicSalary, type:"earning" },
-    { label:"OT Pay",           value: row.otPay,       type:"earning" },
-    { label:"PF Deduction",     value: Math.round(row.basicSalary * 0.06), type:"deduction" },
-    { label:"Professional Tax", value: 200,             type:"deduction" },
-    { label:"Other Deductions", value: row.deductions - Math.round(row.basicSalary * 0.06) - 200, type:"deduction" },
-  ];
+
+  const earnings = [
+    { label: "Basic Salary", value: row.basicSalary },
+    { label: "Payable Overtime", value: row.otPay },
+    { label: "Reimbursements", value: row.reimbursementAmount || 0 },
+    { label: "Bonus / Incentives", value: row.bonus || 0 },
+  ].filter(e => e.value > 0);
+
+  const deductions = [
+    { label: "Absent Days Deduction", value: row.absentDeduction || 0 },
+    { label: "Late Marks Penalty", value: row.lateDeduction || 0 },
+    { label: "Advance Salary Recovery", value: row.advanceRecovered || 0 },
+    { label: "Other Deductions", value: Math.max(0, row.deductions - (row.absentDeduction || 0) - (row.lateDeduction || 0) - (row.advanceRecovered || 0)) },
+  ].filter(d => d.value > 0);
 
   const handleDownload = async () => {
     try {
@@ -76,28 +91,30 @@ function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string;
 
   return (
     <motion.div
-      initial={{ opacity:0 }}
-      animate={{ opacity:1 }}
-      exit={{ opacity:0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background:"rgba(0,0,0,0.75)", backdropFilter:"blur(8px)" }}
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
-        initial={{ scale:0.95, opacity:0, y:20 }}
-        animate={{ scale:1, opacity:1, y:0 }}
-        exit={{ scale:0.95, opacity:0, y:20 }}
-        transition={{ type:"spring", stiffness:300, damping:28 }}
-        className="w-full max-w-md rounded-3xl overflow-hidden"
-        style={{ background:"rgba(10,15,30,0.99)", border:"1px solid rgba(255,255,255,0.1)", boxShadow:"0 32px 80px rgba(0,0,0,0.6)" }}
+        initial={{ scale: 0.95, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }}
+        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        className="w-full max-w-lg rounded-3xl overflow-hidden"
+        style={{ background: "rgba(10,15,30,0.99)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}
       >
         {/* Header */}
-        <div className="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between"
-          style={{ background:"linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))", borderBottom:"1px solid rgba(255,255,255,0.08)" }}>
+        <div
+          className="px-6 py-5 flex items-center justify-between"
+          style={{ background: "linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+        >
           <div>
-            <p className="text-cyan-400 text-xs font-semibold uppercase tracking-widest mb-1">Payslip</p>
-            <h3 className="text-white font-black text-lg sm:text-xl">{row.name}</h3>
-            <p className="text-white/40 text-xs">{row.empId} · {row.department} · {month}</p>
+            <p className="text-cyan-400 text-xs font-semibold uppercase tracking-widest mb-1">Official Payslip Statement</p>
+            <h3 className="text-white font-black text-xl">{row.name}</h3>
+            <p className="text-white/40 text-xs mt-0.5">{row.empId} · {row.department} · {month}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all">
             <X size={16} />
@@ -105,53 +122,79 @@ function PayslipModal({ row, month, onClose }: { row: PayrollRow; month: string;
         </div>
 
         {/* Breakdown */}
-        <div className="px-5 sm:px-7 py-4 sm:py-5">
-          <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-3">Earnings & Deductions</p>
-          <div className="flex flex-col gap-2 mb-5">
-            {breakdown.filter(b => b.value > 0).map((b) => (
-              <div key={b.label} className="flex items-center justify-between py-2"
-                style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
-                <span className="text-white/60 text-sm">{b.label}</span>
-                <span className="text-sm font-semibold" style={{ color: b.type === "earning" ? "#22c55e" : "#ef4444" }}>
-                  {b.type === "deduction" ? "− " : "+ "}₹{b.value.toLocaleString("en-IN")}
-                </span>
-              </div>
-            ))}
+        <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+          {/* Earnings */}
+          <div>
+            <p className="text-green-400/80 text-xs font-semibold uppercase tracking-wider mb-2">Earnings & Additions</p>
+            <div className="space-y-1.5 bg-white/[0.02] p-3 rounded-2xl border border-white/5">
+              {earnings.map((e) => (
+                <div key={e.label} className="flex items-center justify-between py-1 text-sm">
+                  <span className="text-white/70">{e.label}</span>
+                  <span className="font-semibold text-green-400">+₹{e.value.toLocaleString("en-IN")}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Attendance */}
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            {[
-              { label:"Present Days", value: `${row.presentDays} / 26` },
-              { label:"OT Hours",     value: `${row.otHours}h` },
-            ].map(({ label, value }) => (
-              <div key={label} className="p-3 rounded-xl text-center"
-                style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)" }}>
-                <p className="text-white font-bold text-lg">{value}</p>
-                <p className="text-white/40 text-xs">{label}</p>
-              </div>
-            ))}
+          {/* Deductions */}
+          <div>
+            <p className="text-red-400/80 text-xs font-semibold uppercase tracking-wider mb-2">Deductions & Recoveries</p>
+            <div className="space-y-1.5 bg-white/[0.02] p-3 rounded-2xl border border-white/5">
+              {deductions.length === 0 ? (
+                <p className="text-white/30 text-xs py-1">No deductions recorded.</p>
+              ) : (
+                deductions.map((d) => (
+                  <div key={d.label} className="flex items-center justify-between py-1 text-sm">
+                    <span className="text-white/70">{d.label}</span>
+                    <span className="font-semibold text-red-400">−₹{d.value.toLocaleString("en-IN")}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          {/* Net salary */}
-          <div className="p-4 rounded-2xl text-center"
-            style={{ background:"linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))", border:"1px solid rgba(0,245,255,0.15)" }}>
-            <p className="text-white/50 text-xs mb-1">Net Salary</p>
-            <p className="text-2xl sm:text-3xl font-black" style={{ color:"#00f5ff" }}>₹{row.netSalary.toLocaleString("en-IN")}</p>
+          {/* Attendance Stats Pill */}
+          <div className="grid grid-cols-3 gap-2 text-center pt-2">
+            <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+              <p className="text-white font-bold text-base">{row.presentDays}</p>
+              <p className="text-white/40 text-[10px] uppercase">Present Days</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+              <p className="text-white font-bold text-base">{row.absentDays || 0}</p>
+              <p className="text-white/40 text-[10px] uppercase">Absent Days</p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+              <p className="text-white font-bold text-base">{row.otHours}h</p>
+              <p className="text-white/40 text-[10px] uppercase">Payable OT</p>
+            </div>
+          </div>
+
+          {/* Net Salary Highlight */}
+          <div
+            className="p-4 rounded-2xl text-center"
+            style={{ background: "linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))", border: "1px solid rgba(0,245,255,0.2)" }}
+          >
+            <p className="text-white/50 text-xs mb-1">Net Disbursed Salary</p>
+            <p className="text-3xl font-black text-cyan-400 font-mono">₹{row.netSalary.toLocaleString("en-IN")}</p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex flex-col sm:flex-row gap-3 px-5 sm:px-7 pt-4 pb-5 sm:pb-6" style={{ borderTop:"1px solid rgba(255,255,255,0.06)" }}>
-          <button onClick={() => { success("Payslip sent to printer."); onClose(); }}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all">
-            <Printer size={14} />Print
+        <div className="flex gap-3 px-6 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={() => { success("Payslip sent to printer."); onClose(); }}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white border border-white/10 hover:bg-white/5 transition-all"
+          >
+            <Printer size={14} /> Print
           </button>
-          <motion.button whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
             onClick={handleDownload}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold text-black"
-            style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>
-            <Download size={14} />Download PDF
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-black"
+            style={{ background: "linear-gradient(135deg,#00f5ff,#7c3aed)" }}
+          >
+            <Download size={14} /> Download PDF
           </motion.button>
         </div>
       </motion.div>
@@ -181,33 +224,28 @@ function ManualPayrollModal({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form State
-  const [basicSalary, setBasicSalary] = useState<number>(50000);
-  const [workingDays, setWorkingDays] = useState<number>(26);
-  const [presentDays, setPresentDays] = useState<number>(24);
-  const [lateDays, setLateDays] = useState<number>(0);
-  const [lateHours, setLateHours] = useState<number>(0);
-  const [lateDeductionRate, setLateDeductionRate] = useState<number>(300);
-  const [lateDeductionType, setLateDeductionType] = useState<"per_day" | "per_hour">("per_day");
-  const [lateDeduction, setLateDeduction] = useState<number>(0);
-  const [otHours, setOtHours] = useState<number>(0);
-  const [otDays, setOtDays] = useState<number>(0);
-  const [otType, setOtType] = useState<"per_hour" | "per_day">("per_hour");
+  // Authoritative Loaded Backend Data
+  const [previewData, setPreviewData] = useState<any>(null);
+
+  // Editable Calculation Controls (Admin-configured rates & options)
+  const [absentRate, setAbsentRate] = useState<number>(0);
+  const [lateRate, setLateRate] = useState<number>(0);
   const [otRate, setOtRate] = useState<number>(0);
-  const [otPay, setOtPay] = useState<number>(0);
-  const [absentDeduction, setAbsentDeduction] = useState<number>(0);
-  const [otherDeductions, setOtherDeductions] = useState<number>(0);
+  const [advanceMode, setAdvanceMode] = useState<"none" | "full" | "partial">("none");
+  const [advanceAmount, setAdvanceAmount] = useState<number>(0);
   const [bonus, setBonus] = useState<number>(0);
+  const [otherDeductions, setOtherDeductions] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
   const [isPaid, setIsPaid] = useState<boolean>(false);
 
   // Fetch employees list for dropdown
   useEffect(() => {
-    employeesApi.list({ size: "100" })
+    employeesApi.list({ size: 100 })
       .then((res) => {
-        setEmployees(res.data || []);
-        if (!selectedEmpId && res.data && res.data.length > 0) {
-          setSelectedEmpId(res.data[0].employee_id);
+        const list = res.data || [];
+        setEmployees(list);
+        if (!selectedEmpId && list.length > 0) {
+          setSelectedEmpId(list[0].employee_id);
         }
       })
       .catch((err) => console.error("Error loading employees for calculator", err));
@@ -222,34 +260,25 @@ function ManualPayrollModal({
       const data = (res && typeof res === "object" && "data" in res && res.data) ? res.data : res;
       if (!data) return;
 
-      setBasicSalary(Number(data.basic_salary) || 0);
-      setWorkingDays(Number(data.working_days ?? data.total_working_days) || 26);
-      setPresentDays(Number(data.present_days) || 0);
-      setLateDays(Number(data.late_days) || 0);
-      const computedLateHours = data.late_hours != null
-        ? Number(data.late_hours)
-        : data.late_minutes_total
-          ? Number((data.late_minutes_total / 60).toFixed(1))
-          : 0;
-      setLateHours(computedLateHours);
-      setLateDeductionRate(Number(data.late_deduction_rate) || 0);
-      setLateDeductionType(data.late_deduction_type || "per_day");
-      setLateDeduction(Number(data.late_deduction ?? data.calculated_late_deduction) || 0);
-      const loadedOtHours = Number(data.overtime_hours) || 0;
-      setOtHours(loadedOtHours);
-      const loadedOtDays = data.overtime_days != null
-        ? Number(data.overtime_days)
-        : (loadedOtHours > 0 ? Math.max(1, Math.round((loadedOtHours / 8) * 10) / 10) : 0);
-      setOtDays(loadedOtDays);
-      setOtType(data.overtime_type === "per_day" ? "per_day" : "per_hour");
-      setOtRate(Number(data.overtime_rate) || 0);
-      setOtPay(Number(data.overtime_pay ?? data.calculated_ot_pay) || 0);
-      setAbsentDeduction(Number(data.absent_deduction ?? data.calculated_absent_deduction) || 0);
-      setBonus(Number(data.bonus ?? data.calculated_bonus) || 0);
+      setPreviewData(data);
+
+      // Initialize admin rates from employee configuration
+      setAbsentRate(Number(data.absent_rate) || 0);
+      setLateRate(Number(data.late_rate) || 0);
+      setOtRate(Number(data.ot_rate) || 0);
+      setBonus(Number(data.bonus) || 0);
       setOtherDeductions(0);
-      setRemarks(data.remarks || (data.is_saved || data.already_saved ? "Manual override calculation" : ""));
-      if (data.is_paid !== undefined) {
-        setIsPaid(Boolean(data.is_paid));
+      setRemarks(data.remarks || (data.already_saved ? "Authoritative calculation snapshot" : ""));
+      setIsPaid(Boolean(data.is_paid));
+
+      // Advance initialization
+      const outstanding = Number(data.advance_balance_outstanding) || 0;
+      if (outstanding > 0) {
+        setAdvanceMode("full");
+        setAdvanceAmount(outstanding);
+      } else {
+        setAdvanceMode("none");
+        setAdvanceAmount(0);
       }
     } catch (err: any) {
       console.error("Error loading payroll preview", err);
@@ -271,126 +300,70 @@ function ManualPayrollModal({
     }
   }, [selectedEmpId, month, year, loadPreview]);
 
-  // Overtime type change helper
-  const handleOtTypeChange = (newType: "per_hour" | "per_day") => {
-    setOtType(newType);
-    const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
-    const hourlyRate = dailyRate / 8;
-    let payment = 0;
-    if (newType === "per_day") {
-      const activeDays = otDays > 0 ? otDays : (otHours > 0 ? Math.max(1, Math.round((otHours / 8) * 10) / 10) : 1);
-      if (otDays === 0) setOtDays(activeDays);
-      if (otRate > 0) {
-        payment = Math.round(activeDays * otRate);
-      } else {
-        payment = Math.round(activeDays * dailyRate * 1.5);
-      }
-    } else {
-      if (otRate > 0) {
-        payment = Math.round(otHours * otRate);
-      } else {
-        payment = Math.round(otHours * hourlyRate * 1.5);
-      }
-    }
-    setOtPay(payment);
-  };
+  // Derived calculations matching strict backend formulas
+  const basicSalary = previewData ? Number(previewData.basic_salary) || 0 : 0;
+  const absentDays = previewData ? Number(previewData.absent_days) || 0 : 0;
+  const totalAbsentDeduction = Math.round(absentDays * absentRate);
 
-  // Recalculate helper
-  const handleRecalculate = () => {
-    const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
-    const absDays = Math.max(0, workingDays - presentDays);
-    const absDed = Math.round(absDays * dailyRate);
-    setAbsentDeduction(absDed);
+  const applicableLate = previewData ? Number(previewData.applicable_late_entries) || 0 : 0;
+  const totalLateDeduction = Math.round(applicableLate * lateRate);
 
-    let lateDed = 0;
-    if (lateDeductionType === "per_hour") {
-      lateDed = Math.round(lateHours * lateDeductionRate);
-    } else {
-      lateDed = Math.round(lateDays * lateDeductionRate);
-    }
-    setLateDeduction(lateDed);
+  const payableOtHours = previewData ? Number(previewData.payable_ot_hours) || 0 : 0;
+  const totalOtPay = Math.round(payableOtHours * otRate);
 
-    let overtimePayment = 0;
-    if (otType === "per_day") {
-      const activeDays = otDays > 0 ? otDays : (otHours > 0 ? Math.max(1, Math.round((otHours / 8) * 10) / 10) : 1);
-      if (otRate > 0) {
-        overtimePayment = Math.round(activeDays * otRate);
-      } else {
-        overtimePayment = Math.round(activeDays * dailyRate * 1.5);
-      }
-    } else {
-      if (otRate > 0) {
-        overtimePayment = Math.round(otHours * otRate);
-      } else {
-        overtimePayment = Math.round(otHours * (dailyRate / 8) * 1.5);
-      }
-    }
-    setOtPay(overtimePayment);
-    success("Recalculated values from inputs!");
-  };
+  const approvedReimbursements = previewData ? Number(previewData.total_approved_reimbursements) || 0 : 0;
+  const advanceOutstanding = previewData ? Number(previewData.advance_balance_outstanding) || 0 : 0;
 
-  const totalDeductions = Math.round(absentDeduction + lateDeduction + otherDeductions);
-  const netSalary = Math.max(0, Math.round(basicSalary - totalDeductions + otPay + bonus));
+  let advanceRecovery = 0;
+  if (advanceMode === "full") {
+    advanceRecovery = advanceOutstanding;
+  } else if (advanceMode === "partial") {
+    advanceRecovery = Math.min(advanceOutstanding, Math.max(0, advanceAmount));
+  } else {
+    advanceRecovery = 0;
+  }
+  const remainingAdvance = Math.max(0, advanceOutstanding - advanceRecovery);
+
+  const totalAdditions = basicSalary + totalOtPay + approvedReimbursements + bonus;
+  const totalDeductions = totalAbsentDeduction + totalLateDeduction + advanceRecovery + otherDeductions;
+  const finalSalary = Math.max(0, totalAdditions - totalDeductions);
 
   const handleSave = async () => {
     if (!selectedEmpId) {
       error("Please select an employee.");
-  
+      return;
     }
     setIsSaving(true);
     try {
-      const absDays = Math.max(0, workingDays - presentDays);
       await payrollApi.saveManualPayroll({
         employee_id: selectedEmpId,
         month,
         year,
-        basic_salary: basicSalary,
-        working_days: workingDays,
-        total_working_days: workingDays,
-        present_days: presentDays,
-        absent_days: absDays,
-        leave_days: 0,
-        late_days: lateDays,
-        overtime_hours: otHours,
-        overtime_days: otDays,
-        overtime_type: otType,
-        overtime_pay: otPay,
-        late_deduction: lateDeduction,
-        deductions: totalDeductions,
+        absent_rate: absentRate,
+        late_rate: lateRate,
+        ot_rate: otRate,
+        advance_recovery_mode: advanceMode,
+        advance_recovery_amount: advanceRecovery,
         bonus,
-        final_salary: netSalary,
-        net_salary: netSalary,
+        other_deductions: otherDeductions,
         remarks,
         is_paid: isPaid,
       });
-      success("Manual payroll calculation saved successfully!");
+      success("Authoritative payroll record finalized and saved!");
       onSaved();
       onClose();
     } catch (err: any) {
       console.error("Error saving manual payroll", err);
       const detail = err.response?.data?.detail;
-      const errorMsg = typeof detail === "string" 
-        ? detail 
+      const errorMsg = typeof detail === "string"
+        ? detail
         : Array.isArray(detail)
           ? detail.map((d: any) => d.msg || JSON.stringify(d)).join(", ")
-          : "Failed to save payroll.";
+          : "Failed to finalize payroll.";
       error(errorMsg);
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const isBackdropClickRef = useRef(false);
-
-  const handleOverlayMouseDown = (e: React.MouseEvent) => {
-    isBackdropClickRef.current = (e.target === e.currentTarget);
-  };
-
-  const handleOverlayMouseUp = (e: React.MouseEvent) => {
-    if (isBackdropClickRef.current && e.target === e.currentTarget) {
-      onClose();
-    }
-    isBackdropClickRef.current = false;
   };
 
   return (
@@ -398,37 +371,35 @@ function ManualPayrollModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto"
-      style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}
-      onMouseDown={handleOverlayMouseDown}
-      onMouseUp={handleOverlayMouseUp}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+      style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        className="relative w-full max-w-3xl my-4 sm:my-8 rounded-2xl sm:rounded-3xl overflow-hidden"
+        className="relative w-full max-w-4xl my-4 rounded-3xl overflow-hidden"
         style={{
-          background: "rgba(10,15,30,0.98)",
+          background: "rgba(10,15,30,0.99)",
           border: "1px solid rgba(0,245,255,0.25)",
-          boxShadow: "0 32px 90px rgba(0,0,0,0.8)",
+          boxShadow: "0 32px 90px rgba(0,0,0,0.85)",
         }}
         onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Loading overlay when preview is loading */}
         {isLoadingPreview && (
-          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm">
-            <Loader2 size={36} className="animate-spin text-cyan-400 mb-3" />
-            <p className="text-white text-sm font-semibold">Loading employee calculation details...</p>
-            <p className="text-white/40 text-xs mt-1">Please wait while data is retrieved</p>
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm">
+            <Loader2 size={38} className="animate-spin text-cyan-400 mb-3" />
+            <p className="text-white text-sm font-semibold">Retrieving authoritative database records...</p>
+            <p className="text-white/40 text-xs mt-1">Fetching monthly attendance, overtime, advances and reimbursements</p>
           </div>
         )}
 
         {/* Header */}
         <div
-          className="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between"
+          className="px-6 py-5 flex items-center justify-between"
           style={{
             background: "linear-gradient(135deg, rgba(0,245,255,0.12), rgba(124,58,237,0.12))",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -436,20 +407,20 @@ function ManualPayrollModal({
         >
           <div className="flex items-center gap-3">
             <div
-              className="w-9 sm:w-10 h-9 sm:h-10 rounded-2xl flex items-center justify-center text-cyan-400 shrink-0"
-              style={{ background: "rgba(0,245,255,0.1)", border: "1px solid rgba(0,245,255,0.2)" }}
+              className="w-10 h-10 rounded-2xl flex items-center justify-center text-cyan-400 shrink-0"
+              style={{ background: "rgba(0,245,255,0.1)", border: "1px solid rgba(0,245,255,0.25)" }}
             >
-              <Calculator size={18} />
+              <Calculator size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-white font-black text-lg sm:text-xl">Manual Payroll Calculator</h3>
-                <span className="hidden sm:inline-block text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                  Individual Override
+                <h3 className="text-white font-black text-xl">Authoritative Payroll Calculator</h3>
+                <span className="text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                  Direct DB Integration
                 </span>
               </div>
-              <p className="text-white/40 text-[11px] sm:text-xs mt-0.5">
-                Set custom late deductions (₹300/₹500), overtime rates & 1-hour lunch break policy
+              <p className="text-white/40 text-xs mt-0.5">
+                Exact deductions, daily floored overtime (&gt;1h threshold), advance recovery & reimbursements
               </p>
             </div>
           </div>
@@ -462,16 +433,9 @@ function ManualPayrollModal({
           </button>
         </div>
 
-        {/* Content */}
-        <div
-          className="p-4 sm:p-7 max-h-[75vh] overflow-y-auto space-y-4 sm:space-y-6"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-            }
-          }}
-        >
-          {/* Employee & Period Selector Row */}
+        {/* Body Content */}
+        <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5">
+          {/* Controls: Employee & Period Select */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1.5 block">
@@ -484,7 +448,7 @@ function ManualPayrollModal({
               >
                 {employees.map((emp) => (
                   <option key={emp.employee_id} value={emp.employee_id} className="bg-[#0a0f1e]">
-                    {emp.name} (EMP{String(emp.employee_id).padStart(3, "0")})
+                    {emp.name} ({emp.employee_code || `EMP${String(emp.employee_id).padStart(3, "0")}`})
                   </option>
                 ))}
               </select>
@@ -523,250 +487,212 @@ function ManualPayrollModal({
             </div>
           </div>
 
-          {/* Policy Information Pill */}
-          <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-300">
-            <Clock size={15} className="text-cyan-400 shrink-0" />
-            <span>
-              <strong>Shift Policy:</strong> 9:00 AM – 5:00 PM standard shift. Login after 9:00 AM logs exact late minutes. Shifts include a mandatory <strong>1-hour free lunch break</strong> deducted from worked duration.
-            </span>
-          </div>
+          {/* Database Attendance Snapshot Pill */}
+          {previewData && (
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                <p className="text-white/40 text-[10px] uppercase font-semibold">Base Salary</p>
+                <p className="text-white font-bold text-sm mt-0.5">₹{basicSalary.toLocaleString("en-IN")}</p>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                <p className="text-white/40 text-[10px] uppercase font-semibold">Working Days</p>
+                <p className="text-white font-bold text-sm mt-0.5">{previewData.working_days}d</p>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                <p className="text-white/40 text-[10px] uppercase font-semibold">Present Days</p>
+                <p className="text-green-400 font-bold text-sm mt-0.5">{previewData.present_days}d</p>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                <p className="text-white/40 text-[10px] uppercase font-semibold">Absent Days</p>
+                <p className="text-red-400 font-bold text-sm mt-0.5">{absentDays}d</p>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                <p className="text-white/40 text-[10px] uppercase font-semibold">Payable OT</p>
+                <p className="text-purple-400 font-bold text-sm mt-0.5">{payableOtHours}h</p>
+              </div>
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
+                <p className="text-white/40 text-[10px] uppercase font-semibold">Late Entries</p>
+                <p className="text-amber-400 font-bold text-sm mt-0.5">{applicableLate}</p>
+              </div>
+            </div>
+          )}
 
           {/* Form Sections Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Section 1: Base & Attendance */}
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3.5">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <DollarSign size={15} className="text-cyan-400" />
-                Base Salary & Attendance Days
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Basic Salary (₹)</label>
-                  <input
-                    type="number"
-                    value={basicSalary || 0}
-                    onChange={(e) => setBasicSalary(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Working Days</label>
-                  <input
-                    type="number"
-                    value={workingDays || 0}
-                    onChange={(e) => setWorkingDays(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Present Days</label>
-                  <input
-                    type="number"
-                    value={presentDays || 0}
-                    onChange={(e) => setPresentDays(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Absent Deduction (₹)</label>
-                  <input
-                    type="number"
-                    value={absentDeduction || 0}
-                    onChange={(e) => setAbsentDeduction(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Custom Late Penalty */}
-            <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-3.5">
+            {/* Section 1: Simple Absent Day Deduction (Phase 7) */}
+            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-amber-300 flex items-center gap-2">
-                  <AlertCircle size={15} className="text-amber-400" />
-                  Custom Late Penalty Handling
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <DollarSign size={15} className="text-red-400" />
+                  Absent Days Deduction
                 </h4>
-                <span className="text-[10px] text-amber-400/80 font-mono">Past 9:00 AM</span>
+                <span className="text-[10px] font-mono text-white/40">Direct Rate × Days</span>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <p className="text-white/40 text-xs">
+                Formula: {absentDays} absent day{absentDays !== 1 ? "s" : ""} × ₹{absentRate} = <span className="text-red-400 font-semibold">₹{totalAbsentDeduction.toLocaleString("en-IN")}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Penalty Rate (₹)</label>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Deduction Per Absent Day (₹)</label>
                   <input
                     type="number"
-                    placeholder="e.g. 300 or 500"
-                    value={lateDeductionRate || 0}
-                    onChange={(e) => setLateDeductionRate(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-3 py-2 text-sm text-amber-300 bg-white/[0.04] border border-amber-500/30 rounded-xl outline-none focus:border-amber-400 font-mono"
+                    value={absentRate}
+                    onChange={(e) => setAbsentRate(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Deduction Mode</label>
-                  <select
-                    value={lateDeductionType}
-                    onChange={(e) => setLateDeductionType(e.target.value as "per_day" | "per_hour")}
-                    className="w-full px-3 py-2 text-sm text-white bg-white/[0.04] border border-amber-500/30 rounded-xl outline-none focus:border-amber-400"
-                  >
-                    <option value="per_day" className="bg-[#0a0f1e]">Per Day Late</option>
-                    <option value="per_hour" className="bg-[#0a0f1e]">Per Hour Late</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2.5">
-                <div>
-                  <label className="text-white/40 text-[10px] font-medium mb-1 block">Late Days</label>
-                  <input
-                    type="number"
-                    value={lateDays || 0}
-                    onChange={(e) => setLateDays(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs text-white bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[10px] font-medium mb-1 block">Late Hours</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={lateHours || 0}
-                    onChange={(e) => setLateHours(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs text-white bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[10px] font-medium mb-1 block">Late Deduction (₹)</label>
-                  <input
-                    type="number"
-                    value={lateDeduction || 0}
-                    onChange={(e) => setLateDeduction(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs text-amber-300 font-bold bg-white/[0.04] border border-amber-500/40 rounded-lg outline-none font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 3: Overtime Payment */}
-            <div className="p-5 rounded-2xl bg-purple-500/5 border border-purple-500/20 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-purple-300 flex items-center gap-2">
-                  <TrendingUp size={15} className="text-purple-400" />
-                  Overtime Calculation
-                </h4>
-                <span className="text-[10px] text-purple-400/80 font-mono">&gt; 7h Net Shift</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">
-                    {otType === "per_day" ? "OT Rate (₹/day)" : "OT Rate (₹/h)"}
-                  </label>
-                  <input
-                    type="number"
-                    placeholder={otType === "per_day" ? "0 for 1.5x Daily" : "0 for 1.5x Hourly"}
-                    value={otRate || 0}
-                    onChange={(e) => {
-                      const val = e.target.value === "" ? 0 : Number(e.target.value);
-                      setOtRate(val);
-                      const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
-                      const hourlyRate = dailyRate / 8;
-                      if (otType === "per_day") {
-                        const activeDays = otDays > 0 ? otDays : (otHours > 0 ? Math.max(1, Math.round((otHours / 8) * 10) / 10) : 1);
-                        setOtPay(Math.round(activeDays * (val > 0 ? val : dailyRate * 1.5)));
-                      } else {
-                        setOtPay(Math.round(otHours * (val > 0 ? val : hourlyRate * 1.5)));
-                      }
-                    }}
-                    className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Calculation Mode</label>
-                  <div className="grid grid-cols-2 gap-1 p-0.5 bg-white/[0.04] border border-purple-500/30 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => handleOtTypeChange("per_hour")}
-                      className={`py-1.5 px-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
-                        otType === "per_hour"
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "text-white/50 hover:text-white hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      As Per Hr
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOtTypeChange("per_day")}
-                      className={`py-1.5 px-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1 ${
-                        otType === "per_day"
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "text-white/50 hover:text-white hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      As Per Day
-                    </button>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Total Absent Deduction</label>
+                  <div className="w-full px-3 py-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl font-mono font-bold">
+                    −₹{totalAbsentDeduction.toLocaleString("en-IN")}
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2.5">
+            </div>
+
+            {/* Section 2: Late Mark Deduction (Phase 8) */}
+            <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                  <AlertCircle size={15} className="text-amber-400" />
+                  Late Marks Deduction
+                </h4>
+                <span className="text-[10px] font-mono text-amber-400/80">Applicable: {applicableLate}</span>
+              </div>
+              <p className="text-white/40 text-xs">
+                Formula: {applicableLate} applicable late{applicableLate !== 1 ? "s" : ""} × ₹{lateRate} = <span className="text-amber-300 font-semibold">₹{totalLateDeduction.toLocaleString("en-IN")}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-white/40 text-[10px] font-medium mb-1 block">OT Hours</label>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Rate Per Late Entry (₹)</label>
                   <input
                     type="number"
-                    step="0.1"
-                    value={otHours || 0}
-                    onChange={(e) => {
-                      const val = e.target.value === "" ? 0 : Number(e.target.value);
-                      setOtHours(val);
-                      if (otType === "per_hour") {
-                        const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
-                        const hourlyRate = dailyRate / 8;
-                        setOtPay(Math.round(val * (otRate > 0 ? otRate : hourlyRate * 1.5)));
-                      }
-                    }}
-                    className="w-full px-2.5 py-1.5 text-xs text-purple-300 bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
+                    value={lateRate}
+                    onChange={(e) => setLateRate(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 text-sm text-amber-300 bg-white/[0.04] border border-amber-500/30 rounded-xl outline-none focus:border-amber-400 font-mono font-bold"
                   />
                 </div>
                 <div>
-                  <label className="text-white/40 text-[10px] font-medium mb-1 block">OT Days</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={otDays || 0}
-                    onChange={(e) => {
-                      const val = e.target.value === "" ? 0 : Number(e.target.value);
-                      setOtDays(val);
-                      if (otType === "per_day") {
-                        const dailyRate = workingDays > 0 ? basicSalary / workingDays : 0;
-                        setOtPay(Math.round(val * (otRate > 0 ? otRate : dailyRate * 1.5)));
-                      }
-                    }}
-                    className="w-full px-2.5 py-1.5 text-xs text-purple-300 bg-white/[0.04] border border-white/10 rounded-lg outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/40 text-[10px] font-medium mb-1 block">OT Pay (₹)</label>
-                  <input
-                    type="number"
-                    value={otPay || 0}
-                    onChange={(e) => setOtPay(e.target.value === "" ? 0 : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-xs text-green-400 font-bold bg-white/[0.04] border border-purple-500/40 rounded-lg outline-none font-mono"
-                  />
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Total Late Penalty</label>
+                  <div className="w-full px-3 py-2 text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl font-mono font-bold">
+                    −₹{totalLateDeduction.toLocaleString("en-IN")}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Section 4: Adjustments & Remarks */}
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3.5">
+            {/* Section 3: Overtime Rules (>1hr threshold, floored, 0 on Sunday) (Phase 9) */}
+            <div className="p-5 rounded-2xl bg-purple-500/5 border border-purple-500/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-purple-300 flex items-center gap-2">
+                  <Clock size={15} className="text-purple-400" />
+                  Payable Overtime Hours
+                </h4>
+                <span className="text-[10px] font-mono text-purple-400/80">&gt; 1h Floor Rule</span>
+              </div>
+              <p className="text-white/40 text-xs">
+                Formula: {payableOtHours} payable hr{payableOtHours !== 1 ? "s" : ""} × ₹{otRate}/hr = <span className="text-green-400 font-semibold">+₹{totalOtPay.toLocaleString("en-IN")}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">OT Rate Per Hour (₹)</label>
+                  <input
+                    type="number"
+                    value={otRate}
+                    onChange={(e) => setOtRate(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Total Overtime Pay</label>
+                  <div className="w-full px-3 py-2 text-sm text-green-400 bg-green-500/10 border border-green-500/20 rounded-xl font-mono font-bold">
+                    +₹{totalOtPay.toLocaleString("en-IN")}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Advance Salary Recovery (Phase 10) */}
+            <div className="p-5 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
+                  <CreditCard size={15} className="text-cyan-400" />
+                  Salary Advance Recovery
+                </h4>
+                <span className="text-[10px] font-mono text-cyan-400/80">Outstanding: ₹{advanceOutstanding.toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                {(["none", "partial", "full"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setAdvanceMode(mode);
+                      if (mode === "full") setAdvanceAmount(advanceOutstanding);
+                      if (mode === "none") setAdvanceAmount(0);
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-xl border transition-all uppercase ${
+                      advanceMode === mode
+                        ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                        : "border-white/10 text-white/50 hover:text-white"
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              {advanceMode === "partial" && (
+                <div className="pt-1">
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Partial Recovery Amount (₹)</label>
+                  <input
+                    type="number"
+                    max={advanceOutstanding}
+                    value={advanceAmount}
+                    onChange={(e) => setAdvanceAmount(Math.min(advanceOutstanding, Math.max(0, Number(e.target.value) || 0)))}
+                    className="w-full px-3 py-2 text-sm text-cyan-300 bg-white/[0.04] border border-cyan-500/30 rounded-xl outline-none focus:border-cyan-400 font-mono font-bold"
+                  />
+                </div>
+              )}
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
+                <span className="text-white/40">Deduction: <strong className="text-red-400">−₹{advanceRecovery.toLocaleString("en-IN")}</strong></span>
+                <span className="text-white/40">Remaining: <strong className="text-cyan-300">₹{remainingAdvance.toLocaleString("en-IN")}</strong></span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Reimbursements & Bonus / Adjustments */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Approved Reimbursements (Phase 11) */}
+            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Receipt size={15} className="text-green-400" />
+                  Approved Reimbursements
+                </h4>
+                <span className="text-[10px] font-mono text-green-400/80">Auto-Disbursed</span>
+              </div>
+              <p className="text-white/40 text-xs">
+                Total approved claims for this employee eligible for payment in this payroll run:
+              </p>
+              <div className="w-full px-3 py-2.5 text-base text-green-400 bg-green-500/10 border border-green-500/20 rounded-xl font-mono font-bold flex items-center justify-between">
+                <span>Approved Claims Total:</span>
+                <span>+₹{approvedReimbursements.toLocaleString("en-IN")}</span>
+              </div>
+            </div>
+
+            {/* Adjustments & Remarks */}
+            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
               <h4 className="text-sm font-bold text-white flex items-center gap-2">
                 <Sliders size={15} className="text-cyan-400" />
-                Bonus, Deductions & Audit Notes
+                Bonus, Extra Deductions & Notes
               </h4>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Bonus (+) (₹)</label>
                   <input
                     type="number"
-                    value={bonus || 0}
-                    onChange={(e) => setBonus(e.target.value === "" ? 0 : Number(e.target.value))}
+                    value={bonus}
+                    onChange={(e) => setBonus(Math.max(0, Number(e.target.value) || 0))}
                     className="w-full px-3 py-2 text-sm text-green-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-green-400 font-mono"
                   />
                 </div>
@@ -774,17 +700,17 @@ function ManualPayrollModal({
                   <label className="text-white/40 text-[11px] font-medium mb-1 block">Other Deductions (-) (₹)</label>
                   <input
                     type="number"
-                    value={otherDeductions || 0}
-                    onChange={(e) => setOtherDeductions(e.target.value === "" ? 0 : Number(e.target.value))}
+                    value={otherDeductions}
+                    onChange={(e) => setOtherDeductions(Math.max(0, Number(e.target.value) || 0))}
                     className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono"
                   />
                 </div>
               </div>
               <div>
-                <label className="text-white/40 text-[11px] font-medium mb-1 block">Admin Remarks / Notes</label>
+                <label className="text-white/40 text-[11px] font-medium mb-1 block">Audit Remarks</label>
                 <input
                   type="text"
-                  placeholder="e.g. Deducted ₹300 late fee for 3 days; added festive incentive"
+                  placeholder="e.g. Authoritative payroll finalized with verified attendance"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   className="w-full px-3 py-2 text-xs text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400"
@@ -793,34 +719,80 @@ function ManualPayrollModal({
             </div>
           </div>
 
-          {/* Dynamic Net Salary Preview Card */}
+          {/* Daily Overtime Detail Table (If OT exists) */}
+          {previewData?.daily_overtime_records && previewData.daily_overtime_records.length > 0 && (
+            <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+              <h5 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Clock size={13} /> Daily Overtime Records Breakdown (&gt; 1h Shift Excess)
+              </h5>
+              <div className="overflow-x-auto max-h-36 overflow-y-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="text-white/30 border-b border-white/5">
+                      <th className="py-1.5 px-2">Date</th>
+                      <th className="py-1.5 px-2">Day</th>
+                      <th className="py-1.5 px-2">Total Hours Worked</th>
+                      <th className="py-1.5 px-2">Excess Minutes</th>
+                      <th className="py-1.5 px-2 text-right">Payable Hours (Floored)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewData.daily_overtime_records.map((r: any, idx: number) => (
+                      <tr key={idx} className="border-b border-white/[0.02] text-white/70">
+                        <td className="py-1 px-2 font-mono">{r.date}</td>
+                        <td className="py-1 px-2">{r.is_sunday ? <span className="text-amber-400 font-semibold">Sunday (Record-only: 0 OT)</span> : "Shift Day"}</td>
+                        <td className="py-1 px-2 font-mono">{r.actual_hours}h</td>
+                        <td className="py-1 px-2 font-mono">{r.excess_minutes} min</td>
+                        <td className="py-1 px-2 text-right font-mono text-purple-400 font-bold">
+                          {r.payable_ot_hours}h
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Final Payable Calculation Breakdown Card */}
           <div
             className="p-6 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-6"
             style={{
               background: "linear-gradient(135deg, rgba(0,245,255,0.06), rgba(124,58,237,0.06))",
-              borderColor: "rgba(0,245,255,0.2)",
+              borderColor: "rgba(0,245,255,0.25)",
             }}
           >
-            <div className="space-y-1.5 text-center md:text-left">
-              <span className="text-white/40 text-xs font-semibold uppercase tracking-wider">
-                Live Calculation Breakdown
+            <div className="space-y-2 text-center md:text-left">
+              <span className="text-white/50 text-xs font-semibold uppercase tracking-wider block">
+                Authoritative Calculation Breakdown
               </span>
               <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-                <span className="px-2 py-0.5 rounded bg-white/5 text-white/70">Base: ₹{basicSalary.toLocaleString("en-IN")}</span>
-                <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400">+OT: ₹{otPay.toLocaleString("en-IN")} ({otType === "per_day" ? `${otDays}d` : `${otHours}h`})</span>
-                <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400">+Bonus: ₹{bonus.toLocaleString("en-IN")}</span>
-                <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400">-Absent: ₹{absentDeduction.toLocaleString("en-IN")}</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300">-Late: ₹{lateDeduction.toLocaleString("en-IN")}</span>
+                <span className="px-2 py-1 rounded bg-white/5 text-white/70">Base: ₹{basicSalary.toLocaleString("en-IN")}</span>
+                <span className="px-2 py-1 rounded bg-green-500/10 text-green-400">+OT: ₹{totalOtPay.toLocaleString("en-IN")} ({payableOtHours}h)</span>
+                {approvedReimbursements > 0 && (
+                  <span className="px-2 py-1 rounded bg-green-500/10 text-green-400">+Claims: ₹{approvedReimbursements.toLocaleString("en-IN")}</span>
+                )}
+                {bonus > 0 && (
+                  <span className="px-2 py-1 rounded bg-green-500/10 text-green-400">+Bonus: ₹{bonus.toLocaleString("en-IN")}</span>
+                )}
+                <span className="px-2 py-1 rounded bg-red-500/10 text-red-400">−Absent: ₹{totalAbsentDeduction.toLocaleString("en-IN")} ({absentDays}d)</span>
+                <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-300">−Late: ₹{totalLateDeduction.toLocaleString("en-IN")} ({applicableLate})</span>
+                {advanceRecovery > 0 && (
+                  <span className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-300">−Advance: ₹{advanceRecovery.toLocaleString("en-IN")}</span>
+                )}
                 {otherDeductions > 0 && (
-                  <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-400">-Other: ₹{otherDeductions.toLocaleString("en-IN")}</span>
+                  <span className="px-2 py-1 rounded bg-red-500/10 text-red-400">−Other: ₹{otherDeductions.toLocaleString("en-IN")}</span>
                 )}
               </div>
+              <p className="text-white/40 text-[11px]">
+                Total Additions: ₹{totalAdditions.toLocaleString("en-IN")} | Total Deductions: ₹{totalDeductions.toLocaleString("en-IN")}
+              </p>
             </div>
 
             <div className="text-center md:text-right shrink-0">
-              <p className="text-white/50 text-xs mb-0.5">Calculated Net Salary</p>
-              <p className="text-3xl font-black font-mono" style={{ color: "#00f5ff" }}>
-                ₹{netSalary.toLocaleString("en-IN")}
+              <p className="text-white/50 text-xs mb-0.5">Final Payable Salary</p>
+              <p className="text-3xl font-black font-mono text-cyan-400">
+                ₹{finalSalary.toLocaleString("en-IN")}
               </p>
             </div>
           </div>
@@ -828,33 +800,33 @@ function ManualPayrollModal({
 
         {/* Modal Footer */}
         <div
-          className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-5 sm:px-7 py-4 sm:py-5"
+          className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-6 py-4"
           style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
         >
-          <div className="flex items-center justify-between sm:justify-start gap-2">
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={handleRecalculate}
+              onClick={() => selectedEmpId && loadPreview(selectedEmpId, month, year)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all"
             >
-              <RefreshCw size={13} /> Recalculate
+              <RefreshCw size={13} /> Refresh From DB
             </button>
-            <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer ml-3">
+            <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer">
               <input
                 type="checkbox"
                 checked={isPaid}
                 onChange={(e) => setIsPaid(e.target.checked)}
                 className="rounded accent-cyan-400"
               />
-              Mark as Paid
+              Mark Disbursed as Paid
             </label>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
+          <div className="flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 sm:flex-none px-4 sm:px-5 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all text-center"
+              className="px-5 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all"
             >
               Cancel
             </button>
@@ -864,16 +836,16 @@ function ManualPayrollModal({
               whileTap={{ scale: 0.98 }}
               onClick={handleSave}
               disabled={isSaving}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-50 whitespace-nowrap"
+              className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-50"
               style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
             >
               {isSaving ? (
                 <>
-                  <Loader2 size={16} className="animate-spin" /> Saving...
+                  <Loader2 size={16} className="animate-spin" /> Finalizing...
                 </>
               ) : (
                 <>
-                  <CheckCircle2 size={16} /> Save & Finalize Payroll
+                  <CheckCircle2 size={16} /> Finalize & Save Payroll
                 </>
               )}
             </motion.button>
@@ -884,10 +856,18 @@ function ManualPayrollModal({
   );
 }
 
-// ─── Expandable Payroll Row ───────────────────────────────────────────────────
-function PayrollRowComponent({ row, index, onPreview, onMarkPaid, onAdjust }: {
-  row: PayrollRow; index: number;
-  onPreview: () => void; onMarkPaid: (id: string) => void;
+// ─── Expandable Payroll Row Component ─────────────────────────────────────────
+function PayrollRowComponent({
+  row,
+  index,
+  onPreview,
+  onMarkPaid,
+  onAdjust,
+}: {
+  row: PayrollRow;
+  index: number;
+  onPreview: () => void;
+  onMarkPaid: (id: string) => void;
   onAdjust: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -895,18 +875,26 @@ function PayrollRowComponent({ row, index, onPreview, onMarkPaid, onAdjust }: {
   return (
     <>
       <motion.tr
-        initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.04 }}
         className="hover:bg-white/[0.02] transition-colors cursor-pointer group"
-        style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}
-        onClick={() => setExpanded(e => !e)}
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+        onClick={() => setExpanded((e) => !e)}
       >
         <td className="px-4 py-4">
           <div className="flex items-center gap-3">
-            <ChevronRight size={14} className="text-white/20 shrink-0 transition-transform group-hover:text-white/40"
-              style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }} />
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-black shrink-0"
-              style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}>{row.avatar}</div>
+            <ChevronRight
+              size={14}
+              className="text-white/20 shrink-0 transition-transform group-hover:text-white/40"
+              style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
+            />
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold text-black shrink-0"
+              style={{ background: "linear-gradient(135deg,#00f5ff,#7c3aed)" }}
+            >
+              {row.avatar}
+            </div>
             <div>
               <p className="text-white text-sm font-semibold">{row.name}</p>
               <p className="text-white/30 text-xs">{row.empId}</p>
@@ -926,22 +914,28 @@ function PayrollRowComponent({ row, index, onPreview, onMarkPaid, onAdjust }: {
         </td>
         <td className="px-4 py-4 text-right">
           <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-            <button onClick={onAdjust}
+            <button
+              onClick={onAdjust}
               title="Manual calculation & adjustments"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-400/10 border border-amber-500/20 transition-all">
-              <Calculator size={12} />Adjust
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-400/10 border border-amber-500/20 transition-all"
+            >
+              <Calculator size={12} /> Adjust
             </button>
-            <button onClick={onPreview}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-white/50 hover:text-cyan-400 hover:bg-cyan-400/10 border border-white/10 transition-all">
-              <FileText size={12} />Payslip
+            <button
+              onClick={onPreview}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-white/50 hover:text-cyan-400 hover:bg-cyan-400/10 border border-white/10 transition-all"
+            >
+              <FileText size={12} /> Payslip
             </button>
-            <button onClick={() => onMarkPaid(row.id)}
+            <button
+              onClick={() => onMarkPaid(row.id)}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border transition-all"
               style={{
                 color: row.status === "paid" ? "#f59e0b" : "#22c55e",
                 borderColor: row.status === "paid" ? "rgba(245,158,11,0.2)" : "rgba(34,197,94,0.2)",
                 background: row.status === "paid" ? "rgba(245,158,11,0.08)" : "rgba(34,197,94,0.08)",
-              }}>
+              }}
+            >
               {row.status === "paid" ? <ToggleRight size={12} /> : <ToggleLeft size={12} />}
               {row.status === "paid" ? "Unmark" : "Mark Paid"}
             </button>
@@ -949,35 +943,39 @@ function PayrollRowComponent({ row, index, onPreview, onMarkPaid, onAdjust }: {
         </td>
       </motion.tr>
 
-      {/* Expanded breakdown */}
+      {/* Expanded breakdown row */}
       <AnimatePresence>
         {expanded && (
           <motion.tr
-            initial={{ opacity:0 }}
-            animate={{ opacity:1 }}
-            exit={{ opacity:0 }}
-            style={{ borderBottom:"1px solid rgba(255,255,255,0.04)" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
           >
             <td colSpan={9} className="px-6 pb-4">
               <motion.div
-                initial={{ height:0 }}
-                animate={{ height:"auto" }}
-                exit={{ height:0 }}
+                initial={{ height: 0 }}
+                animate={{ height: "auto" }}
+                exit={{ height: 0 }}
                 className="overflow-hidden"
               >
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
-                  {[
-                    { label:"Basic",         value:`₹${row.basicSalary.toLocaleString("en-IN")}`,  color:"#00f5ff" },
-                    { label:"PF (12%)",      value:`−₹${Math.round(row.basicSalary*0.06).toLocaleString("en-IN")}`, color:"#ef4444" },
-                    { label:"Prof. Tax",     value:"−₹200",                                         color:"#ef4444" },
-                    { label:"OT Earnings",   value:`+₹${row.otPay.toLocaleString("en-IN")}`,       color:"#22c55e" },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className="px-4 py-3 rounded-xl"
-                      style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)" }}>
-                      <p className="text-white/40 text-xs mb-1">{label}</p>
-                      <p className="font-bold text-sm" style={{ color }}>{value}</p>
-                    </div>
-                  ))}
+                  <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-white/40 text-xs mb-1">Basic Salary</p>
+                    <p className="font-bold text-sm text-cyan-400">₹{row.basicSalary.toLocaleString("en-IN")}</p>
+                  </div>
+                  <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-white/40 text-xs mb-1">Absent Deduction</p>
+                    <p className="font-bold text-sm text-red-400">−₹{(row.absentDeduction || 0).toLocaleString("en-IN")}</p>
+                  </div>
+                  <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-white/40 text-xs mb-1">Late Penalty</p>
+                    <p className="font-bold text-sm text-amber-300">−₹{(row.lateDeduction || 0).toLocaleString("en-IN")}</p>
+                  </div>
+                  <div className="px-4 py-3 rounded-xl bg-white/[0.03] border border-white/5">
+                    <p className="text-white/40 text-xs mb-1">Overtime Earnings</p>
+                    <p className="font-bold text-sm text-green-400">+₹{row.otPay.toLocaleString("en-IN")}</p>
+                  </div>
                 </div>
               </motion.div>
             </td>
@@ -1007,8 +1005,8 @@ export default function PayrollPage() {
   const parsePeriod = useCallback(() => {
     const [mName, yStr] = selectedMonth.split(" ");
     return {
-      month: MONTH_MAP[mName] || 6,
-      year: Number(yStr) || 2026
+      month: MONTH_MAP[mName] || (new Date().getMonth() + 1),
+      year: Number(yStr) || new Date().getFullYear(),
     };
   }, [selectedMonth]);
 
@@ -1025,11 +1023,19 @@ export default function PayrollPage() {
         avatar: (r.employee_name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
         basicSalary: Number(r.basic_salary) || 0,
         presentDays: r.present_days || 0,
-        otHours: r.overtime_hours || 0,
+        absentDays: r.absent_days || 0,
+        absentDeduction: Number(r.absent_deduction) || 0,
+        otHours: Number(r.payable_ot_hours ?? r.overtime_hours) || 0,
         otPay: Number(r.overtime_pay) || 0,
+        lateDays: r.late_days || 0,
+        lateDeduction: Number(r.late_deduction) || 0,
+        reimbursementAmount: Number(r.reimbursement_amount) || 0,
+        advanceRecovered: Number(r.advance_recovered) || 0,
+        bonus: Number(r.bonus) || 0,
         deductions: Number(r.deductions) || 0,
         netSalary: Number(r.final_salary) || 0,
         status: r.is_paid ? "paid" : "unpaid",
+        calculationSnapshot: r.calculation_snapshot,
       }));
       setRows(mapped);
       setGenerated(mapped.length > 0);
@@ -1044,14 +1050,14 @@ export default function PayrollPage() {
   }, [fetchPayroll]);
 
   const totalPayroll = rows.reduce((s, r) => s + r.netSalary, 0);
-  const paidCount = rows.filter(r => r.status === "paid").length;
+  const paidCount = rows.filter((r) => r.status === "paid").length;
 
   const handleGenerate = async () => {
     setIsGenerating(true);
     const { month, year } = parsePeriod();
     try {
       await payrollApi.generate(month, year);
-      success(`Payroll generated for ${selectedMonth}.`);
+      success(`Authoritative payroll generated for ${selectedMonth}.`);
       fetchPayroll();
     } catch (err: any) {
       console.error("Error generating payroll", err);
@@ -1062,12 +1068,12 @@ export default function PayrollPage() {
   };
 
   const handleMarkPaid = useCallback(async (id: string) => {
-    const row = rows.find(x => x.id === id);
+    const row = rows.find((x) => x.id === id);
     if (!row) return;
     const nextStatus = row.status !== "paid";
     try {
       await payrollApi.markPaid(id, nextStatus);
-      success(`Payroll status updated.`);
+      success(`Payment disbursement status updated.`);
       fetchPayroll();
     } catch (err) {
       console.error("Error marking paid", err);
@@ -1083,7 +1089,7 @@ export default function PayrollPage() {
       const blob = new Blob([res.data], { type: "application/pdf" });
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
-      link.download = `Payroll_Full_Statement_${selectedMonth.replace(/\s+/g, "_")}.pdf`;
+      link.download = `Payroll_Statement_${selectedMonth.replace(/\s+/g, "_")}.pdf`;
       link.click();
       success("Payroll statement downloaded successfully.");
     } catch (err) {
@@ -1093,57 +1099,66 @@ export default function PayrollPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ background:"#0a0f1e" }}>
+    <div className="min-h-screen" style={{ background: "#0a0f1e" }}>
       <AdminSidebar />
       <AdminTopBar title="Payroll" />
 
       <main className="min-h-screen pt-16 md:ml-60 transition-all">
         <div className="p-4 sm:p-6 lg:p-8">
-          <motion.div initial={{ opacity:0, y:-16 }} animate={{ opacity:1, y:0 }} className="mb-6">
+          <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
             <h1 className="text-3xl font-black text-white mb-1">Payroll Management</h1>
-            <p className="text-white/40">Generate and manage monthly salary payroll</p>
+            <p className="text-white/40">Authoritative calculation engine with exact deductions & database synchronization</p>
           </motion.div>
 
-          {/* Controls row */}
+          {/* Controls Row */}
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-6">
             <div className="grid grid-cols-1 sm:flex sm:items-center gap-3 w-full sm:w-auto">
-              {/* Month selector */}
+              {/* Month Selector */}
               <div className="relative w-full sm:w-auto">
-                <select value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setGenerated(false); }}
-                  className="w-full sm:w-auto pl-4 pr-10 py-2.5 text-white text-sm outline-none rounded-xl appearance-none font-semibold"
-                  style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)" }}>
-                  {MONTHS.map(m => <option key={m} value={m} className="bg-[#0a0f1e]">{m}</option>)}
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => {
+                    setSelectedMonth(e.target.value);
+                    setGenerated(false);
+                  }}
+                  className="w-full sm:w-auto pl-4 pr-10 py-2.5 text-white text-sm outline-none rounded-xl appearance-none font-semibold cursor-pointer"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m} className="bg-[#0a0f1e]">
+                      {m}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
               </div>
 
-              {/* Generate button */}
+              {/* Generate Button */}
               <motion.button
                 whileHover={{ scale: isGenerating ? 1 : 1.03 }}
                 whileTap={{ scale: isGenerating ? 1 : 0.97 }}
                 onClick={handleGenerate}
                 disabled={isGenerating}
                 className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-70 w-full sm:w-auto text-center"
-                style={{ background:"linear-gradient(135deg,#00f5ff,#7c3aed)" }}
+                style={{ background: "linear-gradient(135deg,#00f5ff,#7c3aed)" }}
               >
                 {isGenerating ? (
                   <>
-                    <motion.div animate={{ rotate:360 }} transition={{ duration:0.8, repeat:Infinity, ease:"linear" }}>
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}>
                       <Loader2 size={15} />
                     </motion.div>
-                    Generating...
+                    Calculating...
                   </>
                 ) : (
                   <>
-                    <Zap size={15} />
-                    Generate Payroll
+                    <Zap size={15} /> Generate Monthly Payroll
                   </>
                 )}
               </motion.button>
             </div>
 
             <div className="grid grid-cols-1 sm:flex sm:items-center gap-3 w-full sm:w-auto">
-              {/* Manual Calculator button */}
+              {/* Manual Calculator Button */}
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
@@ -1154,17 +1169,20 @@ export default function PayrollPage() {
                 className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/10 transition-all w-full sm:w-auto text-center"
                 style={{ background: "rgba(245, 158, 11, 0.05)" }}
               >
-                <Calculator size={15} />
-                Manual Calculator
+                <Calculator size={15} /> Authoritative Calculator
               </motion.button>
 
               {generated && (
-                <motion.button initial={{ opacity:0, x:-10 }} animate={{ opacity:1, x:0 }}
-                  whileHover={{ scale:1.02 }} whileTap={{ scale:0.97 }}
+                <motion.button
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
                   onClick={handleBulkDownload}
                   className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white/70 border border-white/10 hover:border-cyan-400/40 hover:text-cyan-400 transition-all w-full sm:w-auto text-center"
-                  style={{ background:"rgba(255,255,255,0.03)" }}>
-                  <Download size={14} />All Payslips (ZIP)
+                  style={{ background: "rgba(255,255,255,0.03)" }}
+                >
+                  <Download size={14} /> Full Statement (PDF)
                 </motion.button>
               )}
             </div>
@@ -1172,33 +1190,37 @@ export default function PayrollPage() {
             {/* Summary */}
             <div className="w-full sm:w-auto sm:ml-auto flex items-center justify-between sm:justify-end gap-6 text-left sm:text-right pt-2 sm:pt-0 border-t border-white/10 sm:border-t-0">
               <div>
-                <p className="text-white/30 text-xs">Total Payroll</p>
+                <p className="text-white/30 text-xs">Total Net Payable</p>
                 <p className="text-white font-black text-lg">₹{totalPayroll.toLocaleString("en-IN")}</p>
               </div>
               <div>
-                <p className="text-white/30 text-xs">Processed</p>
+                <p className="text-white/30 text-xs">Disbursed</p>
                 <p className="text-green-400 font-black text-lg">{paidCount}/{rows.length}</p>
               </div>
             </div>
           </div>
 
-          {/* Progress bar */}
-          <div className="mb-6 h-1.5 w-full rounded-full overflow-hidden" style={{ background:"rgba(255,255,255,0.06)" }}>
-            <motion.div className="h-full rounded-full"
-              style={{ background:"linear-gradient(90deg,#22c55e,#00f5ff)" }}
+          {/* Progress Bar */}
+          <div className="mb-6 h-1.5 w-full rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: "linear-gradient(90deg,#22c55e,#00f5ff)" }}
               initial={{ width: 0 }}
               animate={{ width: `${rows.length > 0 ? Math.round((paidCount / rows.length) * 100) : 0}%` }}
-              transition={{ duration: 1, ease: "easeOut" }} />
+              transition={{ duration: 1, ease: "easeOut" }}
+            />
           </div>
 
-          {/* Payroll table */}
-          <motion.div initial={{ opacity:0, y:16 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.2 }} className="neo-card overflow-hidden">
+          {/* Payroll Table */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="neo-card overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr style={{ borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                    {["Employee","Basic Salary","Present Days","OT Hours","OT Pay","Deductions","Net Salary","Status","Actions"].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-white/30 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    {["Employee", "Basic Salary", "Present", "Payable OT", "OT Pay", "Deductions", "Net Salary", "Status", "Actions"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-white/30 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -1208,7 +1230,7 @@ export default function PayrollPage() {
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="text-center py-16 text-white/40 text-sm">
-                        No payroll records found for {selectedMonth}.
+                        No finalized payroll records found for {selectedMonth}.
                         <br />
                         <button
                           type="button"
@@ -1222,7 +1244,10 @@ export default function PayrollPage() {
                     </tr>
                   ) : (
                     rows.map((row, i) => (
-                      <PayrollRowComponent key={row.id} row={row} index={i}
+                      <PayrollRowComponent
+                        key={row.id}
+                        row={row}
+                        index={i}
                         onPreview={() => setPreviewRow(row)}
                         onMarkPaid={handleMarkPaid}
                         onAdjust={() => {

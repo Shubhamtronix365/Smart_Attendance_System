@@ -46,7 +46,6 @@ api.interceptors.response.use(
   }
 );
 
-
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: (email: string, password: string, rememberMe?: boolean) =>
@@ -62,15 +61,14 @@ export const authApi = {
 
 // ─── Employees ─────────────────────────────────────────────────────────────────
 export const employeesApi = {
-  list: (params?: Record<string, string>) => api.get("/api/employees", { params }),
-  get: (id: string) => api.get(`/api/employees/${id}`),
+  list: (params?: Record<string, any>) => api.get("/api/employees", { params }),
+  get: (id: string | number) => api.get(`/api/employees/${id}`),
   create: (data: unknown) => api.post("/api/employees", data),
-  update: (id: string, data: unknown) => api.put(`/api/employees/${id}`, data),
-  delete: (id: string) => api.delete(`/api/employees/${id}`),
+  update: (id: string | number, data: unknown) => api.put(`/api/employees/${id}`, data),
+  delete: (id: string | number) => api.delete(`/api/employees/${id}`),
   deleteAll: () => api.delete("/api/employees/all/clear"),
 };
 
-// ─── Attendance ────────────────────────────────────────────────────────────────
 // ─── Attendance ────────────────────────────────────────────────────────────────
 export const attendanceApi = {
   list: (dateOrParams?: string | Record<string, any>, extraParams?: Record<string, any>) => {
@@ -120,10 +118,74 @@ export const payrollApi = {
     api.get(`/api/payroll/payslip/${id}`, { responseType: "blob" }),
   markPaid: (id: string | number, isPaid: boolean) =>
     api.put(`/api/payroll/${id}/mark_paid`, { is_paid: isPaid }),
-  previewIndividual: (employeeId: number, year: number, month: number) =>
-    api.get(`/api/payroll/preview/${employeeId}`, { params: { year, month } }),
+  previewIndividual: (employeeId: number, year: number, month: number, rates?: { absent_rate?: number; late_rate?: number; ot_rate?: number }) =>
+    api.get(`/api/payroll/preview/${employeeId}`, { params: { year, month, ...rates } }),
+  calculatePreview: (data: any) =>
+    api.post("/api/payroll/calculate-preview", data),
   saveManualPayroll: (data: unknown) =>
     api.post("/api/payroll/manual-save", data),
+};
+
+// ─── Holidays ─────────────────────────────────────────────────────────────────
+export const holidayApi = {
+  list: (params?: { year?: number; month?: number; company_name?: string }) =>
+    api.get("/api/holidays", { params }),
+  upcoming: (days?: number) =>
+    api.get("/api/holidays/upcoming", { params: { days: days || 30 } }),
+  create: (data: { name: string; date: string; description?: string; holiday_type?: string; company_name?: string }) =>
+    api.post("/api/holidays", data),
+  update: (id: number, data: { name?: string; date?: string; description?: string; holiday_type?: string; company_name?: string }) =>
+    api.put(`/api/holidays/${id}`, data),
+  delete: (id: number) =>
+    api.delete(`/api/holidays/${id}`),
+};
+
+// ─── Reimbursements ───────────────────────────────────────────────────────────
+export const reimbursementApi = {
+  list: (params?: { employee_id?: number; status?: string; from_date?: string; to_date?: string }) =>
+    api.get("/api/reimbursements", { params }),
+  my: () =>
+    api.get("/api/reimbursements/my"),
+  create: (formData: FormData) =>
+    api.post("/api/reimbursements", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  review: (id: number, data: { status: "approved" | "rejected"; review_notes?: string }) =>
+    api.put(`/api/reimbursements/${id}/review`, data),
+  getDocument: (id: number) =>
+    api.get(`/api/reimbursements/${id}/document`, { responseType: "blob" }),
+};
+
+// ─── Advances ─────────────────────────────────────────────────────────────────
+export const advanceApi = {
+  list: (params?: { employee_id?: number; status?: string }) =>
+    api.get("/api/advances", { params }),
+  my: () =>
+    api.get("/api/advances/my"),
+  getEmployeeBalance: (employeeId: number) =>
+    api.get(`/api/advances/employee/${employeeId}/balance`),
+  create: (data: { employee_id: number; amount: number; reason?: string; recovery_mode?: string }) =>
+    api.post("/api/advances", data),
+};
+
+// ─── Amendments ───────────────────────────────────────────────────────────────
+export const amendmentApi = {
+  listLate: (params?: { employee_id?: number; status?: string }) =>
+    api.get("/api/amendments/late", { params }),
+  myLate: () =>
+    api.get("/api/amendments/late/my"),
+  submitLate: (data: { attendance_id: number; reason: string }) =>
+    api.post("/api/amendments/late", data),
+  reviewLate: (id: number, data: { status: "approved" | "rejected"; review_notes?: string }) =>
+    api.put(`/api/amendments/late/${id}/review`, data),
+  listLeave: (params?: { employee_id?: number; status?: string }) =>
+    api.get("/api/amendments/leave", { params }),
+  myLeave: () =>
+    api.get("/api/amendments/leave/my"),
+  submitLeave: (data: { leave_id: number; reason: string }) =>
+    api.post("/api/amendments/leave", data),
+  reviewLeave: (id: number, data: { status: "approved" | "rejected"; review_notes?: string }) =>
+    api.put(`/api/amendments/leave/${id}/review`, data),
 };
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
@@ -243,5 +305,3 @@ export const databaseApi = {
 };
 
 export default api;
-
-

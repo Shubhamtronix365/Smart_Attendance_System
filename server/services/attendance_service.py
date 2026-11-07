@@ -32,10 +32,10 @@ def determine_status(check_in_time: time, punch_date: Optional[date] = None) -> 
     """
     Determines attendance status based on the check-in time.
     Standard start: 9:00 AM. Any check-in after 9:00 AM is considered LATE on normal workdays.
-    On Sundays, work is treated as holiday work / overtime: always PRESENT (never LATE).
+    On Sundays, work is administrative record only: AttendanceStatus.WEEKLY_OFF (never LATE, no OT).
     """
     if punch_date and punch_date.weekday() == 6:
-        return AttendanceStatus.PRESENT
+        return AttendanceStatus.WEEKLY_OFF
     if not check_in_time or check_in_time <= STANDARD_START:
         return AttendanceStatus.PRESENT
     return AttendanceStatus.LATE
@@ -44,7 +44,7 @@ def calculate_hours(check_in: datetime, check_out: datetime) -> Tuple[Decimal, D
     """
     Calculates total working hours and overtime hours for a single continuous shift.
     Deducts 1 hour for lunch break if the employee worked at least 4 hours.
-    On Sundays, 100% of working hours are counted as overtime.
+    On Sundays, work is recorded for history only: overtime is strictly 0.00.
     """
     if not check_in or not check_out:
         return Decimal("0.00"), Decimal("0.00")
@@ -59,9 +59,9 @@ def calculate_hours(check_in: datetime, check_out: datetime) -> Tuple[Decimal, D
         working = total_hours
     working = max(working, Decimal("0.00"))
     
-    # Sunday check-in / check-out: 100% of working hours count as overtime
+    # Sunday check-in / check-out: Record only! ZERO payable overtime.
     if check_in.weekday() == 6:
-        return working, working
+        return working, Decimal("0.00")
 
     net_standard_hours = Decimal(str(settings.STANDARD_WORK_HOURS - 1)) if settings.STANDARD_WORK_HOURS == 8 else Decimal(str(settings.STANDARD_WORK_HOURS))
     overtime = max(working - net_standard_hours, Decimal("0.00"))
@@ -72,7 +72,7 @@ def calculate_multi_session_totals(sessions: List[Dict[str, Any]], standard_work
     """
     Calculates cumulative working hours, overtime hours, and total checkout count
     across multiple check-in/check-out sessions in a workday (e.g. up to 5-6 times a day).
-    If is_sunday is True, 100% of working hours are counted as overtime.
+    If is_sunday is True, overtime is strictly 0.00 (Sunday record only).
     """
     completed_sessions = [s for s in sessions if s.get("out")]
     total_checkouts = len(completed_sessions)
@@ -95,7 +95,7 @@ def calculate_multi_session_totals(sessions: List[Dict[str, Any]], standard_work
     working_hours = max(working_hours, Decimal("0.00"))
 
     if is_sunday:
-        overtime_hours = working_hours
+        overtime_hours = Decimal("0.00")
     else:
         net_standard = Decimal(str(standard_work_hours - 1)) if standard_work_hours == 8 else Decimal(str(standard_work_hours))
         overtime_hours = max(working_hours - net_standard, Decimal("0.00"))
@@ -210,18 +210,18 @@ async def record_attendance_punch(
             open_att.punches = json.dumps(sessions)
             open_att.check_out = punch_dt
             open_att.working_hours = working_hours
-            open_att.overtime_hours = working_hours if is_shift_sunday else ot_hours
+            open_att.overtime_hours = Decimal("0.00") if is_shift_sunday else ot_hours
             open_att.checkout_count = checkouts
 
             if is_shift_sunday:
                 open_att.late_minutes = 0
-                open_att.status = AttendanceStatus.PRESENT
-            elif open_att.status in (AttendanceStatus.ABSENT, AttendanceStatus.HOLIDAY):
+                open_att.status = AttendanceStatus.WEEKLY_OFF
+            elif open_att.status in (AttendanceStatus.ABSENT, AttendanceStatus.HOLIDAY, AttendanceStatus.WEEKLY_OFF):
                 open_att.status = AttendanceStatus.PRESENT
 
             await db.commit()
 
-            ot_note = f" (Sunday OT: {working_hours:.1f}h)" if is_shift_sunday else f", {ot_hours:.1f}h OT"
+            ot_note = " (Sunday Weekly Off Record - 0h OT)" if is_shift_sunday else f", {ot_hours:.1f}h OT"
             log_info(
                 "ATTENDANCE",
                 "BIOMETRIC_CHECK_OUT" if scan_source.lower() == "biometric" else "CHECK_OUT",
@@ -256,11 +256,11 @@ async def record_attendance_punch(
         open_att.punches = json.dumps(sessions)
         open_att.check_out = curr_in_dt + timedelta(hours=8)
         open_att.working_hours = Decimal("7.00")
-        open_att.overtime_hours = Decimal("7.00") if is_shift_sunday else Decimal("0.00")
+        open_att.overtime_hours = Decimal("0.00")
         open_att.checkout_count = len([s for s in sessions if s.get("out")])
         if is_shift_sunday:
             open_att.late_minutes = 0
-            open_att.status = AttendanceStatus.PRESENT
+            open_att.status = AttendanceStatus.WEEKLY_OFF
         await db.commit()
         log_warning(
             "ATTENDANCE",
@@ -296,7 +296,7 @@ async def record_attendance_punch(
         # If today_att is an ABSENT placeholder created before punch (check_in is None), transform it to Session 1 check-in
         if today_att.check_in is None:
             check_in_time = punch_dt.time()
-            attendance_status = AttendanceStatus.PRESENT if is_sunday else determine_status(check_in_time, today)
+            attendance_status = AttendanceStatus.WEEKLY_OFF if is_sunday else determine_status(check_in_time, today)
             late_mins = 0 if is_sunday else calculate_late_minutes(check_in_time, today)
 
             sessions = [{
@@ -319,7 +319,7 @@ async def record_attendance_punch(
             await db.commit()
 
             if is_sunday:
-                late_str = " (Sunday Overtime Shift)"
+                late_str = " (Sunday Weekly Off Record - No Payroll Impact)"
             else:
                 late_str = f" (Late by {late_mins}m)" if late_mins > 0 else ""
 
@@ -396,14 +396,15 @@ async def record_attendance_punch(
         today_att.punches = json.dumps(sessions)
         today_att.check_out = None  # Active again
         if is_sunday:
-            today_att.status = AttendanceStatus.PRESENT
+            today_att.status = AttendanceStatus.WEEKLY_OFF
             today_att.late_minutes = 0
-        elif today_att.status in (AttendanceStatus.ABSENT, AttendanceStatus.HOLIDAY):
+            today_att.overtime_hours = Decimal("0.00")
+        elif today_att.status in (AttendanceStatus.ABSENT, AttendanceStatus.HOLIDAY, AttendanceStatus.WEEKLY_OFF):
             today_att.status = AttendanceStatus.PRESENT
 
         await db.commit()
 
-        sunday_tag = " (Sunday OT Shift)" if is_sunday else ""
+        sunday_tag = " (Sunday Weekly Off Record)" if is_sunday else ""
         log_info(
             "ATTENDANCE",
             "BIOMETRIC_CHECK_IN" if scan_source.lower() == "biometric" else "CHECK_IN",
@@ -430,7 +431,7 @@ async def record_attendance_punch(
 
     # Subcase 2B: Brand new day -> First Check-in of the day
     check_in_time = punch_dt.time()
-    attendance_status = AttendanceStatus.PRESENT if is_sunday else determine_status(check_in_time, today)
+    attendance_status = AttendanceStatus.WEEKLY_OFF if is_sunday else determine_status(check_in_time, today)
     late_mins = 0 if is_sunday else calculate_late_minutes(check_in_time, today)
 
     sessions = [{
@@ -571,14 +572,25 @@ async def sync_absent_records_for_range(
     leave_res = await db.execute(leave_stmt)
     approved_leaves = leave_res.all()
 
+    # 3b. Fetch all Company Holidays overlapping range (Holidays must never be marked as absences)
+    from server.models.holiday import Holiday
+    hol_stmt = select(Holiday.date).where(
+        and_(
+            Holiday.date >= start_date,
+            Holiday.date <= effective_end
+        )
+    )
+    hol_res = await db.execute(hol_stmt)
+    holiday_dates = set(r[0] for r in hol_res.all())
+
     # 4. Generate missing records
     new_records: List[Attendance] = []
     curr = start_date
     delta_day = timedelta(days=1)
 
     while curr <= effective_end:
-        # Skip Sundays
-        if curr.weekday() != 6:
+        # Skip Sundays and Company Holidays (Neither creates absences)
+        if curr.weekday() != 6 and curr not in holiday_dates:
             for emp in active_employees:
                 # Respect joining date
                 if emp.joining_date and emp.joining_date > curr:

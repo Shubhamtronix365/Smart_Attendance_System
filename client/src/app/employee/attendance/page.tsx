@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarDays,
   CalendarCheck,
@@ -15,6 +15,9 @@ import {
   Globe,
   Loader2,
   Filter,
+  MessageSquare,
+  X,
+  Send,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import EmployeeSidebar from "@/components/EmployeeSidebar";
@@ -23,10 +26,9 @@ import StatusBadge from "@/components/StatusBadge";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
-import { employeeSelfApi } from "@/services/api";
+import { employeeSelfApi, amendmentApi } from "@/services/api";
 import { formatTime, formatDate } from "@/utils/formatters";
 import CheckoutHistoryModal from "@/components/CheckoutHistoryModal";
-import { AnimatePresence } from "framer-motion";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -36,7 +38,7 @@ const MONTH_NAMES = [
 export default function EmployeeAttendancePage() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
-  const { error } = useToast();
+  const { success, error } = useToast();
 
   const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
@@ -45,6 +47,11 @@ export default function EmployeeAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+
+  // Dispute modal state
+  const [disputeRecord, setDisputeRecord] = useState<any>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -80,6 +87,30 @@ export default function EmployeeAttendancePage() {
     return attendanceRecords.filter((r) => r.status?.toLowerCase() === statusFilter.toLowerCase());
   }, [attendanceRecords, statusFilter]);
 
+  const handleSubmitDispute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!disputeRecord || !disputeReason.trim()) {
+      error("Please enter your reason or explanation.");
+      return;
+    }
+    setIsSubmittingDispute(true);
+    try {
+      await amendmentApi.submitLate({
+        attendance_id: disputeRecord.attendance_id,
+        reason: disputeReason.trim(),
+      });
+      success("Late mark explanation submitted for admin review.");
+      setDisputeRecord(null);
+      setDisputeReason("");
+      loadData();
+    } catch (err: any) {
+      console.error("Error submitting dispute", err);
+      error(err.response?.data?.detail || "Failed to submit dispute.");
+    } finally {
+      setIsSubmittingDispute(false);
+    }
+  };
+
   if (authLoading || (!user && isLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0f1e]">
@@ -98,145 +129,73 @@ export default function EmployeeAttendancePage() {
         isRefreshing={isLoading}
       />
 
-      <main className="md:ml-60 pt-20 px-4 md:px-8 pb-12">
-        {/* Filter & Period Selector Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-xl font-black text-white">Attendance Log</h2>
-            <p className="text-white/40 text-xs mt-0.5">
-              Showing records for {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
-            </p>
+      <main className="pt-20 pb-12 px-4 sm:px-6 md:ml-60 max-w-7xl mx-auto space-y-6">
+        {/* Month Selector Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/10">
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="bg-[#0a0f1e] text-white text-sm font-semibold px-4 py-2 rounded-xl border border-white/10 outline-none focus:border-cyan-400"
+            >
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-[#0a0f1e] text-white text-sm font-semibold px-4 py-2 rounded-xl border border-white/10 outline-none focus:border-cyan-400"
+            >
+              {[2026, 2025, 2024].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs">
-              <Calendar size={13} className="text-cyan-400" />
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="bg-transparent text-white outline-none cursor-pointer"
-              >
-                {MONTH_NAMES.map((name, i) => (
-                  <option key={name} value={i + 1} className="bg-[#0a0f1e] text-white">
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="bg-transparent text-white outline-none cursor-pointer ml-1"
-              >
-                {[2024, 2025, 2026, 2027].map((yr) => (
-                  <option key={yr} value={yr} className="bg-[#0a0f1e] text-white">
-                    {yr}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs">
-              <Filter size={13} className="text-white/40" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-transparent text-white outline-none cursor-pointer"
-              >
-                <option value="all" className="bg-[#0a0f1e] text-white">All Statuses</option>
-                <option value="present" className="bg-[#0a0f1e] text-white">Present (On-time)</option>
-                <option value="late" className="bg-[#0a0f1e] text-white">Late</option>
-                <option value="half_day" className="bg-[#0a0f1e] text-white">Half Day</option>
-                <option value="leave" className="bg-[#0a0f1e] text-white">Leave</option>
-              </select>
-            </div>
+          <div className="flex items-center gap-2">
+            <Filter size={14} className="text-white/40" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-[#0a0f1e] text-white text-xs px-3 py-1.5 rounded-lg border border-white/10 outline-none"
+            >
+              <option value="all">All Statuses</option>
+              <option value="present">Present</option>
+              <option value="late">Late</option>
+              <option value="halfday">Half Day</option>
+              <option value="absent">Absent</option>
+              <option value="weekly_off">Weekly Off</option>
+            </select>
           </div>
         </div>
 
-        {/* Monthly Summary Metric Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/50">Days Attended</span>
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                <CheckCircle2 size={14} />
-              </div>
+        {/* Stats Grid */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+              <p className="text-white/40 text-xs font-semibold uppercase">Present Days</p>
+              <p className="text-2xl font-bold text-green-400 mt-1 font-mono">{stats.present_days || 0}</p>
             </div>
-            <p className="text-2xl font-black text-emerald-400">{stats?.present_days ?? 0}</p>
-            <p className="text-[10px] text-white/40 mt-1">
-              {stats?.on_time_days ?? 0} on-time · {stats?.late_days ?? 0} late
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/50">Late Arrivals</span>
-              <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
-                <AlertCircle size={14} />
-              </div>
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+              <p className="text-white/40 text-xs font-semibold uppercase">Late Days</p>
+              <p className="text-2xl font-bold text-amber-400 mt-1 font-mono">{stats.late_days || 0}</p>
             </div>
-            <p className="text-2xl font-black text-amber-400">{stats?.late_days ?? 0}</p>
-            <p className="text-[10px] text-white/40 mt-1">
-              {stats?.late_hours ? `${stats.late_hours}h (${stats?.late_minutes ?? 0}m delay)` : "Punched after start threshold"}
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/50">Total Hours</span>
-              <div className="w-7 h-7 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-400">
-                <Clock size={14} />
-              </div>
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+              <p className="text-white/40 text-xs font-semibold uppercase">Absent Days</p>
+              <p className="text-2xl font-bold text-red-400 mt-1 font-mono">{stats.absent_days || 0}</p>
             </div>
-            <p className="text-2xl font-black text-cyan-400">{stats?.total_working_hours ?? 0}h</p>
-            <p className="text-[10px] text-white/40 mt-1">Logged working time</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/50">Overtime</span>
-              <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
-                <TrendingUp size={14} />
-              </div>
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+              <p className="text-white/40 text-xs font-semibold uppercase">Total Overtime</p>
+              <p className="text-2xl font-bold text-purple-400 mt-1 font-mono">{stats.total_overtime_hours || 0}h</p>
             </div>
-            <p className="text-2xl font-black text-purple-400">{stats?.overtime_hours ?? 0}h</p>
-            <p className="text-[10px] text-white/40 mt-1">1.5x pay multiplier</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col col-span-2 lg:col-span-1"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/50">Working Days</span>
-              <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400">
-                <CalendarDays size={14} />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-white">{stats?.working_days_total ?? 0}</p>
-            <p className="text-[10px] text-white/40 mt-1">{stats?.working_days_elapsed ?? 0} days elapsed</p>
-          </motion.div>
-        </div>
+          </div>
+        )}
 
         {/* Attendance Records Table */}
         <div className="rounded-2xl bg-white/[0.02] border border-white/10 overflow-hidden shadow-2xl">
@@ -280,6 +239,8 @@ export default function EmployeeAttendancePage() {
                   filteredRecords.map((r: any) => {
                     const punchDate = new Date(r.date + "T00:00:00");
                     const dayName = punchDate.toLocaleDateString("en-IN", { weekday: "short" });
+                    const isSunday = punchDate.getDay() === 0;
+                    const isLate = (r.late_minutes && Number(r.late_minutes) > 0) || r.status?.toLowerCase() === "late";
 
                     return (
                       <tr key={r.attendance_id} className="hover:bg-white/[0.02] transition-colors">
@@ -287,9 +248,9 @@ export default function EmployeeAttendancePage() {
                           <div>
                             <span>{formatDate(r.date)}</span>
                             <span className="ml-1.5 text-white/30 font-normal">({dayName})</span>
-                            {punchDate.getDay() === 0 && (
+                            {isSunday && (
                               <span className="block text-[10px] text-amber-400 font-sans font-semibold mt-0.5">
-                                Sunday (OT)
+                                Sunday (Record Only - 0 OT)
                               </span>
                             )}
                           </div>
@@ -297,10 +258,22 @@ export default function EmployeeAttendancePage() {
                         <td className="py-4 px-6 font-mono text-cyan-300">
                           <div>
                             <span>{r.check_in ? formatTime(r.check_in) : "--:--"}</span>
-                            {((r.late_minutes && Number(r.late_minutes) > 0) || r.status?.toLowerCase() === "late") && (
-                              <span className="block text-[10px] text-amber-400 font-sans font-medium mt-0.5">
-                                Late by {r.late_minutes ? (Number(r.late_minutes) >= 60 ? `${Math.floor(Number(r.late_minutes) / 60)}h ${Number(r.late_minutes) % 60}m` : `${r.late_minutes}m`) : "—"}
-                              </span>
+                            {isLate && (
+                              <div>
+                                <span className="block text-[10px] text-amber-400 font-sans font-medium mt-0.5">
+                                  Late by {r.late_minutes ? (Number(r.late_minutes) >= 60 ? `${Math.floor(Number(r.late_minutes) / 60)}h ${Number(r.late_minutes) % 60}m` : `${r.late_minutes}m`) : "—"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDisputeRecord(r);
+                                    setDisputeReason("");
+                                  }}
+                                  className="text-[10px] text-amber-300 hover:text-amber-200 underline font-sans flex items-center gap-1 mt-0.5"
+                                >
+                                  <MessageSquare size={10} /> Explain Late Mark
+                                </button>
+                              </div>
                             )}
                           </div>
                         </td>
@@ -333,7 +306,6 @@ export default function EmployeeAttendancePage() {
                                   punches: r.punches ? (typeof r.punches === "string" ? JSON.parse(r.punches) : r.punches) : [],
                                 })}
                                 className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-sans font-semibold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 transition-all cursor-pointer shadow-sm group"
-                                title="Click to view dates and times of all checkouts"
                               >
                                 <Clock size={11} className="text-cyan-400 group-hover:scale-110 transition-transform" />
                                 <span>{r.checkout_count} checkout{r.checkout_count > 1 ? "s" : ""}</span>
@@ -377,12 +349,13 @@ export default function EmployeeAttendancePage() {
                     );
                   })
                 )}
-                </tbody>
-              </table>
-            </div>
+              </tbody>
+            </table>
+          </div>
         </div>
       </main>
 
+      {/* Checkout History Modal */}
       <AnimatePresence>
         {selectedRecord && (
           <CheckoutHistoryModal
@@ -391,6 +364,77 @@ export default function EmployeeAttendancePage() {
             record={selectedRecord}
             isAdmin={false}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Late Mark Dispute Modal */}
+      <AnimatePresence>
+        {disputeRecord && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95 }}
+              className="w-full max-w-md rounded-3xl bg-[#0a0f1e] border border-amber-500/30 p-6 shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <h3 className="text-white font-bold text-base flex items-center gap-2">
+                  <AlertCircle size={18} className="text-amber-400" /> Late Mark Explanation
+                </h3>
+                <button onClick={() => setDisputeRecord(null)} className="text-white/40 hover:text-white">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitDispute} className="pt-4 space-y-4">
+                <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs">
+                  <p className="text-white/60">
+                    Attendance Date: <strong className="text-white">{disputeRecord.date}</strong>
+                  </p>
+                  <p className="text-amber-300 mt-1">
+                    Check-in was logged at {formatTime(disputeRecord.check_in)}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Reason / Explanation for Late Check-In *
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    placeholder="Provide detailed explanation (e.g. client meeting offsite, transport delay, medical emergency)..."
+                    value={disputeReason}
+                    onChange={(e) => setDisputeReason(e.target.value)}
+                    className="w-full px-3 py-2 text-xs text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setDisputeRecord(null)}
+                    className="flex-1 py-2 rounded-xl text-xs text-white/60 hover:text-white border border-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingDispute}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold text-black"
+                    style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+                  >
+                    {isSubmittingDispute ? "Submitting..." : "Submit Explanation"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

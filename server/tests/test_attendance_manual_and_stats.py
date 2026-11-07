@@ -55,10 +55,6 @@ def test_calculate_multi_session_totals_six_punches():
     """Verify that multiple check-in/check-out sessions in a day sum accurately."""
     from server.services.attendance_service import calculate_multi_session_totals
     
-    # Simulate 3 complete sessions (6 total punches):
-    # Session 1: 09:00 to 12:00 (3.00 hrs)
-    # Session 2: 13:00 to 17:00 (4.00 hrs)
-    # Session 3: 18:00 to 22:00 (4.00 hrs)
     sessions = [
         {"session": 1, "in": "2026-10-23T09:00:00", "out": "2026-10-23T12:00:00", "hours": 3.0},
         {"session": 2, "in": "2026-10-23T13:00:00", "out": "2026-10-23T17:00:00", "hours": 4.0},
@@ -79,28 +75,24 @@ def test_calculate_multi_session_totals_cross_midnight():
     ]
     working, ot, checkouts = calculate_multi_session_totals(sessions, standard_work_hours=8)
     assert checkouts == 1
-    # 1 continuous session >= 5h -> 18.0 - 1.0 lunch = 17.00 hrs
     assert working == Decimal("17.00")
-    # 17.0 - 7.0 standard = 10.00 hrs overtime
     assert ot == Decimal("10.00")
 
-
-
 def test_sunday_overtime_calculation():
-    """Verify that any work on Sunday is 100% calculated as overtime."""
+    """Verify Phase 3: Sunday attendance is record-only with 0 payable overtime."""
     from datetime import date
     # 2026-10-25 is a Sunday
     sunday_dt_in = datetime(2026, 10, 25, 11, 0)
     sunday_dt_out = datetime(2026, 10, 25, 15, 0) # 4 hours
     working, ot = calculate_hours(sunday_dt_in, sunday_dt_out)
     assert working == Decimal("3.00") # 4h - 1h lunch = 3h
-    assert ot == Decimal("3.00") # 100% of Sunday work is overtime!
+    assert ot == Decimal("0.00") # Phase 3: Sunday attendance generates 0 payable overtime!
 
     # Sunday check-in late minutes should be 0
     assert calculate_late_minutes(time(11, 0), date(2026, 10, 25)) == 0
 
 def test_sunday_multi_session_totals():
-    """Verify calculate_multi_session_totals treats Sunday work as 100% overtime."""
+    """Verify Phase 3: calculate_multi_session_totals enforces zero overtime for Sunday work."""
     from server.services.attendance_service import calculate_multi_session_totals
     sessions = [
         {"session": 1, "in": "2026-10-25 11:00:00", "out": "2026-10-25 14:00:00", "hours": 3.0},
@@ -109,8 +101,7 @@ def test_sunday_multi_session_totals():
     working, ot, checkouts = calculate_multi_session_totals(sessions, standard_work_hours=8, is_sunday=True)
     assert checkouts == 2
     assert working == Decimal("6.00")
-    assert ot == Decimal("6.00") # 100% of working hours are OT on Sunday!
-
+    assert ot == Decimal("0.00") # Phase 3: Zero overtime for Sunday work
 
 def test_session_item_schema():
     """Verify SessionItem schema correctly populates by alias and serializes."""
@@ -136,15 +127,15 @@ def test_late_duration_formatter_under_and_over_one_hour():
     assert format_late_duration_excel(60) == "1h"
     assert format_late_duration_pdf(60) == "1h"
 
-    # 98 minutes (from user image) -> 1h 38m
+    # 98 minutes -> 1h 38m
     assert format_late_duration_excel(98) == "1h 38m"
     assert format_late_duration_pdf(98) == "1h 38m"
 
-    # 815 minutes (from user image) -> 13h 35m
+    # 815 minutes -> 13h 35m
     assert format_late_duration_excel(815) == "13h 35m"
     assert format_late_duration_pdf(815) == "13h 35m"
 
-    # 286 minutes (from user image) -> 4h 46m
+    # 286 minutes -> 4h 46m
     assert format_late_duration_excel(286) == "4h 46m"
     assert format_late_duration_pdf(286) == "4h 46m"
 
@@ -167,7 +158,6 @@ def test_sessions_summary_formatter_for_excel():
     assert "8.77h" in summary
     assert "10.64h" in summary
 
-
 @pytest.mark.asyncio
 async def test_sync_absent_skips_sunday_and_future():
     """Verify sync_absent_records_for_date skips Sundays and future dates."""
@@ -184,7 +174,6 @@ async def test_sync_absent_skips_sunday_and_future():
     future_res = await sync_absent_records_for_date(mock_db, date(2099, 1, 1))
     assert future_res == 0
 
-
 def test_determine_status_logic():
     """Verify attendance status determination on regular workdays vs Sundays."""
     from datetime import date, time
@@ -197,10 +186,9 @@ def test_determine_status_logic():
     assert determine_status(time(9, 0), workday) == AttendanceStatus.PRESENT
     assert determine_status(time(9, 15), workday) == AttendanceStatus.LATE
 
-    # On Sunday (2026-10-25)
+    # On Sunday (2026-10-25) -> Phase 3: WEEKLY_OFF
     sunday = date(2026, 10, 25)
-    assert determine_status(time(11, 30), sunday) == AttendanceStatus.PRESENT
-
+    assert determine_status(time(11, 30), sunday) == AttendanceStatus.WEEKLY_OFF
 
 def test_attendance_update_schema_validation():
     """Verify AttendanceUpdate accepts standard dates, ISO strings, AM/PM strings, and normalizes halfday."""
@@ -208,7 +196,6 @@ def test_attendance_update_schema_validation():
     from server.schemas.attendance import AttendanceUpdate
     from server.models.attendance import AttendanceStatus
 
-    # 1. Standard ISO date and datetime (the payload that previously failed with 422)
     p1 = AttendanceUpdate(
         date="2026-10-30",
         check_in="2026-10-30T09:00:00",
@@ -220,7 +207,6 @@ def test_attendance_update_schema_validation():
     assert p1.check_out == dt.datetime(2026, 10, 30, 17, 0, 0)
     assert p1.status == AttendanceStatus.PRESENT
 
-    # 2. Absent update (cleared check_in / check_out)
     p2 = AttendanceUpdate(
         date="2026-10-30",
         check_in=None,
@@ -232,17 +218,14 @@ def test_attendance_update_schema_validation():
     assert p2.check_out is None
     assert p2.status == AttendanceStatus.ABSENT
 
-    # 3. Normalizes halfday
     p3 = AttendanceUpdate(status="halfday")
     assert p3.status == AttendanceStatus.HALF_DAY
 
-    # 4. Cleans empty strings and dashes
     p4 = AttendanceUpdate(check_in="", check_out="—", date="")
     assert p4.date is None
     assert p4.check_in is None
     assert p4.check_out is None
 
-    # 5. Accepts AM/PM formatted strings
     p5 = AttendanceUpdate(check_in="2026-10-30T11:27:00 AM", check_out="2026-10-30T08:42:00 PM")
     assert p5.check_in == dt.datetime(2026, 10, 30, 11, 27, 0)
     assert p5.check_out == dt.datetime(2026, 10, 30, 20, 42, 0)
