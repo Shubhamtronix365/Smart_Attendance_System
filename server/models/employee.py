@@ -36,8 +36,28 @@ class Employee(Base):
         back_populates="employee",
         cascade="all, delete-orphan"
     )
-    payrolls = relationship("Payroll", back_populates="employee", cascade="all, delete-orphan")
+    payrolls = relationship(
+        "Payroll",
+        primaryjoin="Employee.employee_id == Payroll.employee_id",
+        back_populates="employee",
+        cascade="all, delete-orphan"
+    )
     advances = relationship("SalaryAdvance", back_populates="employee", cascade="all, delete-orphan")
-    reimbursements = relationship("Reimbursement", back_populates="employee", cascade="all, delete-orphan")
-    late_amendments = relationship("LateAmendment", back_populates="employee", cascade="all, delete-orphan")
-    leave_amendments = relationship("LeaveAmendment", back_populates="employee", cascade="all, delete-orphan")
+    reimbursements = relationship(
+        "Reimbursement",
+        primaryjoin="Employee.employee_id == Reimbursement.employee_id",
+        back_populates="employee",
+        cascade="all, delete-orphan"
+    )
+    late_amendments = relationship(
+        "LateAmendment",
+        primaryjoin="Employee.employee_id == LateAmendment.employee_id",
+        back_populates="employee",
+        cascade="all, delete-orphan"
+    )
+    leave_amendments = relationship(
+        "LeaveAmendment",
+        primaryjoin="Employee.employee_id == LeaveAmendment.employee_id",
+        back_populates="employee",
+        cascade="all, delete-orphan"
+    )
