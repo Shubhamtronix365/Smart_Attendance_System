@@ -26,13 +26,15 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December"
 ];
 
-const HOLIDAY_TYPES = ["National", "Public", "Company", "Optional", "Observance"];
+const HOLIDAY_TYPES = ["National", "Public", "Company", "Optional", "Observance", "Weekly Off", "Fixed Holiday"];
 
 export default function AdminHolidaysPage() {
   const { success, error } = useToast();
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
+  const [includeSundaysInList, setIncludeSundaysInList] = useState(true);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   const today = new Date();
   const [currentYear, setCurrentYear] = useState<number>(today.getFullYear());
@@ -133,6 +135,23 @@ export default function AdminHolidaysPage() {
     }
   };
 
+  const handleSeedSundays = async () => {
+    if (!confirm(`Register all Sundays of ${currentYear} in database as official company holidays?`)) {
+      return;
+    }
+    setIsSeeding(true);
+    try {
+      const res = await holidayApi.seedSundays({ year: currentYear });
+      success(res.data?.message || `Successfully registered Sundays for ${currentYear}`);
+      fetchHolidays();
+    } catch (err: any) {
+      console.error("Error seeding Sundays", err);
+      error(err.response?.data?.detail || "Failed to register Sundays.");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   // Calendar Grid Computations
   const calendarDays = useMemo(() => {
     const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1).getDay(); // 0 is Sunday
@@ -148,6 +167,17 @@ export default function AdminHolidaysPage() {
       days.push(d);
     }
     return days;
+  }, [currentYear, currentMonth]);
+
+  const sundaysInMonth = useMemo(() => {
+    let count = 0;
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (new Date(currentYear, currentMonth - 1, d).getDay() === 0) {
+        count++;
+      }
+    }
+    return count;
   }, [currentYear, currentMonth]);
 
   const monthHolidays = useMemo(() => {
@@ -166,6 +196,36 @@ export default function AdminHolidaysPage() {
     });
     return map;
   }, [monthHolidays]);
+
+  const displayHolidays = useMemo(() => {
+    if (!includeSundaysInList) return holidays;
+
+    const existingDateMap = new Set(holidays.map((h) => h.date));
+    const sundayHolidays: Holiday[] = [];
+
+    for (let m = 1; m <= 12; m++) {
+      const daysInMonth = new Date(currentYear, m, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dt = new Date(currentYear, m - 1, d);
+        if (dt.getDay() === 0) {
+          const dateStr = `${currentYear}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          if (!existingDateMap.has(dateStr)) {
+            sundayHolidays.push({
+              holiday_id: -dt.getTime(),
+              name: "Sunday (Weekly Off)",
+              date: dateStr,
+              holiday_type: "Fixed Holiday",
+              company_name: "All",
+              description: "Standard weekly fixed company holiday (Non-working day / Record only attendance)",
+              is_recurring: true,
+            });
+          }
+        }
+      }
+    }
+
+    return [...holidays, ...sundayHolidays].sort((a, b) => a.date.localeCompare(b.date));
+  }, [holidays, includeSundaysInList, currentYear]);
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>
@@ -208,6 +268,17 @@ export default function AdminHolidaysPage() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                onClick={handleSeedSundays}
+                disabled={isSeeding}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                title={`Register all Sundays of ${currentYear} in database as official company holidays`}
+              >
+                <Sparkles size={14} /> {isSeeding ? "Registering..." : "Seed Sundays to DB"}
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => openCreateModal()}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-black"
                 style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
@@ -218,7 +289,7 @@ export default function AdminHolidaysPage() {
           </div>
 
           {/* Month Navigation Row */}
-          <div className="flex items-center justify-between bg-white/[0.03] border border-white/10 rounded-2xl p-4 mb-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/[0.03] border border-white/10 rounded-2xl p-4 mb-6">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => {
@@ -251,9 +322,15 @@ export default function AdminHolidaysPage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-4 text-xs text-white/50">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" /> {monthHolidays.length} Holidays this month
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5 text-amber-400 font-semibold bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg">
+                <span className="w-2 h-2 rounded-full bg-amber-400" /> {sundaysInMonth} Sundays (Fixed Holiday)
+              </span>
+              <span className="flex items-center gap-1.5 text-cyan-300 font-semibold bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-lg">
+                <span className="w-2 h-2 rounded-full bg-cyan-400" /> {monthHolidays.length} Company Holidays
+              </span>
+              <span className="text-white/40 hidden md:inline">
+                • {sundaysInMonth + monthHolidays.length} Total Non-working Days
               </span>
               <button
                 onClick={() => {
@@ -275,10 +352,10 @@ export default function AdminHolidaysPage() {
                   <div
                     key={dayName}
                     className={`py-2 text-xs font-bold uppercase tracking-wider ${
-                      idx === 0 ? "text-amber-400/80" : "text-white/40"
+                      idx === 0 ? "text-amber-400 font-extrabold" : "text-white/40"
                     }`}
                   >
-                    {dayName}
+                    {dayName} {idx === 0 && <span className="text-[10px] text-amber-400/70 lowercase block">(fixed off)</span>}
                   </div>
                 ))}
               </div>
@@ -306,7 +383,7 @@ export default function AdminHolidaysPage() {
                         isToday
                           ? "bg-cyan-500/10 border-cyan-500/40"
                           : isSun
-                          ? "bg-amber-500/[0.03] border-amber-500/15"
+                          ? "bg-amber-500/[0.04] border-amber-500/25 shadow-[inset_0_0_12px_rgba(245,158,11,0.05)]"
                           : "bg-white/[0.02] border-white/5 hover:border-white/20 hover:bg-white/[0.04]"
                       }`}
                     >
@@ -316,16 +393,36 @@ export default function AdminHolidaysPage() {
                             isToday
                               ? "bg-cyan-400 text-black"
                               : isSun
-                              ? "text-amber-400 font-semibold"
+                              ? "text-amber-300 font-bold bg-amber-500/20 px-1.5"
                               : "text-white/70"
                           }`}
                         >
                           {d}
                         </span>
-                        {isSun && <span className="text-[10px] text-amber-400/60 font-mono">Sun</span>}
+                        {isSun && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
+                            Fixed Holiday
+                          </span>
+                        )}
                       </div>
 
                       <div className="space-y-1 overflow-y-auto max-h-16">
+                        {/* Sunday Fixed Holiday Badge */}
+                        {isSun && (
+                          <div
+                            className="p-1 rounded-lg text-[10px] font-semibold bg-amber-500/20 text-amber-200 border border-amber-500/40 truncate flex items-center justify-between"
+                            title="Sunday: Fixed weekly company holiday (Non-working day / Record only)"
+                          >
+                            <span className="truncate flex items-center gap-1 font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                              Sunday (Weekly Off)
+                            </span>
+                            <span className="text-[8px] uppercase tracking-wider text-amber-400 font-mono shrink-0 ml-1 bg-amber-400/20 px-1 py-0.5 rounded">
+                              Fixed
+                            </span>
+                          </div>
+                        )}
+
                         {dayHolidays.map((h) => (
                           <div
                             key={h.holiday_id}
@@ -351,60 +448,102 @@ export default function AdminHolidaysPage() {
             </div>
           ) : (
             /* View Mode: List */
-            <div className="neo-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                    {["Date", "Holiday Name", "Type", "Applicable Company", "Description", "Actions"].map((th) => (
-                      <th key={th} className="px-5 py-3 text-left text-xs font-semibold text-white/40 uppercase tracking-wider">
-                        {th}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {holidays.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-16 text-white/40 text-sm">
-                        No company holidays configured for {currentYear}.
-                      </td>
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-200">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 size={16} className="text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Fixed Sunday Policy:</strong> Every Sunday is recognized as a permanent fixed company holiday. Sunday work is recorded for administrative tracking only and does not count as a standard workday or absence.
+                  </span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none text-white/80 shrink-0 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl hover:bg-white/10 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={includeSundaysInList}
+                    onChange={(e) => setIncludeSundaysInList(e.target.checked)}
+                    className="rounded border-white/20 bg-white/5 text-amber-400 focus:ring-0"
+                  />
+                  <span>Show Sundays in List</span>
+                </label>
+              </div>
+
+              <div className="neo-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      {["Date", "Holiday Name", "Type", "Applicable Company", "Description", "Actions"].map((th) => (
+                        <th key={th} className="px-5 py-3 text-left text-xs font-semibold text-white/40 uppercase tracking-wider">
+                          {th}
+                        </th>
+                      ))}
                     </tr>
-                  ) : (
-                    holidays.map((h) => (
-                      <tr
-                        key={h.holiday_id}
-                        className="hover:bg-white/[0.02] transition-colors border-b border-white/5"
-                      >
-                        <td className="px-5 py-4 font-mono text-cyan-300 font-semibold">{h.date}</td>
-                        <td className="px-5 py-4 text-white font-bold">{h.name}</td>
-                        <td className="px-5 py-4">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                            {h.holiday_type}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4 text-white/70">{h.company_name}</td>
-                        <td className="px-5 py-4 text-white/50 text-xs max-w-xs truncate">{h.description || "—"}</td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => openEditModal(h)}
-                              className="p-1.5 rounded-lg text-white/40 hover:text-cyan-300 hover:bg-cyan-400/10 transition-all"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirmId(h.holiday_id)}
-                              className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
+                  </thead>
+                  <tbody>
+                    {displayHolidays.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-16 text-white/40 text-sm">
+                          No company holidays configured for {currentYear}.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      displayHolidays.map((h) => {
+                        const isFixedSunday = h.holiday_id < 0 || h.holiday_type === "Fixed Holiday" || h.name.includes("Sunday");
+                        return (
+                          <tr
+                            key={h.holiday_id}
+                            className={`transition-colors border-b border-white/5 ${
+                              isFixedSunday ? "bg-amber-500/[0.02] hover:bg-amber-500/[0.05]" : "hover:bg-white/[0.02]"
+                            }`}
+                          >
+                            <td className="px-5 py-4 font-mono font-semibold">
+                              <span className={isFixedSunday ? "text-amber-300" : "text-cyan-300"}>{h.date}</span>
+                            </td>
+                            <td className="px-5 py-4 font-bold text-white flex items-center gap-2">
+                              {isFixedSunday && <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />}
+                              {h.name}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                                  isFixedSunday
+                                    ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                    : "bg-purple-500/10 text-purple-300 border-purple-500/20"
+                                }`}
+                              >
+                                {h.holiday_type}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-white/70">{h.company_name}</td>
+                            <td className="px-5 py-4 text-white/50 text-xs max-w-xs truncate">{h.description || "—"}</td>
+                            <td className="px-5 py-4">
+                              {isFixedSunday ? (
+                                <span className="text-[10px] font-mono px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                  Fixed System
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => openEditModal(h)}
+                                    className="p-1.5 rounded-lg text-white/40 hover:text-cyan-300 hover:bg-cyan-400/10 transition-all"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteConfirmId(h.holiday_id)}
+                                    className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -481,6 +620,13 @@ export default function AdminHolidaysPage() {
                     </select>
                   </div>
                 </div>
+
+                {formDate && new Date(formDate + "T00:00:00").getDay() === 0 && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                    <Info size={14} className="shrink-0" />
+                    <span>This date is a Sunday (already a permanent fixed holiday). Adding this entry registers a specific named holiday/observance.</span>
+                  </div>
+                )}
 
                 <div>
                   <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">

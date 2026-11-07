@@ -128,16 +128,20 @@ export const payrollApi = {
 
 // ─── Holidays ─────────────────────────────────────────────────────────────────
 export const holidayApi = {
-  list: (params?: { year?: number; month?: number; company_name?: string }) =>
+  list: (params?: { year?: number; month?: number; company_name?: string; include_sundays?: boolean }) =>
     api.get("/api/holidays", { params }),
-  upcoming: (days?: number) =>
-    api.get("/api/holidays/upcoming", { params: { days: days || 30 } }),
+  upcoming: (params?: { limit?: number; company_name?: string; include_sundays?: boolean } | number) => {
+    const config = typeof params === "number" ? { params: { limit: params } } : { params };
+    return api.get("/api/holidays/upcoming", config);
+  },
   create: (data: { name: string; date: string; description?: string; holiday_type?: string; company_name?: string }) =>
     api.post("/api/holidays", data),
   update: (id: number, data: { name?: string; date?: string; description?: string; holiday_type?: string; company_name?: string }) =>
     api.put(`/api/holidays/${id}`, data),
   delete: (id: number) =>
     api.delete(`/api/holidays/${id}`),
+  seedSundays: (params: { year: number; company_name?: string }) =>
+    api.post("/api/holidays/seed-sundays", null, { params }),
 };
 
 // ─── Reimbursements ───────────────────────────────────────────────────────────

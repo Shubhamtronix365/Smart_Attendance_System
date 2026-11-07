@@ -16,3 +16,7 @@ class Holiday(Base):
     __table_args__ = (
         UniqueConstraint("date", "company_name", name="uq_holiday_date_company"),
     )
+
+    @property
+    def is_fixed(self) -> bool:
+        return self.holiday_type in ("Weekly Off", "Fixed Holiday") or (self.date and self.date.weekday() == 6)

@@ -1,4 +1,5 @@
-from datetime import date
+import calendar as py_calendar
+from datetime import date, datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, and_, extract
@@ -18,30 +19,65 @@ async def list_holidays(
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None, ge=2000),
     company_name: Optional[str] = "Default",
+    include_sundays: bool = Query(False, description="Include all Sundays as fixed company holidays"),
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
 ):
     """
     Lists company holidays. Available to all authenticated employees and administrators.
     Supports filtering by month and year for calendar views.
+    Optionally synthesizes all Sundays as fixed weekly holidays.
     """
     stmt = select(Holiday)
     if month:
         stmt = stmt.where(extract("month", Holiday.date) == month)
     if year:
         stmt = stmt.where(extract("year", Holiday.date) == year)
-    if company_name:
+    if company_name and company_name != "All":
         stmt = stmt.where(Holiday.company_name == company_name)
 
     stmt = stmt.order_by(Holiday.date.asc())
     res = await db.execute(stmt)
-    return res.scalars().all()
+    db_holidays = list(res.scalars().all())
+
+    if not include_sundays:
+        return db_holidays
+
+    # Synthesize Sundays as fixed holidays
+    existing_dates = set(h.date for h in db_holidays)
+    current_dt = date.today()
+    target_year = year or current_dt.year
+    months_to_check = [month] if month else list(range(1, 13))
+
+    synthesized: List[HolidayOut] = []
+    for m in months_to_check:
+        num_days = py_calendar.monthrange(target_year, m)[1]
+        for day in range(1, num_days + 1):
+            d = date(target_year, m, day)
+            if d.weekday() == 6 and d not in existing_dates:
+                synthesized.append(
+                    HolidayOut(
+                        holiday_id=-d.toordinal(),
+                        name="Sunday (Weekly Off)",
+                        date=d,
+                        description="Fixed weekly company holiday (Non-working day / Record only)",
+                        holiday_type="Fixed Holiday",
+                        company_name=company_name or "All",
+                        is_fixed=True,
+                        created_at=datetime.utcnow()
+                    )
+                )
+
+    combined = [HolidayOut.model_validate(h) for h in db_holidays] + synthesized
+    combined.sort(key=lambda x: x.date)
+    return combined
 
 
 @router.get("/upcoming", response_model=List[HolidayOut])
 async def list_upcoming_holidays(
     limit: int = Query(5, ge=1, le=20),
     company_name: Optional[str] = "Default",
+    include_sundays: bool = Query(False, description="Include Sundays in upcoming holidays"),
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
 ):
@@ -61,7 +97,94 @@ async def list_upcoming_holidays(
         .limit(limit)
     )
     res = await db.execute(stmt)
-    return res.scalars().all()
+    db_holidays = list(res.scalars().all())
+
+    if not include_sundays:
+        return db_holidays
+
+    existing_dates = set(h.date for h in db_holidays)
+    from datetime import timedelta
+    synthesized: List[HolidayOut] = []
+    # Check next 60 days for Sundays
+    curr = today
+    for _ in range(60):
+        if curr.weekday() == 6 and curr not in existing_dates:
+            synthesized.append(
+                HolidayOut(
+                    holiday_id=-curr.toordinal(),
+                    name="Sunday (Weekly Off)",
+                    date=curr,
+                    description="Fixed weekly company holiday (Non-working day / Record only)",
+                    holiday_type="Fixed Holiday",
+                    company_name=company_name or "All",
+                    is_fixed=True,
+                    created_at=datetime.utcnow()
+                )
+            )
+        curr += timedelta(days=1)
+
+    combined = [HolidayOut.model_validate(h) for h in db_holidays] + synthesized
+    combined.sort(key=lambda x: x.date)
+    return combined[:limit]
+
+
+@router.post("/seed-sundays", status_code=status.HTTP_201_CREATED)
+async def seed_sundays(
+    year: int = Query(..., ge=2000, le=2100),
+    company_name: str = Query("Default"),
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """
+    Seeds all Sundays of a given year into the database as company holidays (Admin only).
+    Skips any Sundays that already exist in the database for the given company.
+    """
+    # Find existing holidays for this year and company
+    stmt = select(Holiday.date).where(
+        and_(
+            extract("year", Holiday.date) == year,
+            Holiday.company_name == company_name
+        )
+    )
+    res = await db.execute(stmt)
+    existing_dates = set(r[0] for r in res.all())
+
+    created_count = 0
+    for m in range(1, 13):
+        num_days = py_calendar.monthrange(year, m)[1]
+        for day in range(1, num_days + 1):
+            d = date(year, m, day)
+            if d.weekday() == 6 and d not in existing_dates:
+                holiday = Holiday(
+                    name="Sunday (Weekly Off)",
+                    date=d,
+                    description="Fixed weekly company holiday (Non-working day / Record only)",
+                    holiday_type="Weekly Off",
+                    company_name=company_name
+                )
+                db.add(holiday)
+                existing_dates.add(d)
+                created_count += 1
+
+    if created_count > 0:
+        await db.commit()
+
+    log_info(
+        "HOLIDAY",
+        "SUNDAYS_SEEDED",
+        f"Admin {admin.name} seeded {created_count} Sunday holidays for year {year} ({company_name}).",
+        year=year,
+        created_count=created_count,
+        admin_id=admin.employee_code or str(admin.employee_id)
+    )
+
+    return {
+        "success": True,
+        "year": year,
+        "company_name": company_name,
+        "seeded_count": created_count,
+        "message": f"Successfully registered {created_count} Sundays as fixed holidays for {year}."
+    }
 
 
 @router.post("", response_model=HolidayOut, status_code=status.HTTP_201_CREATED)

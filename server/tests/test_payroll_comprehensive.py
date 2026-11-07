@@ -237,3 +237,44 @@ def test_company_holiday_working_days_exclusion():
     holidays = [date(2026, 10, 2), date(2026, 10, 20)]
     days_with_holidays = get_working_days_in_month(2026, 10, holiday_dates=holidays)
     assert days_with_holidays == 25 # 27 - 2 = 25 working days
+
+def test_sunday_as_fixed_holiday_in_calendar():
+    """
+    Sunday as a Fixed Holiday in Holiday Calendar:
+    Verifies that Sunday is recognized as a fixed holiday, model exposes is_fixed property,
+    and schema serializes Sunday as a fixed weekly off.
+    """
+    from server.models.holiday import Holiday
+    from server.schemas.holiday import HolidayOut
+    from datetime import datetime
+
+    # Sunday date
+    sun_date = date(2026, 10, 4) # Sunday
+    assert sun_date.weekday() == 6
+
+    h_sun = Holiday(
+        holiday_id=101,
+        name="Sunday (Weekly Off)",
+        date=sun_date,
+        holiday_type="Weekly Off",
+        company_name="Default",
+        created_at=datetime.utcnow()
+    )
+    assert h_sun.is_fixed is True
+
+    out = HolidayOut.model_validate(h_sun)
+    assert out.is_fixed is True
+    assert out.name == "Sunday (Weekly Off)"
+    assert out.holiday_type == "Weekly Off"
+
+    # Weekday custom holiday
+    weekday_date = date(2026, 10, 2) # Friday
+    h_custom = Holiday(
+        holiday_id=102,
+        name="Gandhi Jayanti",
+        date=weekday_date,
+        holiday_type="National",
+        company_name="Default",
+        created_at=datetime.utcnow()
+    )
+    assert h_custom.is_fixed is False
