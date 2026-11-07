@@ -39,7 +39,7 @@ export default function EmployeeHolidaysPage() {
     setIsLoading(true);
     try {
       const res = await holidayApi.list({ year: currentYear });
-      setHolidays(res.data || []);
+      setHolidays(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Error loading holidays", err);
     } finally {
@@ -74,17 +74,26 @@ export default function EmployeeHolidaysPage() {
 
   const monthHolidays = useMemo(() => {
     return holidays.filter((h) => {
-      const parts = h.date.split("-");
-      return Number(parts[0]) === currentYear && Number(parts[1]) === currentMonth;
+      if (!h || !h.date) return false;
+      const cleanDate = String(h.date).split("T")[0].trim();
+      const parts = cleanDate.split("-");
+      if (parts.length < 2) return false;
+      return parseInt(parts[0], 10) === currentYear && parseInt(parts[1], 10) === currentMonth;
     });
   }, [holidays, currentYear, currentMonth]);
 
   const holidaysByDay = useMemo(() => {
     const map = new Map<number, Holiday[]>();
     monthHolidays.forEach((h) => {
-      const day = Number(h.date.split("-")[2]);
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(h);
+      const cleanDate = String(h.date).split("T")[0].trim();
+      const parts = cleanDate.split("-");
+      if (parts.length >= 3) {
+        const day = parseInt(parts[2], 10);
+        if (!isNaN(day)) {
+          if (!map.has(day)) map.set(day, []);
+          map.get(day)!.push(h);
+        }
+      }
     });
     return map;
   }, [monthHolidays]);

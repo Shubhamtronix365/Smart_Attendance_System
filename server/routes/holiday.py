@@ -18,7 +18,7 @@ router = APIRouter(prefix="/holidays", tags=["Company Holidays"])
 async def list_holidays(
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None, ge=2000),
-    company_name: Optional[str] = "Default",
+    company_name: Optional[str] = Query(None, description="Filter by company name or leave empty for all"),
     include_sundays: bool = Query(False, description="Include all Sundays as fixed company holidays"),
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
@@ -33,8 +33,8 @@ async def list_holidays(
         stmt = stmt.where(extract("month", Holiday.date) == month)
     if year:
         stmt = stmt.where(extract("year", Holiday.date) == year)
-    if company_name and company_name != "All":
-        stmt = stmt.where(Holiday.company_name == company_name)
+    if company_name and company_name.lower() not in ("all", "*"):
+        stmt = stmt.where(Holiday.company_name.in_([company_name, "All", "Default"]))
 
     stmt = stmt.order_by(Holiday.date.asc())
     res = await db.execute(stmt)
@@ -76,7 +76,7 @@ async def list_holidays(
 @router.get("/upcoming", response_model=List[HolidayOut])
 async def list_upcoming_holidays(
     limit: int = Query(5, ge=1, le=20),
-    company_name: Optional[str] = "Default",
+    company_name: Optional[str] = Query(None, description="Filter by company or leave empty for all"),
     include_sundays: bool = Query(False, description="Include Sundays in upcoming holidays"),
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
@@ -85,17 +85,10 @@ async def list_upcoming_holidays(
     Returns upcoming company holidays from today onwards.
     """
     today = date.today()
-    stmt = (
-        select(Holiday)
-        .where(
-            and_(
-                Holiday.date >= today,
-                Holiday.company_name == company_name
-            )
-        )
-        .order_by(Holiday.date.asc())
-        .limit(limit)
-    )
+    stmt = select(Holiday).where(Holiday.date >= today)
+    if company_name and company_name.lower() not in ("all", "*"):
+        stmt = stmt.where(Holiday.company_name.in_([company_name, "All", "Default"]))
+    stmt = stmt.order_by(Holiday.date.asc()).limit(limit)
     res = await db.execute(stmt)
     db_holidays = list(res.scalars().all())
 

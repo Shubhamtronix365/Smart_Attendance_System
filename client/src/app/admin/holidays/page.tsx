@@ -51,11 +51,12 @@ export default function AdminHolidaysPage() {
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  const fetchHolidays = useCallback(async () => {
+  const fetchHolidays = useCallback(async (targetYear?: number) => {
     setIsLoading(true);
     try {
-      const res = await holidayApi.list({ year: currentYear });
-      setHolidays(res.data || []);
+      const yr = targetYear ?? currentYear;
+      const res = await holidayApi.list({ year: yr });
+      setHolidays(Array.isArray(res.data) ? res.data : []);
     } catch (err: any) {
       console.error("Error loading holidays", err);
       error("Failed to load company holidays.");
@@ -116,7 +117,21 @@ export default function AdminHolidaysPage() {
         success("Company holiday created successfully.");
       }
       setIsModalOpen(false);
-      fetchHolidays();
+
+      // Auto-jump to the month and year of the holiday so it is instantly visible
+      const cleanDate = formDate.split("T")[0].trim();
+      const parts = cleanDate.split("-");
+      if (parts.length >= 2) {
+        const hYear = parseInt(parts[0], 10);
+        const hMonth = parseInt(parts[1], 10);
+        if (!isNaN(hYear) && !isNaN(hMonth)) {
+          setCurrentYear(hYear);
+          setCurrentMonth(hMonth);
+          await fetchHolidays(hYear);
+          return;
+        }
+      }
+      await fetchHolidays();
     } catch (err: any) {
       console.error("Error saving holiday", err);
       error(err.response?.data?.detail || "Failed to save holiday entry.");
@@ -182,17 +197,26 @@ export default function AdminHolidaysPage() {
 
   const monthHolidays = useMemo(() => {
     return holidays.filter((h) => {
-      const parts = h.date.split("-");
-      return Number(parts[0]) === currentYear && Number(parts[1]) === currentMonth;
+      if (!h || !h.date) return false;
+      const cleanDate = String(h.date).split("T")[0].trim();
+      const parts = cleanDate.split("-");
+      if (parts.length < 2) return false;
+      return parseInt(parts[0], 10) === currentYear && parseInt(parts[1], 10) === currentMonth;
     });
   }, [holidays, currentYear, currentMonth]);
 
   const holidaysByDay = useMemo(() => {
     const map = new Map<number, Holiday[]>();
     monthHolidays.forEach((h) => {
-      const day = Number(h.date.split("-")[2]);
-      if (!map.has(day)) map.set(day, []);
-      map.get(day)!.push(h);
+      const cleanDate = String(h.date).split("T")[0].trim();
+      const parts = cleanDate.split("-");
+      if (parts.length >= 3) {
+        const day = parseInt(parts[2], 10);
+        if (!isNaN(day)) {
+          if (!map.has(day)) map.set(day, []);
+          map.get(day)!.push(h);
+        }
+      }
     });
     return map;
   }, [monthHolidays]);
