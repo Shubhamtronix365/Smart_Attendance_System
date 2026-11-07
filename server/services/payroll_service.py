@@ -213,9 +213,24 @@ async def get_employee_monthly_metrics(
         if actual_mins > 0:
             daily_ot_breakdown.append({
                 "date": str(r.date),
+                "is_sunday": False,
+                "actual_hours": float(r.working_hours or 0.0),
+                "excess_minutes": actual_mins,
                 "actual_ot_minutes": actual_mins,
                 "actual_ot_formatted": f"{actual_mins // 60}h {actual_mins % 60}m" if actual_mins >= 60 else f"{actual_mins}m",
                 "payable_ot_hours": payable_h
+            })
+
+    for sr in sunday_records:
+        if (sr.working_hours or Decimal("0.00")) > Decimal("0.00"):
+            daily_ot_breakdown.append({
+                "date": str(sr.date),
+                "is_sunday": True,
+                "actual_hours": float(sr.working_hours or 0.0),
+                "excess_minutes": 0,
+                "actual_ot_minutes": 0,
+                "actual_ot_formatted": "0m (Sunday record-only)",
+                "payable_ot_hours": 0
             })
 
     # 6. Reimbursements
@@ -235,6 +250,8 @@ async def get_employee_monthly_metrics(
         "department": employee.department,
         "designation": employee.designation,
         "base_salary": Decimal(str(employee.salary or "0.00")),
+        "basic_salary": Decimal(str(employee.salary or "0.00")),
+        "salary": Decimal(str(employee.salary or "0.00")),
         "is_billable": getattr(employee, "is_billable", True),
         "month": month,
         "year": year,
@@ -249,10 +266,15 @@ async def get_employee_monthly_metrics(
         "total_actual_ot_hours": round(total_actual_ot_minutes / 60.0, 2),
         "payable_ot_hours": total_payable_ot_hours,
         "daily_ot_breakdown": daily_ot_breakdown,
+        "daily_overtime_records": daily_ot_breakdown,
         "sunday_records_count": len(sunday_records),
         "reimbursement_amount": reimbursement_amount,
+        "approved_reimbursements": reimbursement_amount,
+        "total_approved_reimbursements": reimbursement_amount,
         "approved_reimbursements_count": len(approved_claims),
         "outstanding_advance": outstanding_advance,
+        "advance_balance_outstanding": outstanding_advance,
+        "outstanding_advance_balance": outstanding_advance,
         "holidays_count": len(holidays),
         "default_absent_rate": Decimal("0.00"),
         "default_late_rate": Decimal(str(employee.late_deduction_rate or "0.00")),
@@ -335,6 +357,8 @@ def compute_authoritative_payroll(
 
     return {
         "base_salary": base_salary,
+        "basic_salary": base_salary,
+        "salary": base_salary,
         "absent_days": absent_days,
         "absent_rate": absent_rate,
         "absent_deduction": float(absent_deduction),
@@ -352,6 +376,7 @@ def compute_authoritative_payroll(
         "total_ot_pay": overtime_addition,
         "reimbursement_amount": actual_reimbursement,
         "approved_reimbursements": actual_reimbursement,
+        "total_approved_reimbursements": actual_reimbursement,
         "bonus": bonus,
         "other_deductions": other_deductions,
         "total_additions": total_additions,
@@ -360,12 +385,15 @@ def compute_authoritative_payroll(
         "salary_before_advance": pre_advance_salary,
         "outstanding_advance_balance": actual_outstanding,
         "advance_balance_outstanding": actual_outstanding,
+        "outstanding_advance": actual_outstanding,
         "advance_recovery_choice": actual_mode,
         "advance_recovery_mode": actual_mode,
         "advance_recovery_amount": float(chosen_recovery),
         "advance_recovery": chosen_recovery,
         "remaining_advance_balance": remaining_advance_balance,
         "final_payable_salary": final_salary,
+        "final_salary": final_salary,
+        "net_salary": final_salary,
     }
 
 
@@ -423,9 +451,20 @@ async def preview_individual_payroll(
         other_deductions=eff_other_ded
     )
 
+    sal = metrics.get("basic_salary") or metrics.get("base_salary") or Decimal(str(employee.salary or "0.00"))
     return {
         **metrics,
         **calc,
+        "basic_salary": sal,
+        "base_salary": sal,
+        "salary": sal,
+        "daily_overtime_records": metrics.get("daily_ot_breakdown", []),
+        "daily_ot_breakdown": metrics.get("daily_ot_breakdown", []),
+        "total_approved_reimbursements": metrics.get("reimbursement_amount", Decimal("0.00")),
+        "approved_reimbursements": metrics.get("reimbursement_amount", Decimal("0.00")),
+        "reimbursement_amount": metrics.get("reimbursement_amount", Decimal("0.00")),
+        "advance_balance_outstanding": metrics.get("outstanding_advance", Decimal("0.00")),
+        "outstanding_advance": metrics.get("outstanding_advance", Decimal("0.00")),
         "is_saved": existing_payroll is not None,
         "is_paid": existing_payroll.is_paid if existing_payroll else False,
         "payroll_id": existing_id,

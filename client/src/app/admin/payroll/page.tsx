@@ -263,16 +263,20 @@ function ManualPayrollModal({
       setPreviewData(data);
 
       // Initialize admin rates from employee configuration
-      setAbsentRate(Number(data.absent_rate) || 0);
-      setLateRate(Number(data.late_rate) || 0);
-      setOtRate(Number(data.ot_rate) || 0);
+      const empFromList = employees.find((e) => e.employee_id === empId);
+      const defaultOt = Number(data.ot_rate) || Number(data.default_ot_rate) || Number(empFromList?.overtime_rate) || 0;
+      const defaultLate = Number(data.late_rate) || Number(data.default_late_rate) || Number(empFromList?.late_deduction_rate) || 0;
+
+      setAbsentRate(Number(data.absent_rate) || Number(data.default_absent_rate) || 0);
+      setLateRate(defaultLate);
+      setOtRate(defaultOt);
       setBonus(Number(data.bonus) || 0);
       setOtherDeductions(0);
       setRemarks(data.remarks || (data.already_saved ? "Authoritative calculation snapshot" : ""));
       setIsPaid(Boolean(data.is_paid));
 
       // Advance initialization
-      const outstanding = Number(data.advance_balance_outstanding) || 0;
+      const outstanding = Number(data.advance_balance_outstanding ?? data.outstanding_advance) || 0;
       if (outstanding > 0) {
         setAdvanceMode("full");
         setAdvanceAmount(outstanding);
@@ -292,7 +296,7 @@ function ManualPayrollModal({
     } finally {
       setIsLoadingPreview(false);
     }
-  }, [error]);
+  }, [employees, error]);
 
   useEffect(() => {
     if (selectedEmpId) {
@@ -301,7 +305,9 @@ function ManualPayrollModal({
   }, [selectedEmpId, month, year, loadPreview]);
 
   // Derived calculations matching strict backend formulas
-  const basicSalary = previewData ? Number(previewData.basic_salary) || 0 : 0;
+  const currentEmp = employees.find((e) => e.employee_id === selectedEmpId);
+  const rawBaseSalary = previewData?.basic_salary ?? previewData?.base_salary ?? previewData?.salary ?? currentEmp?.salary ?? 0;
+  const basicSalary = Number(rawBaseSalary) || 0;
   const absentDays = previewData ? Number(previewData.absent_days) || 0 : 0;
   const totalAbsentDeduction = Math.round(absentDays * absentRate);
 
@@ -311,8 +317,12 @@ function ManualPayrollModal({
   const payableOtHours = previewData ? Number(previewData.payable_ot_hours) || 0 : 0;
   const totalOtPay = Math.round(payableOtHours * otRate);
 
-  const approvedReimbursements = previewData ? Number(previewData.total_approved_reimbursements) || 0 : 0;
-  const advanceOutstanding = previewData ? Number(previewData.advance_balance_outstanding) || 0 : 0;
+  const approvedReimbursements = previewData
+    ? Number(previewData.total_approved_reimbursements ?? previewData.approved_reimbursements ?? previewData.reimbursement_amount) || 0
+    : 0;
+  const advanceOutstanding = previewData
+    ? Number(previewData.advance_balance_outstanding ?? previewData.outstanding_advance) || 0
+    : 0;
 
   let advanceRecovery = 0;
   if (advanceMode === "full") {
@@ -533,7 +543,19 @@ function ManualPayrollModal({
               </p>
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Deduction Per Absent Day (₹)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-white/50 text-[11px] font-medium">Deduction Per Absent Day (₹)</label>
+                    {basicSalary > 0 && previewData?.working_days ? (
+                      <button
+                        type="button"
+                        onClick={() => setAbsentRate(Math.round(basicSalary / previewData.working_days))}
+                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-mono hover:underline"
+                        title="Auto-fill daily rate (Base Salary / Working Days)"
+                      >
+                        Auto (₹{Math.round(basicSalary / previewData.working_days)})
+                      </button>
+                    ) : null}
+                  </div>
                   <input
                     type="number"
                     value={absentRate}
