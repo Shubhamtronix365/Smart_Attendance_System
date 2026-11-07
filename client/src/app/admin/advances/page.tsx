@@ -55,9 +55,17 @@ export default function AdminAdvancesPage() {
       if (selectedStatus) params.status = selectedStatus;
       if (selectedEmpId) params.employee_id = Number(selectedEmpId);
       const res = await advanceApi.list(params);
-      setAdvances(res.data || []);
+      const raw = res.data ?? res;
+      if (Array.isArray(raw)) {
+        setAdvances(raw);
+      } else if (raw && typeof raw === "object" && Array.isArray(raw.advances)) {
+        setAdvances(raw.advances);
+      } else {
+        setAdvances([]);
+      }
     } catch (err: any) {
       console.error("Error loading advances", err);
+      setAdvances([]);
       error("Failed to load advance salary records.");
     } finally {
       setIsLoading(false);
@@ -110,7 +118,9 @@ export default function AdminAdvancesPage() {
     }
   };
 
-  const filtered = advances.filter((a) => {
+  const safeAdvances = Array.isArray(advances) ? advances : [];
+
+  const filtered = safeAdvances.filter((a) => {
     if (!search) return true;
     const s = search.toLowerCase();
     return (
@@ -120,9 +130,9 @@ export default function AdminAdvancesPage() {
     );
   });
 
-  const totalDisbursed = advances.reduce((s, a) => s + Number(a.amount || 0), 0);
-  const totalRecovered = advances.reduce((s, a) => s + Number(a.recovered_amount || 0), 0);
-  const totalOutstanding = advances.reduce((s, a) => s + Number(a.remaining_balance || 0), 0);
+  const totalDisbursed = safeAdvances.reduce((s, a) => s + Number(a.amount || 0), 0);
+  const totalRecovered = safeAdvances.reduce((s, a) => s + Number(a.recovered_amount || 0), 0);
+  const totalOutstanding = safeAdvances.reduce((s, a) => s + Number(a.remaining_balance || 0), 0);
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>

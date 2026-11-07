@@ -29,6 +29,11 @@ class AdvanceOut(AdvanceBase):
     status: AdvanceStatus
     created_at: datetime
     employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+    recovered_amount: Optional[Decimal] = Decimal("0.00")
+    remaining_balance: Optional[Decimal] = Decimal("0.00")
+    disbursement_date: Optional[date] = None
+    reason: Optional[str] = None
     recoveries: List[AdvanceRecoveryOut] = []
 
     model_config = ConfigDict(from_attributes=True)

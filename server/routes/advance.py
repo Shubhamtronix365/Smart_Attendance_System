@@ -61,18 +61,91 @@ async def create_advance(
         advance_id=advance.advance_id,
         employee_id=advance.employee_id,
         employee_name=employee.name,
+        employee_code=employee.employee_code,
         amount=advance.amount,
         advance_date=advance.advance_date,
+        disbursement_date=advance.advance_date,
         payment_method=advance.payment_method,
         reference_no=advance.reference_no,
         description=advance.description,
+        reason=advance.description,
         status=advance.status,
         created_at=advance.created_at,
+        recovered_amount=Decimal("0.00"),
+        remaining_balance=advance.amount,
         recoveries=[]
     )
 
 
+@router.get("", response_model=List[AdvanceOut])
+async def list_advances(
+    employee_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """
+    Lists salary advances.
+    Admin can view all or filter by employee/status; employees can only view their own.
+    """
+    stmt = (
+        select(SalaryAdvance)
+        .options(
+            joinedload(SalaryAdvance.employee),
+            joinedload(SalaryAdvance.recoveries)
+        )
+        .order_by(SalaryAdvance.advance_date.desc(), SalaryAdvance.created_at.desc())
+    )
+
+    if current_user.role != "admin":
+        stmt = stmt.where(SalaryAdvance.employee_id == current_user.employee_id)
+    elif employee_id:
+        stmt = stmt.where(SalaryAdvance.employee_id == employee_id)
+
+    if status:
+        stmt = stmt.where(SalaryAdvance.status == status)
+
+    res = await db.execute(stmt)
+    advances = res.unique().scalars().all()
+
+    result = []
+    for a in advances:
+        recovered = sum((r.amount_recovered or Decimal("0.00")) for r in a.recoveries)
+        remaining = max(Decimal("0.00"), a.amount - recovered)
+        result.append(
+            AdvanceOut(
+                advance_id=a.advance_id,
+                employee_id=a.employee_id,
+                employee_name=a.employee.name if a.employee else "Unknown",
+                employee_code=a.employee.employee_code if a.employee else f"EMP{a.employee_id:03d}",
+                amount=a.amount,
+                advance_date=a.advance_date,
+                disbursement_date=a.advance_date,
+                payment_method=a.payment_method,
+                reference_no=a.reference_no,
+                description=a.description,
+                reason=a.description,
+                status=a.status,
+                created_at=a.created_at,
+                recovered_amount=recovered,
+                remaining_balance=remaining,
+                recoveries=[
+                    AdvanceRecoveryOut(
+                        recovery_id=r.recovery_id,
+                        payroll_id=r.payroll_id,
+                        amount_recovered=r.amount_recovered,
+                        recovery_date=r.recovery_date,
+                        created_at=r.created_at
+                    )
+                    for r in a.recoveries
+                ]
+            )
+        )
+    return result
+
+
 @router.get("/employee/{employee_id}", response_model=AdvanceSummary)
+@router.get("/employee/{employee_id}/balance", response_model=AdvanceSummary)
 async def get_employee_advance_summary(
     employee_id: int,
     db: AsyncSession = Depends(get_db),
@@ -163,6 +236,7 @@ async def get_employee_advance_summary(
 
 
 @router.get("/my", response_model=AdvanceSummary)
+@router.get("/my/balance", response_model=AdvanceSummary)
 async def my_advance_summary(
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)

@@ -80,6 +80,7 @@ export default function EmployeeReimbursementsPage() {
       formData.append("expense_date", expenseDate);
       formData.append("description", description.trim());
       if (file) {
+        formData.append("receipt", file);
         formData.append("document", file);
       }
 

@@ -12,15 +12,25 @@ import { advanceApi } from "@/services/api";
 
 export default function EmployeeAdvancesPage() {
   const [advances, setAdvances] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchMyAdvances = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await advanceApi.my();
-      setAdvances(res.data || []);
+      const raw = res.data ?? res;
+      if (Array.isArray(raw)) {
+        setAdvances(raw);
+      } else if (raw && typeof raw === "object" && Array.isArray(raw.advances)) {
+        setAdvances(raw.advances);
+        setSummary(raw);
+      } else {
+        setAdvances([]);
+      }
     } catch (err) {
       console.error("Error loading my advances", err);
+      setAdvances([]);
     } finally {
       setIsLoading(false);
     }
@@ -30,9 +40,19 @@ export default function EmployeeAdvancesPage() {
     fetchMyAdvances();
   }, [fetchMyAdvances]);
 
-  const totalDisbursed = advances.reduce((s, a) => s + Number(a.amount || 0), 0);
-  const totalRecovered = advances.reduce((s, a) => s + Number(a.recovered_amount || 0), 0);
-  const outstandingBalance = advances.reduce((s, a) => s + Number(a.remaining_balance || 0), 0);
+  const safeAdvances = Array.isArray(advances) ? advances : [];
+  const totalDisbursed = summary?.total_advances != null
+    ? Number(summary.total_advances)
+    : safeAdvances.reduce((s, a) => s + Number(a.amount || 0), 0);
+  const totalRecovered = summary?.total_recovered != null
+    ? Number(summary.total_recovered)
+    : safeAdvances.reduce((s, a) => {
+        const rec = Array.isArray(a.recoveries) ? a.recoveries.reduce((rs: number, r: any) => rs + Number(r.amount_recovered || 0), 0) : 0;
+        return s + (Number(a.recovered_amount) || rec);
+      }, 0);
+  const outstandingBalance = summary?.outstanding_balance != null
+    ? Number(summary.outstanding_balance)
+    : Math.max(0, totalDisbursed - totalRecovered);
 
   return (
     <div className="min-h-screen" style={{ background: "#0a0f1e" }}>

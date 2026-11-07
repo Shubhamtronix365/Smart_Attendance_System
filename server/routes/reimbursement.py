@@ -69,20 +69,31 @@ async def create_reimbursement(
     amount: Decimal = Form(...),
     category: str = Form(...),
     description: str = Form(...),
-    receipt: UploadFile = File(...),
+    receipt: Optional[UploadFile] = File(None),
+    document: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile] = File(None),
+    expense_date: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
 ):
     """
     Submits a new reimbursement request with receipt attachment.
     Enforces strict MIME validation, size limit, and randomized safe storage.
+    Supports 'receipt', 'document', and 'file' form fields seamlessly.
     """
+    upload_file = receipt or document or file
+    if not upload_file:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Receipt document file is required. Please attach a supporting document (PDF, JPG, PNG)."
+        )
+
     if amount <= Decimal("0.00"):
         raise HTTPException(status_code=400, detail="Reimbursement amount must be greater than zero.")
 
     # Read and validate receipt bytes
-    file_bytes = await receipt.read()
-    detected_mime = validate_file_content(file_bytes, receipt.filename or "receipt", receipt.content_type or "")
+    file_bytes = await upload_file.read()
+    detected_mime = validate_file_content(file_bytes, upload_file.filename or "receipt", upload_file.content_type or "")
 
     # Generate safe random filename to prevent collisions and path traversal
     file_ext = ALLOWED_MIME_TYPES.get(detected_mime, ".bin")
@@ -94,7 +105,7 @@ async def create_reimbursement(
         f.write(file_bytes)
 
     # Sanitize user filename for display
-    clean_original_filename = os.path.basename(receipt.filename or f"receipt{file_ext}")
+    clean_original_filename = os.path.basename(upload_file.filename or f"receipt{file_ext}")
 
     claim = Reimbursement(
         employee_id=current_user.employee_id,
