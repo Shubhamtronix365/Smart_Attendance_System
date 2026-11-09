@@ -17,6 +17,7 @@ import {
   Fingerprint,
   ChevronLeft,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { id: "leave", label: "Leave Requests", icon: Clock, href: "/employee/leave" },
   { id: "reimbursements", label: "Reimbursements", icon: Receipt, href: "/employee/reimbursements" },
   { id: "advances", label: "Salary Advances", icon: CreditCard, href: "/employee/advances" },
+  { id: "amendments", label: "Disputes & Amendments", icon: AlertCircle, href: "/employee/amendments" },
   { id: "payroll", label: "Payroll & Payslips", icon: DollarSign, href: "/employee/payroll" },
   { id: "profile", label: "My Profile", icon: User, href: "/employee/profile" },
 ];

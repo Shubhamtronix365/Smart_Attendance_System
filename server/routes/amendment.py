@@ -134,6 +134,47 @@ async def list_late_amendments(
     ]
 
 
+@router.get("/late/my", response_model=List[LateAmendmentOut])
+async def my_late_amendments(
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """
+    Returns only the logged-in employee's late mark amendment history.
+    """
+    stmt = (
+        select(LateAmendment)
+        .options(
+            joinedload(LateAmendment.employee),
+            joinedload(LateAmendment.attendance),
+            joinedload(LateAmendment.reviewer)
+        )
+        .where(LateAmendment.employee_id == current_user.employee_id)
+        .order_by(LateAmendment.created_at.desc())
+    )
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    return [
+        LateAmendmentOut(
+            amendment_id=r.amendment_id,
+            employee_id=r.employee_id,
+            employee_name=r.employee.name if r.employee else "Unknown",
+            attendance_id=r.attendance_id,
+            attendance_date=str(r.attendance.date) if r.attendance else None,
+            original_late_minutes=r.original_late_minutes,
+            reason=r.reason,
+            attachment_path=r.attachment_path,
+            status=r.status,
+            reviewer_comments=r.reviewer_comments,
+            reviewed_by_name=r.reviewer.name if r.reviewer else None,
+            created_at=r.created_at,
+            reviewed_at=r.reviewed_at
+        )
+        for r in records
+    ]
+
+
 @router.put("/late/{amendment_id}/review", response_model=LateAmendmentOut)
 async def review_late_amendment(
     amendment_id: int,
@@ -250,6 +291,43 @@ async def list_leave_amendments(
         stmt = stmt.where(LeaveAmendment.status == status_filter)
 
     stmt = stmt.order_by(LeaveAmendment.created_at.desc())
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    return [
+        LeaveAmendmentOut(
+            amendment_id=r.amendment_id,
+            employee_id=r.employee_id,
+            employee_name=r.employee.name if r.employee else "Unknown",
+            leave_id=r.leave_id,
+            reason=r.reason,
+            status=r.status,
+            reviewer_comments=r.reviewer_comments,
+            reviewed_by_name=r.reviewer.name if r.reviewer else None,
+            created_at=r.created_at,
+            reviewed_at=r.reviewed_at
+        )
+        for r in records
+    ]
+
+
+@router.get("/leave/my", response_model=List[LeaveAmendmentOut])
+async def my_leave_amendments(
+    db: AsyncSession = Depends(get_db),
+    current_user: Employee = Depends(get_current_user)
+):
+    """
+    Returns only the logged-in employee's leave amendment history.
+    """
+    stmt = (
+        select(LeaveAmendment)
+        .options(
+            joinedload(LeaveAmendment.employee),
+            joinedload(LeaveAmendment.reviewer)
+        )
+        .where(LeaveAmendment.employee_id == current_user.employee_id)
+        .order_by(LeaveAmendment.created_at.desc())
+    )
     res = await db.execute(stmt)
     records = res.scalars().all()
 
