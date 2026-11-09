@@ -278,3 +278,35 @@ def test_sunday_as_fixed_holiday_in_calendar():
         created_at=datetime.utcnow()
     )
     assert h_custom.is_fixed is False
+
+
+def test_holiday_update_schema_and_custom_festival_types():
+    """Verify HolidayUpdate handles ISO date strings, slash dates, and custom/festival types without 422 error."""
+    from server.schemas.holiday import HolidayUpdate, HolidayCreate
+    from datetime import date
+
+    # Test HolidayUpdate with string date
+    update_data = HolidayUpdate(
+        name="Diwali Festival",
+        date="2026-11-08",
+        holiday_type="Festival",
+        description="Festival of Lights"
+    )
+    assert update_data.date == date(2026, 11, 8)
+    assert update_data.holiday_type == "Festival"
+
+    # Test HolidayUpdate with slash format
+    update_slash = HolidayUpdate(date="25/12/2026", holiday_type="Custom")
+    assert update_slash.date == date(2026, 12, 25)
+    assert update_slash.holiday_type == "Custom"
+
+    # Test HolidayCreate with string date and custom type
+    create_data = HolidayCreate(
+        name="Local Founder Day",
+        date="2026-05-15",
+        holiday_type="Custom",
+        company_name="Corporate"
+    )
+    assert create_data.date == date(2026, 5, 15)
+    assert create_data.holiday_type == "Custom"
+

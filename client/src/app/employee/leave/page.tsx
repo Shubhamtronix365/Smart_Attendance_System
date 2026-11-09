@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
@@ -13,6 +13,7 @@ import {
   XCircle,
   FileText,
   Loader2,
+  Info,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import EmployeeSidebar from "@/components/EmployeeSidebar";
@@ -20,7 +21,7 @@ import EmployeeTopBar from "@/components/EmployeeTopBar";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
-import { leaveApi, employeeSelfApi } from "@/services/api";
+import { leaveApi, employeeSelfApi, holidayApi } from "@/services/api";
 import { formatDate } from "@/utils/formatters";
 
 const LEAVE_TYPES = [
@@ -37,6 +38,7 @@ export default function EmployeeLeavePage() {
 
   const [leaveHistory, setLeaveHistory] = useState<any[]>([]);
   const [balance, setBalance] = useState<any>(null);
+  const [holidays, setHolidays] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
@@ -58,13 +60,15 @@ export default function EmployeeLeavePage() {
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [historyRes, balanceRes] = await Promise.all([
+      const [historyRes, balanceRes, holidaysRes] = await Promise.all([
         leaveApi.list(),
         employeeSelfApi.myLeaveBalance(),
+        holidayApi.list(),
       ]);
       const list = historyRes.data || [];
       setLeaveHistory(list);
       setBalance(balanceRes.data || null);
+      setHolidays(Array.isArray(holidaysRes.data) ? holidaysRes.data : []);
 
       // Check for unacknowledged approved leaves to show one-time alert on login/visit
       const pendingAlert = list.find((item: any) => item.approval_status === "approved" && !item.user_notified);
@@ -134,6 +138,67 @@ export default function EmployeeLeavePage() {
     }
   };
 
+  // Overlap and Working Days Calculator
+  const overlapInfo = useMemo(() => {
+    if (!formFrom || !formTo || formFrom > formTo) return null;
+    const start = new Date(formFrom + "T00:00:00");
+    const end = new Date(formTo + "T00:00:00");
+
+    let totalDays = 0;
+    let sundaysCount = 0;
+    let holidaysCount = 0;
+    const holidayNames: string[] = [];
+
+    const curr = new Date(start);
+    while (curr <= end) {
+      totalDays++;
+      const dateStr = curr.toISOString().split("T")[0];
+      if (curr.getDay() === 0) {
+        sundaysCount++;
+      } else {
+        const match = holidays.find((h: any) => {
+          const hDate = String(h.date).split("T")[0];
+          return hDate === dateStr;
+        });
+        if (match) {
+          holidaysCount++;
+          holidayNames.push(`${match.name}`);
+        }
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    const workingDays = totalDays - sundaysCount - holidaysCount;
+    const isAllHoliday = workingDays <= 0;
+
+    let message = "";
+    if (isAllHoliday) {
+      if (totalDays === 1) {
+        if (sundaysCount === 1) {
+          message = "The selected date is a Sunday (Fixed Weekly Off).";
+        } else {
+          message = `The selected date is already an official Company Holiday: ${holidayNames.join(", ")}.`;
+        }
+      } else {
+        message = `All ${totalDays} selected dates are already Company Holidays or Sundays.`;
+      }
+    } else if (sundaysCount > 0 || holidaysCount > 0) {
+      const parts = [];
+      if (holidaysCount > 0) parts.push(`${holidaysCount} Company Holiday (${holidayNames.join(", ")})`);
+      if (sundaysCount > 0) parts.push(`${sundaysCount} Sunday`);
+      message = `Includes ${parts.join(" and ")}. Your leave quota will only be charged for ${workingDays} working ${workingDays === 1 ? "day" : "days"}.`;
+    }
+
+    return {
+      totalDays,
+      workingDays,
+      sundaysCount,
+      holidaysCount,
+      isAllHoliday,
+      message,
+    };
+  }, [formFrom, formTo, holidays]);
+
   // Duration in days calculator
   const durationDays = (() => {
     if (!formFrom || !formTo) return 0;
@@ -169,6 +234,10 @@ export default function EmployeeLeavePage() {
     }
     if (formFrom > formTo) {
       error("Start date cannot be after end date.");
+      return;
+    }
+    if (overlapInfo?.isAllHoliday) {
+      error("The selected date(s) are already Company Holidays or Sundays. Leave application is not required.");
       return;
     }
 
@@ -530,12 +599,42 @@ export default function EmployeeLeavePage() {
                   </div>
                 </div>
 
-                {durationDays > 0 && (
-                  <div className="px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs flex items-center justify-between">
-                    <span>Duration:</span>
-                    <span className="font-mono font-bold">
-                      {durationDays} {durationDays === 1 ? "day" : "days"}
-                    </span>
+                {overlapInfo && overlapInfo.totalDays > 0 && (
+                  <div className="space-y-2">
+                    <div className="px-3.5 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs flex items-center justify-between">
+                      <span>Leave Duration:</span>
+                      <span className="font-mono font-bold">
+                        {overlapInfo.workingDays} working {overlapInfo.workingDays === 1 ? "day" : "days"}
+                        {overlapInfo.totalDays !== overlapInfo.workingDays && (
+                          <span className="text-white/40 font-normal ml-1">
+                            ({overlapInfo.totalDays} calendar {overlapInfo.totalDays === 1 ? "day" : "days"})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+
+                    {overlapInfo.isAllHoliday ? (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
+                        <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-amber-300">Holiday / Weekly Off Detected</p>
+                          <p className="text-white/80 mt-0.5">{overlapInfo.message}</p>
+                          <p className="text-amber-300/80 text-[11px] mt-1 font-medium">
+                            Applying for leave is not permitted because this day is already paid off.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      overlapInfo.message && (
+                        <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-200 text-xs flex items-start gap-2.5">
+                          <Info size={16} className="text-cyan-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-cyan-300">Smart Holiday Exclusion</p>
+                            <p className="text-white/80 mt-0.5">{overlapInfo.message}</p>
+                          </div>
+                        </div>
+                      )
+                    )}
                   </div>
                 )}
 
@@ -561,8 +660,8 @@ export default function EmployeeLeavePage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-black transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                    disabled={isSubmitting || overlapInfo?.isAllHoliday}
+                    className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-black transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                     style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
                   >
                     {isSubmitting ? (

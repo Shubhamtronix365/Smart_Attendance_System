@@ -26,7 +26,17 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December"
 ];
 
-const HOLIDAY_TYPES = ["National", "Public", "Company", "Optional", "Observance", "Weekly Off", "Fixed Holiday"];
+const HOLIDAY_TYPES = [
+  "National",
+  "Festival",
+  "Public",
+  "Company",
+  "Optional",
+  "Observance",
+  "Weekly Off",
+  "Fixed Holiday",
+  "Custom",
+];
 
 export default function AdminHolidaysPage() {
   const { success, error } = useToast();
@@ -46,7 +56,8 @@ export default function AdminHolidaysPage() {
   const [formName, setFormName] = useState("");
   const [formDate, setFormDate] = useState("");
   const [formDescription, setFormDescription] = useState("");
-  const [formType, setFormType] = useState("National");
+  const [formType, setFormType] = useState("Festival");
+  const [customType, setCustomType] = useState("");
   const [formCompany, setFormCompany] = useState("All");
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -74,7 +85,8 @@ export default function AdminHolidaysPage() {
     setFormName("");
     setFormDate(presetDate || `${currentYear}-${String(currentMonth).padStart(2, "0")}-01`);
     setFormDescription("");
-    setFormType("National");
+    setFormType("Festival");
+    setCustomType("");
     setFormCompany("All");
     setIsModalOpen(true);
   };
@@ -82,9 +94,17 @@ export default function AdminHolidaysPage() {
   const openEditModal = (h: Holiday) => {
     setEditingHoliday(h);
     setFormName(h.name);
-    setFormDate(h.date);
+    // Sanitize date string to YYYY-MM-DD
+    const cleanDate = String(h.date).split("T")[0].trim();
+    setFormDate(cleanDate);
     setFormDescription(h.description || "");
-    setFormType(h.holiday_type || "National");
+    if (HOLIDAY_TYPES.includes(h.holiday_type) && h.holiday_type !== "Custom") {
+      setFormType(h.holiday_type);
+      setCustomType("");
+    } else {
+      setFormType("Custom");
+      setCustomType(h.holiday_type || "");
+    }
     setFormCompany(h.company_name || "All");
     setIsModalOpen(true);
   };
@@ -96,22 +116,25 @@ export default function AdminHolidaysPage() {
       return;
     }
 
+    const effectiveType = formType === "Custom" ? (customType.trim() || "Custom") : formType;
+    const cleanDate = formDate.split("T")[0].trim();
+
     try {
       if (editingHoliday) {
         await holidayApi.update(editingHoliday.holiday_id, {
           name: formName.trim(),
-          date: formDate,
+          date: cleanDate,
           description: formDescription.trim(),
-          holiday_type: formType,
+          holiday_type: effectiveType,
           company_name: formCompany.trim() || "All",
         });
         success("Holiday updated successfully.");
       } else {
         await holidayApi.create({
           name: formName.trim(),
-          date: formDate,
+          date: cleanDate,
           description: formDescription.trim(),
-          holiday_type: formType,
+          holiday_type: effectiveType,
           company_name: formCompany.trim() || "All",
         });
         success("Company holiday created successfully.");
@@ -119,7 +142,6 @@ export default function AdminHolidaysPage() {
       setIsModalOpen(false);
 
       // Auto-jump to the month and year of the holiday so it is instantly visible
-      const cleanDate = formDate.split("T")[0].trim();
       const parts = cleanDate.split("-");
       if (parts.length >= 2) {
         const hYear = parseInt(parts[0], 10);
@@ -645,6 +667,40 @@ export default function AdminHolidaysPage() {
                   </div>
                 </div>
 
+                {formType === "Custom" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30"
+                  >
+                    <label className="text-xs font-bold text-cyan-300 uppercase tracking-wider block mb-1">
+                      Custom Holiday Type / Category *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Regional Festival, State Holiday, Founder's Day"
+                      value={customType}
+                      onChange={(e) => setCustomType(e.target.value)}
+                      className="w-full px-3 py-2 text-sm text-white bg-black/40 border border-cyan-500/40 rounded-xl outline-none focus:border-cyan-300"
+                    />
+                    <p className="text-[10px] text-cyan-300/70 mt-1">
+                      Type your custom classification for this holiday.
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* Holiday Types Help Callout */}
+                <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] text-white/50 space-y-0.5">
+                  <span className="font-semibold text-white/70 block">Holiday Category Guide:</span>
+                  <div><strong className="text-cyan-300">National:</strong> Central public holidays (Independence Day, Republic Day, Gandhi Jayanti).</div>
+                  <div><strong className="text-purple-300">Festival:</strong> Cultural celebrations (Diwali, Dussehra, Eid, Christmas, Holi).</div>
+                  <div><strong className="text-emerald-300">Public:</strong> Gazetted statutory bank or government holidays.</div>
+                  <div><strong className="text-blue-300">Company:</strong> Corporate off-days (Foundation Day, annual corporate retreat).</div>
+                  <div><strong className="text-amber-300">Custom:</strong> Any specialized or regional off-day specified by you.</div>
+                </div>
+
                 {formDate && new Date(formDate + "T00:00:00").getDay() === 0 && (
                   <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
                     <Info size={14} className="shrink-0" />
@@ -678,21 +734,39 @@ export default function AdminHolidaysPage() {
                   />
                 </div>
 
-                <div className="flex gap-3 pt-3 border-t border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl text-sm text-white/60 hover:text-white border border-white/10"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-black"
-                    style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
-                  >
-                    {editingHoliday ? "Update Holiday" : "Save Holiday"}
-                  </button>
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10">
+                  {editingHoliday ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idToDelete = editingHoliday.holiday_id;
+                        setIsModalOpen(false);
+                        setDeleteConfirmId(idToDelete);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all"
+                    >
+                      <Trash2 size={14} /> Delete Holiday
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-4 py-2 rounded-xl text-xs text-white/60 hover:text-white border border-white/10"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl text-xs font-bold text-black"
+                      style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+                    >
+                      {editingHoliday ? "Update Holiday" : "Save Holiday"}
+                    </button>
+                  </div>
                 </div>
               </form>
             </motion.div>

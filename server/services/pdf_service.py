@@ -462,80 +462,80 @@ def generate_payslip_pdf(payroll: Payroll, employee: Employee) -> bytes:
     salary_data = [
         [
             Paragraph("<b>SALARY COMPONENT &amp; DESCRIPTION</b>", h_style),
-            Paragraph("<b>ALLOWANCES (₹)</b>", ParagraphStyle("H1", parent=h_style, alignment=2)),
-            Paragraph("<b>DEDUCTIONS (₹)</b>", ParagraphStyle("H2", parent=h_style, alignment=2)),
+            Paragraph("<b>ALLOWANCES (Rs.)</b>", ParagraphStyle("H1", parent=h_style, alignment=2)),
+            Paragraph("<b>DEDUCTIONS (Rs.)</b>", ParagraphStyle("H2", parent=h_style, alignment=2)),
         ],
         [
             Paragraph("Basic Monthly Salary", body_style),
-            Paragraph(f"₹ {basic_val:,.2f}", right_body),
+            Paragraph(f"Rs. {basic_val:,.2f}", right_body),
             Paragraph("—", right_body),
         ],
     ]
 
     if ot_pay_val > 0 or ot_hrs > 0:
-        rate_str = f" @ ₹{ot_rate_val:,.2f}/hr" if ot_rate_val > 0 else ""
+        rate_str = f" @ Rs. {ot_rate_val:,.2f}/hr" if ot_rate_val > 0 else ""
         salary_data.append([
             Paragraph(f"Payable Overtime ({ot_hrs:.1f} hrs{rate_str})", body_style),
-            Paragraph(f"₹ {ot_pay_val:,.2f}", right_body),
+            Paragraph(f"Rs. {ot_pay_val:,.2f}", right_body),
             Paragraph("—", right_body),
         ])
 
     if reimb_val > 0:
         salary_data.append([
             Paragraph("Approved Employee Reimbursements", body_style),
-            Paragraph(f"₹ {reimb_val:,.2f}", right_body),
+            Paragraph(f"Rs. {reimb_val:,.2f}", right_body),
             Paragraph("—", right_body),
         ])
 
     if bonus_val > 0:
         salary_data.append([
             Paragraph("Incentives / Discretionary Bonus", body_style),
-            Paragraph(f"₹ {bonus_val:,.2f}", right_body),
+            Paragraph(f"Rs. {bonus_val:,.2f}", right_body),
             Paragraph("—", right_body),
         ])
 
     if abs_ded_val > 0 or abs_days > 0:
-        rate_str = f" ({int(abs_days)} days @ ₹{abs_rate_val:,.2f}/day)" if abs_rate_val > 0 else f" ({int(abs_days)} days)"
+        rate_str = f" ({int(abs_days)} days @ Rs. {abs_rate_val:,.2f}/day)" if abs_rate_val > 0 else f" ({int(abs_days)} days)"
         salary_data.append([
             Paragraph(f"Unpaid Absence Deduction{rate_str}", body_style),
             Paragraph("—", right_body),
-            Paragraph(f'<font color="#dc2626">₹ {abs_ded_val:,.2f}</font>', right_body),
+            Paragraph(f'<font color="#dc2626">Rs. {abs_ded_val:,.2f}</font>', right_body),
         ])
 
     if late_ded_val > 0 or late_entries > 0:
-        rate_str = f" ({late_entries} entries @ ₹{late_rate_val:,.2f}/entry)" if late_rate_val > 0 else f" ({late_entries} entries)"
+        rate_str = f" ({late_entries} entries @ Rs. {late_rate_val:,.2f}/entry)" if late_rate_val > 0 else f" ({late_entries} entries)"
         salary_data.append([
             Paragraph(f"Late Check-In Penalty{rate_str}", body_style),
             Paragraph("—", right_body),
-            Paragraph(f'<font color="#dc2626">₹ {late_ded_val:,.2f}</font>', right_body),
+            Paragraph(f'<font color="#dc2626">Rs. {late_ded_val:,.2f}</font>', right_body),
         ])
 
     if adv_rec_val > 0:
         salary_data.append([
             Paragraph("Salary Advance Recovery", body_style),
             Paragraph("—", right_body),
-            Paragraph(f'<font color="#dc2626">₹ {adv_rec_val:,.2f}</font>', right_body),
+            Paragraph(f'<font color="#dc2626">Rs. {adv_rec_val:,.2f}</font>', right_body),
         ])
 
     if other_ded_val > 0:
         salary_data.append([
             Paragraph("Other Authorized Adjustments / Deductions", body_style),
             Paragraph("—", right_body),
-            Paragraph(f'<font color="#dc2626">₹ {other_ded_val:,.2f}</font>', right_body),
+            Paragraph(f'<font color="#dc2626">Rs. {other_ded_val:,.2f}</font>', right_body),
         ])
 
     # Totals Row
     salary_data.append([
         Paragraph("<b>TOTALS</b>", bold_body),
-        Paragraph(f"<b>₹ {total_allowances:,.2f}</b>", right_bold),
-        Paragraph(f'<b><font color="#dc2626">₹ {total_deductions_val:,.2f}</font></b>', right_bold),
+        Paragraph(f"<b>Rs. {total_allowances:,.2f}</b>", right_bold),
+        Paragraph(f'<b><font color="#dc2626">Rs. {total_deductions_val:,.2f}</font></b>', right_bold),
     ])
 
     # Net Salary Disbursed Row
     final_net = float(payroll.final_salary or (total_allowances - total_deductions_val))
     salary_data.append([
         Paragraph(f"<b>NET SALARY DISBURSED</b><br/><font size='7' color='#64748b'>Payment Status: {'PAID' if payroll.is_paid else 'PENDING'}</font>", bold_body),
-        Paragraph(f'<font size="12" color="#059669"><b>₹ {final_net:,.2f}</b></font>', ParagraphStyle("N1", parent=right_bold, fontSize=12)),
+        Paragraph(f'<font size="12" color="#059669"><b>Rs. {final_net:,.2f}</b></font>', ParagraphStyle("N1", parent=right_bold, fontSize=12)),
         Paragraph("", right_body),
     ])
 
@@ -809,10 +809,10 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
         Paragraph("<b>Employee Name</b>", header_style),
         Paragraph("<b>Department</b>", header_style),
         Paragraph("<b>Days Pres.</b>", header_style),
-        Paragraph("<b>Basic (₹)</b>", header_style),
-        Paragraph("<b>OT Pay (₹)</b>", header_style),
-        Paragraph("<b>Deductions (₹)</b>", header_style),
-        Paragraph("<b>Net Salary (₹)</b>", header_style),
+        Paragraph("<b>Basic (Rs.)</b>", header_style),
+        Paragraph("<b>OT Pay (Rs.)</b>", header_style),
+        Paragraph("<b>Deductions (Rs.)</b>", header_style),
+        Paragraph("<b>Net Salary (Rs.)</b>", header_style),
         Paragraph("<b>Status</b>", header_style),
     ]]
 
@@ -841,10 +841,10 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
             Paragraph(f"<b>{p.get('employee_name')}</b>", row_style),
             Paragraph(p.get("department") or "N/A", row_style),
             Paragraph(f"{float(p.get('present_days') or 0.0):.1f}", row_center),
-            Paragraph(f"₹ {basic:,.2f}", row_right),
-            Paragraph(f"₹ {ot:,.2f}", row_right),
-            Paragraph(f'<font color="#dc2626">₹ {ded:,.2f}</font>', row_right),
-            Paragraph(f'<b><font color="#059669">₹ {net:,.2f}</font></b>', row_right),
+            Paragraph(f"Rs. {basic:,.2f}", row_right),
+            Paragraph(f"Rs. {ot:,.2f}", row_right),
+            Paragraph(f'<font color="#dc2626">Rs. {ded:,.2f}</font>', row_right),
+            Paragraph(f'<b><font color="#059669">Rs. {net:,.2f}</font></b>', row_right),
             Paragraph(status_html, row_center),
         ])
 
@@ -853,10 +853,10 @@ def generate_payroll_report_pdf(year: int, month: int, payrolls: list) -> bytes:
         Paragraph("<b>GRAND TOTALS</b>", ParagraphStyle("BTot", parent=row_style, fontName="Helvetica-Bold", textColor=COLOR_PRIMARY_NAVY)),
         Paragraph("", bold_right),
         Paragraph("", bold_right),
-        Paragraph(f"<b>₹ {total_basic:,.2f}</b>", bold_right),
-        Paragraph(f"<b>₹ {total_ot:,.2f}</b>", bold_right),
-        Paragraph(f'<b><font color="#dc2626">₹ {total_ded:,.2f}</font></b>', bold_right),
-        Paragraph(f'<b><font color="#059669">₹ {total_net:,.2f}</font></b>', bold_right),
+        Paragraph(f"<b>Rs. {total_basic:,.2f}</b>", bold_right),
+        Paragraph(f"<b>Rs. {total_ot:,.2f}</b>", bold_right),
+        Paragraph(f'<b><font color="#dc2626">Rs. {total_ded:,.2f}</font></b>', bold_right),
+        Paragraph(f'<b><font color="#059669">Rs. {total_net:,.2f}</font></b>', bold_right),
         Paragraph("", bold_right),
     ])
 

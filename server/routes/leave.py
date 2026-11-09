@@ -67,19 +67,79 @@ async def submit_leave_request(
     db: AsyncSession = Depends(get_db),
     current_user: Employee = Depends(get_current_user)
 ):
-    """Submits a new leave request (Employee action)."""
+    """Submits a new leave request (Employee action). Cross-verifies against Holidays and Sundays."""
     if request_data.start_date > request_data.end_date:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Start date cannot be after end date"
         )
-        
+
+    from server.models.holiday import Holiday
+    from datetime import timedelta
+
+    # 1. Cross-verify against Company Holidays and Sundays
+    hol_stmt = select(Holiday).where(
+        and_(
+            Holiday.date >= request_data.start_date,
+            Holiday.date <= request_data.end_date
+        )
+    )
+    hol_res = await db.execute(hol_stmt)
+    overlapping_holidays = hol_res.scalars().all()
+    hol_dict = {h.date: h.name for h in overlapping_holidays}
+
+    total_days = (request_data.end_date - request_data.start_date).days + 1
+    working_days = 0
+    holiday_days = 0
+    sunday_days = 0
+
+    curr = request_data.start_date
+    while curr <= request_data.end_date:
+        if curr.weekday() == 6:
+            sunday_days += 1
+        elif curr in hol_dict:
+            holiday_days += 1
+        else:
+            working_days += 1
+        curr += timedelta(days=1)
+
+    # If single day requested:
+    if request_data.start_date == request_data.end_date:
+        if request_data.start_date.weekday() == 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{request_data.start_date.strftime('%d/%m/%Y')} is a Sunday (Fixed Weekly Off). You do not need to apply for leave on this day."
+            )
+        if request_data.start_date in hol_dict:
+            h_name = hol_dict[request_data.start_date]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{request_data.start_date.strftime('%d/%m/%Y')} is already an official Company Holiday ('{h_name}'). You do not need to apply for leave on this day."
+            )
+
+    # If multi-day requested and there are ZERO working days:
+    if working_days == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"All selected dates ({request_data.start_date.strftime('%d/%m/%Y')} to {request_data.end_date.strftime('%d/%m/%Y')}) are already Company Holidays or Sundays. Leave application is not required."
+        )
+
+    # If some days overlap with holidays/Sundays, append transparent notice to reason
+    final_reason = request_data.reason or ""
+    if holiday_days > 0 or sunday_days > 0:
+        notes = []
+        if holiday_days > 0:
+            notes.append(f"{holiday_days} holiday(s)")
+        if sunday_days > 0:
+            notes.append(f"{sunday_days} Sunday(s)")
+        final_reason += f" [Note: {', '.join(notes)} excluded from consumed leave duration]"
+
     db_leave = Leave(
         employee_id=current_user.employee_id,
         leave_type=request_data.leave_type,
         start_date=request_data.start_date,
         end_date=request_data.end_date,
-        reason=request_data.reason,
+        reason=final_reason.strip(),
         approval_status=LeaveStatus.PENDING,
         created_at=datetime.utcnow()
     )
@@ -162,8 +222,21 @@ async def my_leave_balance(
     used_paid = 0
     used_unpaid = 0
 
+    # Fetch company holidays for current year to avoid penalizing employees on holidays
+    from server.models.holiday import Holiday
+    from datetime import timedelta
+    hol_stmt = select(Holiday.date).where(extract("year", Holiday.date) == current_year)
+    hol_res = await db.execute(hol_stmt)
+    holiday_dates = set(r[0] for r in hol_res.all())
+
     for l in leaves:
-        duration = (l.end_date - l.start_date).days + 1
+        duration = 0
+        curr = l.start_date
+        while curr <= l.end_date:
+            if curr.weekday() != 6 and curr not in holiday_dates:
+                duration += 1
+            curr += timedelta(days=1)
+
         if l.leave_type == LeaveType.CASUAL:
             used_casual += duration
         elif l.leave_type == LeaveType.SICK:
@@ -243,9 +316,26 @@ async def approve_leave(
     
     # Wait, if approved, we should automatically update/create attendance records for the dates of leave!
     # Let's create 'leave' status attendance records for the leave date range so payroll service picks them up.
+    # Exclude Sundays and Company Holidays: they are already non-working off-days and must not become LEAVE records.
     from datetime import timedelta
+    from server.models.holiday import Holiday
+
+    hol_stmt = select(Holiday.date).where(
+        and_(
+            Holiday.date >= r.start_date,
+            Holiday.date <= r.end_date
+        )
+    )
+    hol_res = await db.execute(hol_stmt)
+    holiday_dates = set(res[0] for res in hol_res.all())
+
     current_date = r.start_date
     while current_date <= r.end_date:
+        # Skip Sundays and Company Holidays
+        if current_date.weekday() == 6 or current_date in holiday_dates:
+            current_date += timedelta(days=1)
+            continue
+
         # Check if attendance record exists for this employee/date
         att_stmt = select(Attendance).where(
             and_(
@@ -461,8 +551,21 @@ async def get_leave_balance(
     used_paid = 0
     used_unpaid = 0
     
+    # Fetch company holidays for current year to avoid penalizing employees on holidays
+    from server.models.holiday import Holiday
+    from datetime import timedelta
+    hol_stmt = select(Holiday.date).where(extract("year", Holiday.date) == current_year)
+    hol_res = await db.execute(hol_stmt)
+    holiday_dates = set(r[0] for r in hol_res.all())
+
     for l in leaves:
-        duration = (l.end_date - l.start_date).days + 1
+        duration = 0
+        curr = l.start_date
+        while curr <= l.end_date:
+            if curr.weekday() != 6 and curr not in holiday_dates:
+                duration += 1
+            curr += timedelta(days=1)
+
         if l.leave_type == LeaveType.CASUAL:
             used_casual += duration
         elif l.leave_type == LeaveType.SICK:
