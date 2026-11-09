@@ -156,6 +156,12 @@ export const reimbursementApi = {
     }),
   review: (id: number, data: { status: "approved" | "rejected"; review_notes?: string }) =>
     api.put(`/api/reimbursements/${id}/review`, data),
+  update: (id: number, formData: FormData) =>
+    api.put(`/api/reimbursements/${id}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  delete: (id: number) =>
+    api.delete(`/api/reimbursements/${id}`),
   getDocument: (id: number) =>
     api.get(`/api/reimbursements/${id}/document`, { responseType: "blob" }),
 };

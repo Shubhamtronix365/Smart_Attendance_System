@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Receipt, CheckCircle2, XCircle, Clock, Eye, Download,
-  Filter, Search, AlertCircle, FileText, X, Check, Loader2, DollarSign
+  Filter, Search, AlertCircle, FileText, X, Check, Loader2, DollarSign,
+  Edit2, Trash2, Upload
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -52,6 +53,18 @@ export default function AdminReimbursementsPage() {
   const [viewingDocClaim, setViewingDocClaim] = useState<Reimbursement | null>(null);
   const [docBlobUrl, setDocBlobUrl] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
+
+  // Edit Modal State
+  const [editingClaim, setEditingClaim] = useState<Reimbursement | null>(null);
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editCategory, setEditCategory] = useState<string>("");
+  const [editDescription, setEditDescription] = useState<string>("");
+  const [editFile, setEditFile] = useState<File | null>(null);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  // Delete Modal State
+  const [deleteClaim, setDeleteClaim] = useState<Reimbursement | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchClaims = useCallback(async () => {
     setIsLoading(true);
@@ -125,6 +138,58 @@ export default function AdminReimbursementsPage() {
       setDocBlobUrl(null);
     }
     setViewingDocClaim(null);
+  };
+
+  const handleOpenEdit = (c: Reimbursement) => {
+    setEditingClaim(c);
+    setEditAmount(Number(c.amount));
+    setEditCategory(c.category);
+    setEditDescription(c.description || "");
+    setEditFile(null);
+  };
+
+  const submitEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClaim) return;
+    if (editAmount <= 0) {
+      error("Amount must be greater than zero.");
+      return;
+    }
+    setIsSubmittingEdit(true);
+    try {
+      const formData = new FormData();
+      formData.append("amount", String(editAmount));
+      formData.append("category", editCategory.trim() || "Miscellaneous");
+      formData.append("description", editDescription.trim());
+      if (editFile) {
+        formData.append("receipt", editFile);
+      }
+      await reimbursementApi.update(editingClaim.reimbursement_id, formData);
+      success(`Claim #${editingClaim.reimbursement_id} updated successfully.`);
+      setEditingClaim(null);
+      fetchClaims();
+    } catch (err: any) {
+      console.error("Error updating claim", err);
+      error(err.response?.data?.detail || "Failed to update reimbursement claim.");
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
+  const submitDelete = async () => {
+    if (!deleteClaim) return;
+    setIsDeleting(true);
+    try {
+      await reimbursementApi.delete(deleteClaim.reimbursement_id);
+      success(`Claim #${deleteClaim.reimbursement_id} deleted successfully.`);
+      setDeleteClaim(null);
+      fetchClaims();
+    } catch (err: any) {
+      console.error("Error deleting claim", err);
+      error(err.response?.data?.detail || "Failed to delete reimbursement claim.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const filtered = claims.filter((c) => {
@@ -296,24 +361,45 @@ export default function AdminReimbursementsPage() {
                             {c.review_notes || c.description || "—"}
                           </td>
                           <td className="px-4 py-4">
-                            {isPending ? (
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => handleOpenReview(c, "approved")}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-green-300 bg-green-500/15 border border-green-500/30 hover:bg-green-500/25 transition-all"
-                                >
-                                  <Check size={12} /> Approve
-                                </button>
-                                <button
-                                  onClick={() => handleOpenReview(c, "rejected")}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-red-300 bg-red-500/15 border border-red-500/30 hover:bg-red-500/25 transition-all"
-                                >
-                                  <X size={12} /> Reject
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-white/20 text-xs">Finalized</span>
-                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isPending && (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenReview(c, "approved")}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-green-300 bg-green-500/15 border border-green-500/30 hover:bg-green-500/25 transition-all cursor-pointer"
+                                  >
+                                    <Check size={12} /> Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenReview(c, "rejected")}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-red-300 bg-red-500/15 border border-red-500/30 hover:bg-red-500/25 transition-all cursor-pointer"
+                                  >
+                                    <X size={12} /> Reject
+                                  </button>
+                                </>
+                              )}
+
+                              {c.status !== "paid" ? (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenEdit(c)}
+                                    title="Edit Reimbursement"
+                                    className="p-1.5 rounded-lg text-white/50 hover:text-cyan-300 bg-white/5 hover:bg-cyan-500/15 border border-white/10 hover:border-cyan-500/30 transition-all cursor-pointer"
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteClaim(c)}
+                                    title="Delete Reimbursement"
+                                    className="p-1.5 rounded-lg text-white/50 hover:text-red-400 bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-500/30 transition-all cursor-pointer"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-white/20 text-xs">Paid</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -410,6 +496,150 @@ export default function AdminReimbursementsPage() {
         )}
       </AnimatePresence>
 
+      {/* Edit Reimbursement Modal */}
+      <AnimatePresence>
+        {editingClaim && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95 }}
+              className="w-full max-w-md rounded-3xl bg-[#0a0f1e] border border-cyan-500/30 p-6 shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <Edit2 size={16} className="text-cyan-400" />
+                  <h3 className="text-white font-bold text-base">Edit Reimbursement #{editingClaim.reimbursement_id}</h3>
+                </div>
+                <button onClick={() => setEditingClaim(null)} className="text-white/40 hover:text-white">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={submitEdit} className="py-4 space-y-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Amount (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-sm text-green-400 font-mono font-bold bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Category *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    placeholder="e.g. Travel & Fuel, Meals, Office Supplies"
+                    className="w-full px-3 py-2 text-xs text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Description *
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-3 py-2 text-xs text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400 resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Replace Receipt File (Optional)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setEditFile(e.target.files[0]);
+                      }
+                    }}
+                    className="w-full text-xs text-white/60 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30"
+                  />
+                  {editingClaim.receipt_filename && (
+                    <p className="text-[11px] text-white/40 mt-1">Current file: {editingClaim.receipt_filename}</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-3 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setEditingClaim(null)}
+                    className="flex-1 py-2 rounded-xl text-xs text-white/60 hover:text-white border border-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingEdit}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold text-black"
+                    style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+                  >
+                    {isSubmittingEdit ? "Updating..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteClaim && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <div className="w-full max-w-sm rounded-3xl bg-[#0a0f1e] border border-red-500/30 p-6 text-center shadow-2xl">
+              <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
+              <h4 className="text-lg font-bold text-white mb-2">Delete Claim #{deleteClaim.reimbursement_id}?</h4>
+              <p className="text-white/50 text-xs mb-6">
+                Are you sure you want to permanently delete this reimbursement request of <strong>₹{Number(deleteClaim.amount).toLocaleString("en-IN")}</strong> for {deleteClaim.employee_name}?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteClaim(null)}
+                  className="flex-1 py-2 rounded-xl text-xs text-white/60 hover:text-white border border-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 transition-colors"
+                >
+                  {isDeleting ? "Deleting..." : "Delete Claim"}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Document Viewer Modal */}
       <AnimatePresence>
         {viewingDocClaim && (
@@ -462,6 +692,150 @@ export default function AdminReimbursementsPage() {
                 )}
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Reimbursement Modal */}
+      <AnimatePresence>
+        {editingClaim && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95 }}
+              className="w-full max-w-md rounded-3xl bg-[#0a0f1e] border border-cyan-500/30 p-6 shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <Edit2 size={16} className="text-cyan-400" />
+                  <h3 className="text-white font-bold text-base">Edit Reimbursement #{editingClaim.reimbursement_id}</h3>
+                </div>
+                <button onClick={() => setEditingClaim(null)} className="text-white/40 hover:text-white">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={submitEdit} className="py-4 space-y-3.5">
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Amount (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-sm text-green-400 font-mono font-bold bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Category *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    placeholder="e.g. Travel & Fuel, Meals, Office Supplies"
+                    className="w-full px-3 py-2 text-xs text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Description *
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-3 py-2 text-xs text-white bg-white/5 border border-white/10 rounded-xl outline-none focus:border-cyan-400 resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
+                    Replace Receipt File (Optional)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setEditFile(e.target.files[0]);
+                      }
+                    }}
+                    className="w-full text-xs text-white/60 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30"
+                  />
+                  {editingClaim.receipt_filename && (
+                    <p className="text-[11px] text-white/40 mt-1">Current file: {editingClaim.receipt_filename}</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-3 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setEditingClaim(null)}
+                    className="flex-1 py-2 rounded-xl text-xs text-white/60 hover:text-white border border-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingEdit}
+                    className="flex-1 py-2 rounded-xl text-xs font-bold text-black"
+                    style={{ background: "linear-gradient(135deg, #00f5ff, #7c3aed)" }}
+                  >
+                    {isSubmittingEdit ? "Updating..." : "Save Changes"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteClaim && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          >
+            <div className="w-full max-w-sm rounded-3xl bg-[#0a0f1e] border border-red-500/30 p-6 text-center shadow-2xl">
+              <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
+              <h4 className="text-lg font-bold text-white mb-2">Delete Claim #{deleteClaim.reimbursement_id}?</h4>
+              <p className="text-white/50 text-xs mb-6">
+                Are you sure you want to permanently delete this reimbursement request of <strong>₹{Number(deleteClaim.amount).toLocaleString("en-IN")}</strong> for {deleteClaim.employee_name}?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteClaim(null)}
+                  className="flex-1 py-2 rounded-xl text-xs text-white/60 hover:text-white border border-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitDelete}
+                  disabled={isDeleting}
+                  className="flex-1 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 transition-colors"
+                >
+                  {isDeleting ? "Deleting..." : "Delete Claim"}
+                </button>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
