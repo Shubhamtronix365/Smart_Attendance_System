@@ -455,14 +455,15 @@ async def update_reimbursement(
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement record not found")
 
+    if claim.status == ReimbursementStatus.PAID:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot edit an already finalized and paid reimbursement claim."
+        )
+
     if current_user.role != "admin":
         if claim.employee_id != current_user.employee_id:
             raise HTTPException(status_code=403, detail="Cannot edit another employee's reimbursement claim")
-        if claim.status not in (ReimbursementStatus.PENDING, ReimbursementStatus.REJECTED):
-            raise HTTPException(status_code=400, detail="Cannot edit an approved or paid reimbursement claim. Please contact administration.")
-    else:
-        if claim.status == ReimbursementStatus.PAID:
-            raise HTTPException(status_code=400, detail="Cannot edit a finalized paid reimbursement.")
 
     if amount is not None:
         if amount <= Decimal("0.00"):
@@ -490,9 +491,18 @@ async def update_reimbursement(
         claim.receipt_mimetype = detected_mime
         claim.receipt_storage_path = safe_stored_name
 
-    # If employee edits a rejected claim, transition back to pending for manager review
-    if current_user.role != "admin" and claim.status == ReimbursementStatus.REJECTED:
+    # When an employee edits their claim, it must go back for approval again.
+    # Reset status to PENDING, clear approval stamps and payroll links so it only shows in payroll after re-approval.
+    if current_user.role != "admin":
+        prev_status = claim.status
         claim.status = ReimbursementStatus.PENDING
+        claim.reviewed_by = None
+        claim.reviewed_at = None
+        claim.payroll_id = None
+        if prev_status == ReimbursementStatus.APPROVED:
+            claim.reviewer_comments = "Modified by employee after approval. Requires re-approval before payroll inclusion."
+        elif prev_status == ReimbursementStatus.REJECTED:
+            claim.reviewer_comments = "Resubmitted with modifications by employee for re-evaluation."
 
     await db.commit()
     await db.refresh(claim)
@@ -549,14 +559,15 @@ async def delete_reimbursement(
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement record not found")
 
+    if claim.status == ReimbursementStatus.PAID:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an already finalized and paid reimbursement claim."
+        )
+
     if current_user.role != "admin":
         if claim.employee_id != current_user.employee_id:
             raise HTTPException(status_code=403, detail="Cannot delete another employee's reimbursement claim")
-        if claim.status not in (ReimbursementStatus.PENDING, ReimbursementStatus.REJECTED):
-            raise HTTPException(status_code=400, detail="Cannot delete an approved or paid reimbursement claim. Please contact administration.")
-    else:
-        if claim.status == ReimbursementStatus.PAID:
-            raise HTTPException(status_code=400, detail="Cannot delete a finalized paid reimbursement.")
 
     # Remove storage file if exists
     if claim.receipt_storage_path:

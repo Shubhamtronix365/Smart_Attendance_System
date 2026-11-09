@@ -209,7 +209,11 @@ export default function EmployeeReimbursementsPage() {
       }
 
       await reimbursementApi.update(editingClaim.reimbursement_id, formData);
-      success("Reimbursement claim updated successfully.");
+      success(
+        editingClaim.status === "approved"
+          ? "Claim updated and resubmitted for admin re-approval before payroll inclusion."
+          : "Reimbursement claim updated successfully."
+      );
       setEditingClaim(null);
       fetchMyClaims();
     } catch (err: any) {
@@ -325,7 +329,9 @@ export default function EmployeeReimbursementsPage() {
                     </tr>
                   ) : (
                     claims.map((c) => {
-                      const isPendingOrRejected = c.status === "pending" || c.status === "rejected";
+                      const isPaid = c.status === "paid";
+                      const isApproved = c.status === "approved";
+                      const canEditOrDelete = !isPaid;
                       const hasReceipt = Boolean(c.document_filename || c.receipt_filename || c.document_path);
 
                       return (
@@ -372,25 +378,29 @@ export default function EmployeeReimbursementsPage() {
                             {c.reviewer_comments || c.review_notes || "—"}
                           </td>
                           <td className="px-4 py-4">
-                            {isPendingOrRejected ? (
+                            {canEditOrDelete ? (
                               <div className="flex items-center gap-1.5">
                                 <button
                                   onClick={() => handleOpenEdit(c)}
-                                  title="Edit Claim"
-                                  className="p-1.5 rounded-lg text-white/50 hover:text-cyan-300 bg-white/5 hover:bg-cyan-500/15 border border-white/10 hover:border-cyan-500/30 transition-all cursor-pointer"
+                                  title={isApproved ? "Edit Claim (Resubmits for Re-Approval)" : "Edit Claim"}
+                                  className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                    isApproved
+                                      ? "text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30"
+                                      : "text-white/50 hover:text-cyan-300 bg-white/5 hover:bg-cyan-500/15 border-white/10 hover:border-cyan-500/30"
+                                  }`}
                                 >
                                   <Edit2 size={13} />
                                 </button>
                                 <button
                                   onClick={() => setDeleteClaim(c)}
-                                  title="Withdraw / Delete Claim"
+                                  title={isApproved ? "Withdraw Approved Claim" : "Withdraw / Delete Claim"}
                                   className="p-1.5 rounded-lg text-white/50 hover:text-red-400 bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-500/30 transition-all cursor-pointer"
                                 >
                                   <Trash2 size={13} />
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-white/20 text-xs font-semibold">Locked</span>
+                              <span className="text-cyan-400/60 text-xs font-semibold">Disbursed</span>
                             )}
                           </td>
                         </tr>
@@ -576,6 +586,14 @@ export default function EmployeeReimbursementsPage() {
               </div>
 
               <form onSubmit={handleSubmitEdit} className="py-4 space-y-3.5">
+                {editingClaim.status === "approved" && (
+                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5">
+                    <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-200/90 leading-relaxed">
+                      <strong>Re-Approval Notice:</strong> This claim was previously approved. Saving edits will reset its status to <strong>Pending</strong>. It will require administrator re-approval before it can be processed or disbursed in payroll.
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
                     Amount (₹) *
@@ -690,9 +708,17 @@ export default function EmployeeReimbursementsPage() {
             <div className="w-full max-w-sm rounded-3xl bg-[#0a0f1e] border border-red-500/30 p-6 text-center shadow-2xl">
               <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
               <h4 className="text-lg font-bold text-white mb-2">Withdraw Claim #{deleteClaim.reimbursement_id}?</h4>
-              <p className="text-white/50 text-xs mb-6">
+              <p className="text-white/50 text-xs mb-4">
                 Are you sure you want to withdraw and delete this reimbursement request of <strong>₹{Number(deleteClaim.amount).toLocaleString("en-IN")}</strong>?
               </p>
+              {deleteClaim.status === "approved" && (
+                <div className="mb-5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-left flex items-start gap-2">
+                  <AlertCircle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-200/90 leading-tight">
+                    This claim was previously approved. Withdrawing it will permanently cancel the claim and exclude it from payroll.
+                  </p>
+                </div>
+              )}
               <div className="flex gap-3">
                 <button
                   onClick={() => setDeleteClaim(null)}

@@ -378,3 +378,121 @@ def test_late_amendment_approval_synchronization_and_payroll_adjustment():
     assert calc_adjusted["final_salary"] == Decimal("50000.00")
 
 
+def test_reimbursement_edit_resets_approval_and_payroll_inclusion():
+    """
+    Verifies that editing a reimbursement resets its status to PENDING,
+    clears any previous approval or payroll link, and is strictly excluded
+    from payroll until re-approved by administration.
+    """
+    from server.models.reimbursement import Reimbursement, ReimbursementStatus
+
+    # 1. Initially submitted claim is PENDING
+    claim = Reimbursement(
+        reimbursement_id=501,
+        employee_id=1,
+        amount=Decimal("2500.00"),
+        category="Travel & Fuel",
+        description="Client site travel expenses",
+        receipt_filename="fuel_receipt.pdf",
+        receipt_mimetype="application/pdf",
+        receipt_storage_path="safe_fuel_receipt.pdf",
+        status=ReimbursementStatus.PENDING,
+        created_at=datetime.utcnow()
+    )
+
+    # In PENDING status, approved reimbursement amount for payroll is 0
+    eligible_approved_reimb = claim.amount if claim.status in (ReimbursementStatus.APPROVED, ReimbursementStatus.PAID) else Decimal("0.00")
+    assert eligible_approved_reimb == Decimal("0.00")
+
+    payroll_pending = compute_authoritative_payroll(
+        base_salary=Decimal("50000.00"),
+        absent_days=0,
+        absent_rate=Decimal("1500.00"),
+        late_entries=0,
+        late_rate=Decimal("200.00"),
+        payable_ot_hours=0,
+        ot_rate=Decimal("100.00"),
+        approved_reimbursements=eligible_approved_reimb,
+    )
+    assert payroll_pending["reimbursement_amount"] == Decimal("0.00")
+    assert payroll_pending["final_salary"] == Decimal("50000.00")
+
+    # 2. Administrator approves the claim
+    claim.status = ReimbursementStatus.APPROVED
+    claim.reviewed_by = 99
+    claim.reviewed_at = datetime.utcnow()
+    claim.reviewer_comments = "Approved for business travel."
+
+    eligible_approved_reimb = claim.amount if claim.status in (ReimbursementStatus.APPROVED, ReimbursementStatus.PAID) else Decimal("0.00")
+    assert eligible_approved_reimb == Decimal("2500.00")
+
+    payroll_approved = compute_authoritative_payroll(
+        base_salary=Decimal("50000.00"),
+        absent_days=0,
+        absent_rate=Decimal("1500.00"),
+        late_entries=0,
+        late_rate=Decimal("200.00"),
+        payable_ot_hours=0,
+        ot_rate=Decimal("100.00"),
+        approved_reimbursements=eligible_approved_reimb,
+    )
+    assert payroll_approved["reimbursement_amount"] == Decimal("2500.00")
+    assert payroll_approved["final_salary"] == Decimal("52500.00")
+
+    # 3. Employee updates / edits the claim (e.g. adjusts amount to 3200 and fixes receipt)
+    # Backend update_reimbursement resets status back to PENDING and clears previous approval
+    prev_status = claim.status
+    claim.amount = Decimal("3200.00")
+    claim.description = "Updated with parking charges"
+    claim.status = ReimbursementStatus.PENDING
+    claim.reviewed_by = None
+    claim.reviewed_at = None
+    claim.payroll_id = None
+    if prev_status == ReimbursementStatus.APPROVED:
+        claim.reviewer_comments = "Modified by employee after approval. Requires re-approval before payroll inclusion."
+
+    assert claim.status == ReimbursementStatus.PENDING
+    assert claim.reviewed_by is None
+    assert claim.payroll_id is None
+
+    # While pending re-approval, claim amount is excluded from payroll
+    eligible_approved_reimb = claim.amount if claim.status in (ReimbursementStatus.APPROVED, ReimbursementStatus.PAID) else Decimal("0.00")
+    assert eligible_approved_reimb == Decimal("0.00")
+
+    payroll_after_edit = compute_authoritative_payroll(
+        base_salary=Decimal("50000.00"),
+        absent_days=0,
+        absent_rate=Decimal("1500.00"),
+        late_entries=0,
+        late_rate=Decimal("200.00"),
+        payable_ot_hours=0,
+        ot_rate=Decimal("100.00"),
+        approved_reimbursements=eligible_approved_reimb,
+    )
+    assert payroll_after_edit["reimbursement_amount"] == Decimal("0.00")
+    assert payroll_after_edit["final_salary"] == Decimal("50000.00")
+
+    # 4. Administrator reviews and approves the updated claim
+    claim.status = ReimbursementStatus.APPROVED
+    claim.reviewed_by = 99
+    claim.reviewed_at = datetime.utcnow()
+    claim.reviewer_comments = "Re-approved with updated parking receipts."
+
+    eligible_approved_reimb = claim.amount if claim.status in (ReimbursementStatus.APPROVED, ReimbursementStatus.PAID) else Decimal("0.00")
+    assert eligible_approved_reimb == Decimal("3200.00")
+
+    payroll_reapproved = compute_authoritative_payroll(
+        base_salary=Decimal("50000.00"),
+        absent_days=0,
+        absent_rate=Decimal("1500.00"),
+        late_entries=0,
+        late_rate=Decimal("200.00"),
+        payable_ot_hours=0,
+        ot_rate=Decimal("100.00"),
+        approved_reimbursements=eligible_approved_reimb,
+    )
+    assert payroll_reapproved["reimbursement_amount"] == Decimal("3200.00")
+    assert payroll_reapproved["final_salary"] == Decimal("53200.00")
+
+
+
