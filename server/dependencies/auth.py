@@ -94,8 +94,10 @@ async def get_current_user(
 def require_admin(current_user: Employee = Depends(get_current_user)) -> Employee:
     """
     Dependency that enforces the logged-in user has an 'admin' role.
+    Handles case-insensitivity and whitespace normalization.
     """
-    if current_user.role != "admin":
+    user_role = str(getattr(current_user, "role", "") or "").strip().lower()
+    if user_role != "admin":
         log_warning(
             "SECURITY",
             "UNAUTHORIZED_ACCESS_ATTEMPT",
@@ -108,7 +110,7 @@ def require_admin(current_user: Employee = Depends(get_current_user)) -> Employe
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access forbidden: Admin privilege required"
+            detail="Access forbidden: Admin privilege required. Please sign in with an Administrator account."
         )
     return current_user
 

@@ -417,11 +417,9 @@ async def today_attendance(
 @router.get("/live", response_model=List[AttendanceOut])
 async def live_attendance(
     db: AsyncSession = Depends(get_db),
-    current_user: Employee = Depends(get_current_user)
+    admin: Employee = Depends(require_admin)
 ):
     """Returns the last 20 attendance check-ins/check-outs for today."""
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Admin privilege required")
         
     today = get_current_local_date()
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(

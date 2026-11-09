@@ -76,7 +76,11 @@ export default function AdminReimbursementsPage() {
       setClaims(res.data || []);
     } catch (err: any) {
       console.error("Error fetching claims", err);
-      error("Failed to load reimbursements.");
+      if (err?.response?.status === 403) {
+        error("Admin privileges required. Please sign in with an Administrator account.");
+      } else {
+        error("Failed to load reimbursements.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +90,11 @@ export default function AdminReimbursementsPage() {
     fetchClaims();
     employeesApi.list({ size: 100 })
       .then((res) => setEmployees(res.data || []))
-      .catch((e) => console.error("Error loading employees", e));
+      .catch((e) => {
+        if (e?.response?.status !== 403) {
+          console.error("Error loading employees", e);
+        }
+      });
   }, [fetchClaims]);
 
   const handleOpenReview = (c: Reimbursement, action: "approved" | "rejected") => {

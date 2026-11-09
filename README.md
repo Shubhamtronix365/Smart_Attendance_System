@@ -29,6 +29,9 @@ An IoT-powered Smart Attendance System using ESP32 biometric fingerprint sensors
 - 💰 **Auto & Manual Payroll Calculation** based on monthly attendance records, overtime allowances, deductions, and approved leaves.
 - 📊 **Dashboard Analytics** with interactive weekly and monthly charts.
 - 🌑 **Immersive 3D Hero UI** with glassmorphism, neon accents, and particle fields.
+- 🔒 **Role-Based Access Control (RBAC) & Client Layout Guard:** Multi-role isolation separating Root Administrator privileges from standard Staff Accounts. Next.js `AdminLayout` route guard prevents employee sessions from calling administrative endpoints, and Axios 403 interceptors automatically redirect unauthorized users. Default accounts:
+  - **Root Administrator:** `admin@system.com` / `admin123`
+  - **Staff Employee:** `bhavesh@system.com` / `bhavesh123`
 - 🔒 **Secure JWT Authentication** stored in HTTPOnly cookies or Bearer tokens.
 - 📥 **Exports and Payslips** including professional PDF payslips generated via ReportLab and Excel sheet logs generated via openpyxl.
 - 🔄 **Keep-Alive & Health Check Endpoints (`/health` & `/api/health`):** Dedicated `GET` & `HEAD` keep-alive ping receiver for cron-job websites (e.g. cron-job.org, UptimeRobot, Render pingers) to maintain server uptime, warm up serverless connection pools (`SELECT 1`), and prevent cold-start spin-down delays.

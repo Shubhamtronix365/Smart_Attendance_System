@@ -31,15 +31,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ─── Response Interceptor — 401 Redirect ──────────────────────────────────────
+// ─── Response Interceptor — 401 & 403 Handlers ──────────────────────────────
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("role");
-      if (window.location.pathname !== "/login" && window.location.pathname !== "/") {
-        window.location.href = "/login";
+    if (typeof window !== "undefined") {
+      if (err.response?.status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("role");
+        if (window.location.pathname !== "/login" && window.location.pathname !== "/") {
+          window.location.href = "/login";
+        }
+      } else if (err.response?.status === 403) {
+        const storedRole = String(localStorage.getItem("role") || "").toLowerCase();
+        // If an employee session is trying to load admin views, automatically route to employee dashboard
+        if (storedRole === "employee" && window.location.pathname.startsWith("/admin")) {
+          window.location.href = "/employee/dashboard";
+        }
       }
     }
     return Promise.reject(err);

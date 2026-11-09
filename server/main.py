@@ -208,6 +208,44 @@ async def startup_event():
             except Exception:
                 pass
 
+            # Auto-heal: Ensure root admin account exists and has role 'admin'
+            try:
+                from sqlalchemy import select
+                from decimal import Decimal
+                from datetime import date
+                from server.dependencies.auth import get_password_hash
+
+                # Normalize existing roles to lowercase trimmed string
+                await session.execute(text("UPDATE employees SET role = LOWER(TRIM(role)) WHERE role IS NOT NULL;"))
+
+                admin_chk = await session.execute(
+                    select(Employee).where(Employee.email == "admin@system.com")
+                )
+                admin_user = admin_chk.scalar_one_or_none()
+                if not admin_user:
+                    admin_user = Employee(
+                        name="System Admin",
+                        email="admin@system.com",
+                        phone="+919876543210",
+                        department="Management",
+                        designation="System Administrator",
+                        salary=Decimal("95000.00"),
+                        role="admin",
+                        is_active=True,
+                        hashed_password=get_password_hash("admin123"),
+                        plain_password="admin123",
+                        joining_date=date.today()
+                    )
+                    session.add(admin_user)
+                    log_info("SYSTEM", "DEFAULT_ADMIN_SEEDED", "Default admin account (admin@system.com / admin123) guaranteed.")
+                else:
+                    if str(admin_user.role or "").strip().lower() != "admin" or not admin_user.is_active:
+                        admin_user.role = "admin"
+                        admin_user.is_active = True
+                        log_info("SYSTEM", "ADMIN_ROLE_RESTORED", "Restored role='admin' on admin@system.com.")
+            except Exception as e_seed:
+                log_warning("SYSTEM", f"Admin self-heal check warning: {e_seed}")
+
             await session.commit()
         log_info(
             "SYSTEM",

@@ -229,7 +229,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const user = await login(email, password, rememberMe);
-      const role = user.role;
+      const role = String(user.role || "").toLowerCase();
       // Store token in cookie (httpOnly set by server) / localStorage as fallback
       if (typeof window !== "undefined") {
         localStorage.setItem("role", role);
@@ -363,7 +363,7 @@ export default function LoginPage() {
             {/* Role Notice */}
             {portalMode === "admin" ? (
               <div className="mb-5 p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-200">
-                <span className="font-semibold text-white">Root System Administrator:</span> Manages company settings, payroll rates, reports, and devices. Not tracked as a roster employee.
+                <span className="font-semibold text-white">Root System Administrator:</span> Manages company settings, payroll rates, reports, and devices. Admin credentials: <code className="bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono">admin@system.com</code> / <code className="bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded font-mono">admin123</code>.
               </div>
             ) : (
               <div className="mb-5 p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200">
