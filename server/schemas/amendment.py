@@ -5,7 +5,9 @@ from server.models.amendment import AmendmentStatus
 
 class LateAmendmentCreate(BaseModel):
     attendance_id: int
-    reason: str = Field(..., min_length=5)
+    reason: str = Field(..., min_length=3)
+    auto_approve: Optional[bool] = False
+    reviewer_comments: Optional[str] = None
 
 class LateAmendmentReview(BaseModel):
     status: AmendmentStatus  # approved | rejected

@@ -192,7 +192,7 @@ export const amendmentApi = {
     api.get("/api/amendments/late", { params }),
   myLate: () =>
     api.get("/api/amendments/late/my"),
-  submitLate: (data: { attendance_id: number; reason: string }) =>
+  submitLate: (data: { attendance_id: number; reason: string; auto_approve?: boolean; reviewer_comments?: string }) =>
     api.post("/api/amendments/late", data),
   reviewLate: (id: number, data: { status: "approved" | "rejected"; review_notes?: string }) =>
     api.put(`/api/amendments/late/${id}/review`, data),

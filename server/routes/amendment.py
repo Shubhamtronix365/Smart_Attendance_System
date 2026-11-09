@@ -54,14 +54,82 @@ async def submit_late_amendment(
     if dup_res.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="A pending amendment for this late mark already exists.")
 
+    target_emp_id = attendance.employee_id
+    is_admin = str(getattr(current_user, "role", "") or "").strip().lower() == "admin"
+
     amendment = LateAmendment(
-        employee_id=current_user.employee_id,
+        employee_id=target_emp_id,
         attendance_id=payload.attendance_id,
         original_late_minutes=attendance.late_minutes or 0,
         reason=payload.reason,
-        status=AmendmentStatus.PENDING,
+        status=AmendmentStatus.APPROVED if (is_admin and payload.auto_approve) else AmendmentStatus.PENDING,
         created_at=datetime.utcnow()
     )
+
+    if is_admin and payload.auto_approve:
+        amendment.reviewed_by = current_user.employee_id
+        amendment.reviewed_at = datetime.utcnow()
+        amendment.reviewer_comments = payload.reviewer_comments or "Created and approved by Administrator"
+        
+        # Waive attendance record immediately
+        if attendance.status == AttendanceStatus.LATE:
+            attendance.status = AttendanceStatus.PRESENT
+        attendance.late_minutes = 0
+
+        # Adjust payroll if unpaid payroll exists
+        if attendance.date:
+            p_year = attendance.date.year
+            p_month = attendance.date.month
+            pay_stmt = select(Payroll).where(
+                and_(
+                    Payroll.employee_id == target_emp_id,
+                    Payroll.year == p_year,
+                    Payroll.month == p_month
+                )
+            )
+            pay_res = await db.execute(pay_stmt)
+            existing_payroll = pay_res.scalar_one_or_none()
+            if existing_payroll and not existing_payroll.is_paid:
+                emp_obj = await db.get(Employee, target_emp_id)
+                if emp_obj:
+                    try:
+                        metrics = await get_employee_monthly_metrics(
+                            emp_obj, p_year, p_month, db, existing_payroll_id=existing_payroll.payroll_id
+                        )
+                        calc = compute_authoritative_payroll(
+                            base_salary=metrics["base_salary"],
+                            absent_days=metrics["absent_days"],
+                            absent_rate=existing_payroll.absent_rate or Decimal("0.00"),
+                            late_entries=metrics["applicable_late_entries"],
+                            late_rate=existing_payroll.late_rate or Decimal("0.00"),
+                            payable_ot_hours=metrics["payable_ot_hours"],
+                            ot_rate=existing_payroll.ot_rate or Decimal("0.00"),
+                            reimbursement_amount=metrics["reimbursement_amount"],
+                            outstanding_advance=metrics["outstanding_advance"],
+                            advance_recovery_choice="none",
+                            advance_recovery_amount=existing_payroll.advance_recovered or Decimal("0.00"),
+                            bonus=existing_payroll.bonus or Decimal("0.00"),
+                            other_deductions=Decimal("0.00")
+                        )
+                        existing_payroll.working_days = metrics["working_days"]
+                        existing_payroll.present_days = int(round(metrics["present_days"]))
+                        existing_payroll.absent_days = metrics["absent_days"]
+                        existing_payroll.late_days = metrics["applicable_late_entries"]
+                        existing_payroll.late_deduction = Decimal(str(calc["late_deduction"]))
+                        existing_payroll.deductions = Decimal(str(calc["total_deductions"]))
+                        existing_payroll.final_salary = Decimal(str(calc["final_payable_salary"]))
+                        if existing_payroll.calculation_snapshot:
+                            try:
+                                snap = json.loads(existing_payroll.calculation_snapshot)
+                                snap.update(metrics)
+                                snap.update(calc)
+                                snap["updated_due_to_amendment"] = True
+                                existing_payroll.calculation_snapshot = json.dumps(snap, default=str)
+                            except Exception:
+                                pass
+                    except Exception as ex:
+                        log_warning("AMENDMENT", f"Failed auto-recalculating payroll: {ex}")
+
     db.add(amendment)
     await db.commit()
     await db.refresh(amendment)
@@ -74,16 +142,20 @@ async def submit_late_amendment(
         employee_id=current_user.employee_code or str(current_user.employee_id)
     )
 
+    emp_record = await db.get(Employee, target_emp_id)
     return LateAmendmentOut(
         amendment_id=amendment.amendment_id,
         employee_id=amendment.employee_id,
-        employee_name=current_user.name,
+        employee_name=emp_record.name if emp_record else "Unknown",
         attendance_id=amendment.attendance_id,
         attendance_date=str(attendance.date),
         original_late_minutes=amendment.original_late_minutes,
         reason=amendment.reason,
         status=amendment.status,
-        created_at=amendment.created_at
+        reviewer_comments=amendment.reviewer_comments,
+        reviewed_by_name=current_user.name if (is_admin and payload.auto_approve) else None,
+        created_at=amendment.created_at,
+        reviewed_at=amendment.reviewed_at
     )
 
 
