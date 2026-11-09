@@ -43,12 +43,24 @@ class ManualPayrollSaveRequest(BaseModel):
     other_deductions: Decimal = Decimal("0.00")
     remarks: Optional[str] = None
     is_paid: bool = False
+    # Manual Formula Overrides
+    working_days: Optional[int] = None
+    present_days: Optional[int] = None
+    absent_days: Optional[int] = None
+    payable_ot_hours: Optional[Decimal] = None
+    salary_per_day: Optional[Decimal] = None
+    salary_per_hour: Optional[Decimal] = None
+    payout_working_days: Optional[Decimal] = None
+    payout_extra_hours: Optional[Decimal] = None
+    final_salary: Optional[Decimal] = None
 
     @model_validator(mode="before")
     @classmethod
     def populate_defaults_and_aliases(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            # Backward-compat with older payload formats
+            # Backward-compat with older payload formats & aliases
+            if "advance_recovery_choice" not in data and "advance_recovery_mode" in data:
+                data["advance_recovery_choice"] = data["advance_recovery_mode"]
             if "absent_rate" not in data:
                 data["absent_rate"] = Decimal("0.00")
             if "late_rate" not in data:
@@ -69,13 +81,21 @@ class PayrollCalculatePreviewRequest(BaseModel):
     employee_id: int
     month: int
     year: int
-    absent_rate: Optional[Decimal] = Decimal("0.00")
+    absent_rate: Optional[Decimal] = None
     late_rate: Optional[Decimal] = Decimal("0.00")
-    ot_rate: Optional[Decimal] = Decimal("0.00")
+    ot_rate: Optional[Decimal] = None
     advance_recovery_choice: Optional[str] = "none"
     advance_recovery_amount: Optional[Decimal] = Decimal("0.00")
     bonus: Optional[Decimal] = Decimal("0.00")
     other_deductions: Optional[Decimal] = Decimal("0.00")
+    working_days: Optional[int] = None
+    present_days: Optional[int] = None
+    absent_days: Optional[int] = None
+    payable_ot_hours: Optional[Decimal] = None
+    salary_per_day: Optional[Decimal] = None
+    salary_per_hour: Optional[Decimal] = None
+    payout_working_days: Optional[Decimal] = None
+    payout_extra_hours: Optional[Decimal] = None
 
 class PayrollCreate(PayrollBase):
     pass

@@ -354,7 +354,16 @@ async def save_manual_payroll(
             remarks=payload.remarks,
             is_paid=payload.is_paid,
             admin=admin,
-            db=db
+            db=db,
+            working_days=payload.working_days,
+            present_days=payload.present_days,
+            absent_days=payload.absent_days,
+            payable_ot_hours=payload.payable_ot_hours,
+            salary_per_day=payload.salary_per_day,
+            salary_per_hour=payload.salary_per_hour,
+            payout_working_days=payload.payout_working_days,
+            payout_extra_hours=payload.payout_extra_hours,
+            final_salary=payload.final_salary
         )
 
         log_info(

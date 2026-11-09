@@ -473,29 +473,34 @@ The authoritative payroll calculation engine connects actual monthly attendance 
 
 ---
 
-### 1. Calculation Logic & Mathematical Formulas
+### 1. Calculation Logic & Mathematical Formulas (18-Row Authoritative Formula Sheet)
 
-1. **Standard Working Days ($W$):**  
-   Calculated from the total days in the pay period month, strictly excluding weekly offs (Sundays) and approved company holidays:
-   $$W = \text{Total Month Days} - \text{Sundays} - \text{Company Holidays}$$
+Both automated batch payroll generation and the interactive manual calculator modal operate on the exact 18-row authoritative mathematical formula sheet:
 
-2. **Simple Absent Day Deduction:**  
-   Calculated using a direct flat rate entered or configured by the administrator per absent day (no complex base salary percentage or artificial multiplier):
-   $$\text{Absent Deduction} = \text{Total Absent Days} \times \text{Admin Absent Rate}$$
+| Row # | Metric Description & Symbol | Origin & Data Source | Mathematical Formula / Calculation Contract |
+| :---: | :--- | :--- | :--- |
+| **1** | **Monthly Salary ($S$)** | Employee Master | Fixed contractual base salary from employee master record. |
+| **2** | **Total Working Days ($T$)** | Calendar | Total calendar days in the billing month (e.g. 31, 30, 28/29). |
+| **3** | **Week Off ($WO$)** | Calendar | Total count of Sundays occurring in the billing month. |
+| **4** | **Holiday ($H$)** | Holiday Master | Approved company holidays in the month (excluding Sundays). |
+| **5** | **Expected Working Days ($EWD$)** | Formula | $$EWD = T - WO - H$$ |
+| **6** | **Salary Per Day ($SPD$)** | Formula | $$SPD = \frac{S}{EWD}$$ |
+| **7** | **Salary Per Hour ($SPH$)** | Formula | $$SPH = \frac{SPD}{8}$$ *(based on standard 8-hour shift)* |
+| **8** | **Leaves / Absent ($A$)** | Attendance Hardware | Unexcused absent days fetched from hardware biometric records. |
+| **9** | **Actual Working Days ($WD$)** | Formula | $$WD = T - WO - H - A = EWD - A$$ |
+| **10** | **Extra Working Hours ($EWH$)** | Attendance System | Eligible daily overtime hours (shift excess $> 1\text{h}$, floored, 0 on Sun). |
+| **11** | **Late Entry ($LE$)** | Attendance Hardware | Total late punch-ins recorded by the biometric hardware. |
+| **12** | **Amendments for Late Entry ($ALE$)** | Disputes & Waivers | Approved late arrival dispute explanations waived by administration. |
+| **13** | **Final Late Entry ($L$)** | Formula | $$L = \max(0, LE - ALE)$$ |
+| **14** | **Payout For Working Days ($PWD$)** | Formula | $$PWD = WD \times SPD$$ |
+| **15** | **Payout For Extra Working Hours ($PEWH$)** | Formula | $$PEWH = EWH \times SPH$$ |
+| **16** | **Penalty / Debt ($D$)** | Formula | $$D = (L \times \text{LateRate}) + \text{AdvanceRecovery} + \text{OtherDeductions}$$ |
+| **17** | **Bonus / Credit / Reward ($C$)** | Formula | $$C = \text{IncentiveBonus} + \text{ApprovedReimbursements}$$ |
+| **18** | **Final Salary ($FS$)** | Master Payout | $$FS = \max(0, PWD + PEWH - D + C)$$ |
 
-3. **Simple Late Mark Deduction:**  
-   Calculated using a direct flat penalty per late arrival entry (excluding waived disputes and Sunday check-ins):
-   $$\text{Late Deduction} = \text{Applicable Late Entries} \times \text{Admin Late Rate}$$
-
-4. **Strict Daily Overtime Eligibility & Flooring:**  
-   Overtime is calculated on a strict day-by-day basis:
-   - **Eligibility Threshold:** Only shift durations exceeding the standard shift threshold by strictly **more than 1 hour** ($> 60\text{ minutes}$) qualify for overtime pay.
-   - **Integer Flooring:** Eligible overtime minutes are floored to the nearest full integer hour:
-     $$\text{Daily Payable OT Hours} = \left\lfloor \frac{\text{Daily Excess Minutes}}{60} \right\rfloor$$
-   - **Zero Daily Carryover:** Excess minutes under 60 (or remaining fractional minutes) cannot be accumulated or carried across calendar days.
-   - **Sunday Overtime:** Punches on Sundays strictly yield **0 payable overtime hours**.
-   - **Total Overtime Addition:**
-     $$\text{OT Pay} = \left( \sum \text{Daily Payable OT Hours} \right) \times \text{Admin OT Rate}$$
+#### Automated vs. Manual Calculator Operations:
+- **Automated Batch Processing:** When clicking *Generate Payroll for Period*, the backend automatically executes this 18-row formula across all active employees, querying monthly attendance logs, dispute approvals, calendar Sundays, and holidays.
+- **Interactive Manual Calculator Modal:** In the admin payroll view, clicking *Manual Payroll Calculator* loads the employee's pre-filled 18-row formula sheet. The administrator can inspect every component, manually adjust any value in-place, observe real-time recalculation of downstream rows, and permanently finalize the custom calculation snapshot into the database.
 
 5. **Approved Expense Reimbursements:**  
    Only reimbursement requests reviewed and marked with status `approved` are eligible. Pending and rejected claims are strictly excluded:

@@ -7,7 +7,8 @@ import {
   ChevronRight, X, Printer, DollarSign,
   ToggleLeft, ToggleRight, Zap, Calculator, Sliders,
   AlertCircle, CheckCircle2, RefreshCw, Clock,
-  Calendar, ShieldCheck, CreditCard, Receipt
+  Calendar, ShieldCheck, CreditCard, Receipt,
+  RotateCcw, Edit3, HelpCircle, Check
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -227,14 +228,37 @@ function ManualPayrollModal({
   // Authoritative Loaded Backend Data
   const [previewData, setPreviewData] = useState<any>(null);
 
-  // Editable Calculation Controls (Admin-configured rates & options)
-  const [absentRate, setAbsentRate] = useState<number>(0);
-  const [lateRate, setLateRate] = useState<number>(0);
-  const [otRate, setOtRate] = useState<number>(0);
+  // ── 18 Authoritative Formula Sheet Fields ──
+  const [monthlySalary, setMonthlySalary] = useState<number>(0); // 1. S
+  const [totalWorkingDays, setTotalWorkingDays] = useState<number>(30); // 2. T
+  const [weekOffs, setWeekOffs] = useState<number>(4); // 3. WO
+  const [holidaysCount, setHolidaysCount] = useState<number>(0); // 4. H
+  const [expectedWorkingDays, setExpectedWorkingDays] = useState<number>(26); // 5. EWD
+  const [salaryPerDay, setSalaryPerDay] = useState<number>(0); // 6. SPD
+  const [salaryPerHour, setSalaryPerHour] = useState<number>(0); // 7. SPH
+  const [leavesAbsent, setLeavesAbsent] = useState<number>(0); // 8. A
+  const [actualWorkingDays, setActualWorkingDays] = useState<number>(26); // 9. WD
+  const [extraWorkingHours, setExtraWorkingHours] = useState<number>(0); // 10. EWH
+  const [lateEntry, setLateEntry] = useState<number>(0); // 11. LE
+  const [amendmentsLateEntry, setAmendmentsLateEntry] = useState<number>(0); // 12. ALE
+  const [finalLateEntry, setFinalLateEntry] = useState<number>(0); // 13. L
+  const [payoutWorkingDays, setPayoutWorkingDays] = useState<number>(0); // 14. PWD
+  const [payoutExtraHours, setPayoutExtraHours] = useState<number>(0); // 15. PEWH
+  const [penaltyDebt, setPenaltyDebt] = useState<number>(0); // 16. D
+  const [bonusCreditReward, setBonusCreditReward] = useState<number>(0); // 17. C
+  const [finalSalary, setFinalSalary] = useState<number>(0); // 18. FS
+
+  // Manual Override Tracking: preserves any manual changes made by the administrator
+  const [customOverrides, setCustomOverrides] = useState<Record<string, boolean>>({});
+
+  // Sub-controls for Debt (D) and Credit (C)
+  const [lateRate, setLateRate] = useState<number>(200);
   const [advanceMode, setAdvanceMode] = useState<"none" | "full" | "partial">("none");
   const [advanceAmount, setAdvanceAmount] = useState<number>(0);
+  const [advanceOutstanding, setAdvanceOutstanding] = useState<number>(0);
   const [bonus, setBonus] = useState<number>(0);
   const [otherDeductions, setOtherDeductions] = useState<number>(0);
+  const [approvedReimbursements, setApprovedReimbursements] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
   const [isPaid, setIsPaid] = useState<boolean>(false);
 
@@ -251,6 +275,80 @@ function ManualPayrollModal({
       .catch((err) => console.error("Error loading employees for calculator", err));
   }, []);
 
+  // Central recompute helper to maintain strict formula consistency while respecting custom overrides
+  const computeDownstream = useCallback((
+    base: {
+      s: number;
+      t: number;
+      wo: number;
+      h: number;
+      ewd: number;
+      spd: number;
+      sph: number;
+      a: number;
+      wd: number;
+      ewh: number;
+      le: number;
+      ale: number;
+      l: number;
+      lateRateVal: number;
+      advRec: number;
+      otherDeduct: number;
+      bonusVal: number;
+      reimbVal: number;
+      pwdVal: number;
+      pewhVal: number;
+      debtVal: number;
+      creditVal: number;
+      fsVal: number;
+    },
+    overrides: Record<string, boolean>
+  ) => {
+    // EWD = T - WO - H
+    const calcEwd = overrides.expectedWorkingDays ? base.ewd : Math.max(1, base.t - base.wo - base.h);
+
+    // SPD = S / EWD
+    const calcSpd = overrides.salaryPerDay ? base.spd : (calcEwd > 0 ? Math.round((base.s / calcEwd) * 100) / 100 : 0);
+
+    // SPH = SPD / 8
+    const calcSph = overrides.salaryPerHour ? base.sph : (calcSpd > 0 ? Math.round((calcSpd / 8) * 100) / 100 : 0);
+
+    // WD = EWD - A
+    const calcWd = overrides.actualWorkingDays ? base.wd : Math.max(0, calcEwd - base.a);
+
+    // L = max(0, LE - ALE)
+    const calcL = overrides.finalLateEntry ? base.l : Math.max(0, base.le - base.ale);
+
+    // PWD = WD * SPD
+    const calcPwd = overrides.payoutWorkingDays ? base.pwdVal : Math.round(calcWd * calcSpd * 100) / 100;
+
+    // PEWH = EWH * SPH
+    const calcPewh = overrides.payoutExtraHours ? base.pewhVal : Math.round(base.ewh * calcSph * 100) / 100;
+
+    // Debt D = (L * LateRate) + AdvanceRecovery + OtherDeductions
+    const lateDeduction = Math.round(calcL * (base.lateRateVal || 0) * 100) / 100;
+    const calcDebt = overrides.penaltyDebt ? base.debtVal : Math.round((lateDeduction + base.advRec + base.otherDeduct) * 100) / 100;
+
+    // Credit C = Bonus + ApprovedReimbursements
+    const calcCredit = overrides.bonusCreditReward ? base.creditVal : Math.round((base.bonusVal + base.reimbVal) * 100) / 100;
+
+    // Final Salary FS = PWD + PEWH - D + C
+    const calcFs = overrides.finalSalary ? base.fsVal : Math.max(0, Math.round((calcPwd + calcPewh - calcDebt + calcCredit) * 100) / 100);
+
+    return {
+      ewd: calcEwd,
+      spd: calcSpd,
+      sph: calcSph,
+      wd: calcWd,
+      l: calcL,
+      pwd: calcPwd,
+      pewh: calcPewh,
+      debt: calcDebt,
+      credit: calcCredit,
+      fs: calcFs,
+    };
+  }, []);
+
   // Fetch individual calculation preview from backend
   const loadPreview = useCallback(async (empId: number, m: number, y: number) => {
     if (!empId) return;
@@ -262,28 +360,93 @@ function ManualPayrollModal({
 
       setPreviewData(data);
 
-      // Initialize admin rates from employee configuration
-      const empFromList = employees.find((e) => e.employee_id === empId);
-      const defaultOt = Number(data.ot_rate) || Number(data.default_ot_rate) || Number(empFromList?.overtime_rate) || 0;
-      const defaultLate = Number(data.late_rate) || Number(data.default_late_rate) || Number(empFromList?.late_deduction_rate) || 0;
+      const currentEmp = employees.find((e) => e.employee_id === empId);
+      const sheet = data.formula_sheet || {};
 
-      setAbsentRate(Number(data.absent_rate) || Number(data.default_absent_rate) || 0);
-      setLateRate(defaultLate);
-      setOtRate(defaultOt);
-      setBonus(Number(data.bonus) || 0);
-      setOtherDeductions(0);
-      setRemarks(data.remarks || (data.already_saved ? "Authoritative calculation snapshot" : ""));
-      setIsPaid(Boolean(data.is_paid));
+      // 1. Monthly Salary (S)
+      const s = Number(sheet.monthly_salary ?? data.basic_salary ?? data.base_salary ?? currentEmp?.salary ?? 0);
+      // 2. Total Working Days (T)
+      const t = Number(sheet.total_working_days ?? data.total_month_days ?? 30);
+      // 3. Week Off (WO)
+      const wo = Number(sheet.week_off ?? data.week_offs ?? 4);
+      // 4. Holiday (H)
+      const h = Number(sheet.holiday ?? data.holidays_count ?? 0);
+      // 5. Expected Working Days (EWD = T - WO - H)
+      const ewd = Number(sheet.expected_working_days ?? Math.max(1, t - wo - h));
+      // 6. Salary Per Day (SPD = S / EWD)
+      const spd = Number(sheet.salary_per_day ?? (ewd > 0 ? Math.round((s / ewd) * 100) / 100 : 0));
+      // 7. Salary Per Hour (SPH = SPD / 8)
+      const sph = Number(sheet.salary_per_hour ?? (spd > 0 ? Math.round((spd / 8) * 100) / 100 : 0));
+      // 8. Leaves / Absent (A)
+      const a = Number(sheet.leaves_absent ?? data.absent_days ?? 0);
+      // 9. Actual Working Days (WD = T - WO - H - A)
+      const wd = Number(sheet.actual_working_days ?? Math.max(0, ewd - a));
+      // 10. Extra Working Hours (EWH)
+      const ewh = Number(sheet.extra_working_hours ?? data.payable_ot_hours ?? 0);
+      // 11. Late Entry (LE)
+      const le = Number(sheet.late_entry ?? data.raw_late_entries ?? data.late_entries ?? 0);
+      // 12. Amendments for Late Entry (ALE)
+      const ale = Number(sheet.amendments_for_late_entry ?? data.amendments_late_entries ?? 0);
+      // 13. Final Late Entry (L = LE - ALE)
+      const l = Number(sheet.final_late_entry ?? Math.max(0, le - ale));
+      // 14. Payout For Working Days (PWD = WD * SPD)
+      const pwd = Number(sheet.payout_for_working_days ?? Math.round(wd * spd * 100) / 100);
+      // 15. Payout For Extra Working Hours (PEWH = EWH * SPH)
+      const pewh = Number(sheet.payout_for_extra_working_hours ?? Math.round(ewh * sph * 100) / 100);
 
-      // Advance initialization
-      const outstanding = Number(data.advance_balance_outstanding ?? data.outstanding_advance) || 0;
-      if (outstanding > 0) {
+      // Sub-controls
+      const dLate = Number(data.late_rate) || Number(data.default_late_rate) || Number(currentEmp?.late_deduction_rate) || 200;
+      const dBonus = Number(data.bonus) || 0;
+      const dOtherDeduct = Number(data.other_deductions) || 0;
+      const dReimb = Number(data.total_approved_reimbursements ?? data.approved_reimbursements ?? data.reimbursement_amount ?? 0);
+      const dAdvanceOut = Number(data.advance_balance_outstanding ?? data.outstanding_advance ?? 0);
+
+      let advRec = 0;
+      if (dAdvanceOut > 0) {
         setAdvanceMode("full");
-        setAdvanceAmount(outstanding);
+        setAdvanceAmount(dAdvanceOut);
+        advRec = dAdvanceOut;
       } else {
         setAdvanceMode("none");
         setAdvanceAmount(0);
       }
+
+      // 16. Penalty / Debt (D)
+      const debt = Number(sheet.penalty_debt ?? Math.round(((l * dLate) + advRec + dOtherDeduct) * 100) / 100);
+      // 17. Bonus / Credit / Reward (C)
+      const credit = Number(sheet.bonus_credit_reward ?? Math.round((dBonus + dReimb) * 100) / 100);
+      // 18. Final Salary (FS = PWD + PEWH - D + C)
+      const fs = Number(sheet.final_salary ?? Math.max(0, Math.round((pwd + pewh - debt + credit) * 100) / 100));
+
+      // Reset overrides to clean slate
+      setCustomOverrides({});
+
+      setMonthlySalary(s);
+      setTotalWorkingDays(t);
+      setWeekOffs(wo);
+      setHolidaysCount(h);
+      setExpectedWorkingDays(ewd);
+      setSalaryPerDay(spd);
+      setSalaryPerHour(sph);
+      setLeavesAbsent(a);
+      setActualWorkingDays(wd);
+      setExtraWorkingHours(ewh);
+      setLateEntry(le);
+      setAmendmentsLateEntry(ale);
+      setFinalLateEntry(l);
+      setPayoutWorkingDays(pwd);
+      setPayoutExtraHours(pewh);
+      setPenaltyDebt(debt);
+      setBonusCreditReward(credit);
+      setFinalSalary(fs);
+
+      setLateRate(dLate);
+      setBonus(dBonus);
+      setOtherDeductions(dOtherDeduct);
+      setApprovedReimbursements(dReimb);
+      setAdvanceOutstanding(dAdvanceOut);
+      setRemarks(data.remarks || (data.already_saved ? "Authoritative calculation snapshot" : ""));
+      setIsPaid(Boolean(data.is_paid));
     } catch (err: any) {
       console.error("Error loading payroll preview", err);
       const detail = err.response?.data?.detail;
@@ -304,26 +467,7 @@ function ManualPayrollModal({
     }
   }, [selectedEmpId, month, year, loadPreview]);
 
-  // Derived calculations matching strict backend formulas
-  const currentEmp = employees.find((e) => e.employee_id === selectedEmpId);
-  const rawBaseSalary = previewData?.basic_salary ?? previewData?.base_salary ?? previewData?.salary ?? currentEmp?.salary ?? 0;
-  const basicSalary = Number(rawBaseSalary) || 0;
-  const absentDays = previewData ? Number(previewData.absent_days) || 0 : 0;
-  const totalAbsentDeduction = Math.round(absentDays * absentRate);
-
-  const applicableLate = previewData ? Number(previewData.applicable_late_entries) || 0 : 0;
-  const totalLateDeduction = Math.round(applicableLate * lateRate);
-
-  const payableOtHours = previewData ? Number(previewData.payable_ot_hours) || 0 : 0;
-  const totalOtPay = Math.round(payableOtHours * otRate);
-
-  const approvedReimbursements = previewData
-    ? Number(previewData.total_approved_reimbursements ?? previewData.approved_reimbursements ?? previewData.reimbursement_amount) || 0
-    : 0;
-  const advanceOutstanding = previewData
-    ? Number(previewData.advance_balance_outstanding ?? previewData.outstanding_advance) || 0
-    : 0;
-
+  // Derived advance recovery based on current mode
   let advanceRecovery = 0;
   if (advanceMode === "full") {
     advanceRecovery = advanceOutstanding;
@@ -334,9 +478,208 @@ function ManualPayrollModal({
   }
   const remainingAdvance = Math.max(0, advanceOutstanding - advanceRecovery);
 
-  const totalAdditions = basicSalary + totalOtPay + approvedReimbursements + bonus;
-  const totalDeductions = totalAbsentDeduction + totalLateDeduction + advanceRecovery + otherDeductions;
-  const finalSalary = Math.max(0, totalAdditions - totalDeductions);
+  // Field change handler: updates field and recomputes downstream
+  const handleFieldChange = (field: string, val: number, isDirectOverride = false) => {
+    const updatedOverrides = { ...customOverrides };
+    if (isDirectOverride) {
+      updatedOverrides[field] = true;
+    }
+
+    let nextS = monthlySalary;
+    let nextT = totalWorkingDays;
+    let nextWO = weekOffs;
+    let nextH = holidaysCount;
+    let nextEWD = expectedWorkingDays;
+    let nextSPD = salaryPerDay;
+    let nextSPH = salaryPerHour;
+    let nextA = leavesAbsent;
+    let nextWD = actualWorkingDays;
+    let nextEWH = extraWorkingHours;
+    let nextLE = lateEntry;
+    let nextALE = amendmentsLateEntry;
+    let nextL = finalLateEntry;
+    let nextPWD = payoutWorkingDays;
+    let nextPEWH = payoutExtraHours;
+    let nextDebt = penaltyDebt;
+    let nextCredit = bonusCreditReward;
+    let nextFS = finalSalary;
+
+    let nextLateRate = lateRate;
+    let nextAdvRec = advanceRecovery;
+    let nextOtherDeduct = otherDeductions;
+    let nextBonus = bonus;
+    let nextReimb = approvedReimbursements;
+
+    switch (field) {
+      case "monthlySalary":
+        nextS = val;
+        setMonthlySalary(val);
+        break;
+      case "totalWorkingDays":
+        nextT = val;
+        setTotalWorkingDays(val);
+        break;
+      case "weekOffs":
+        nextWO = val;
+        setWeekOffs(val);
+        break;
+      case "holidaysCount":
+        nextH = val;
+        setHolidaysCount(val);
+        break;
+      case "expectedWorkingDays":
+        nextEWD = val;
+        setExpectedWorkingDays(val);
+        break;
+      case "salaryPerDay":
+        nextSPD = val;
+        setSalaryPerDay(val);
+        break;
+      case "salaryPerHour":
+        nextSPH = val;
+        setSalaryPerHour(val);
+        break;
+      case "leavesAbsent":
+        nextA = val;
+        setLeavesAbsent(val);
+        break;
+      case "actualWorkingDays":
+        nextWD = val;
+        setActualWorkingDays(val);
+        break;
+      case "extraWorkingHours":
+        nextEWH = val;
+        setExtraWorkingHours(val);
+        break;
+      case "lateEntry":
+        nextLE = val;
+        setLateEntry(val);
+        break;
+      case "amendmentsLateEntry":
+        nextALE = val;
+        setAmendmentsLateEntry(val);
+        break;
+      case "finalLateEntry":
+        nextL = val;
+        setFinalLateEntry(val);
+        break;
+      case "payoutWorkingDays":
+        nextPWD = val;
+        setPayoutWorkingDays(val);
+        break;
+      case "payoutExtraHours":
+        nextPEWH = val;
+        setPayoutExtraHours(val);
+        break;
+      case "penaltyDebt":
+        nextDebt = val;
+        setPenaltyDebt(val);
+        break;
+      case "bonusCreditReward":
+        nextCredit = val;
+        setBonusCreditReward(val);
+        break;
+      case "finalSalary":
+        nextFS = val;
+        setFinalSalary(val);
+        break;
+      case "lateRate":
+        nextLateRate = val;
+        setLateRate(val);
+        break;
+      case "otherDeductions":
+        nextOtherDeduct = val;
+        setOtherDeductions(val);
+        break;
+      case "bonus":
+        nextBonus = val;
+        setBonus(val);
+        break;
+    }
+
+    setCustomOverrides(updatedOverrides);
+
+    const downstream = computeDownstream({
+      s: nextS,
+      t: nextT,
+      wo: nextWO,
+      h: nextH,
+      ewd: nextEWD,
+      spd: nextSPD,
+      sph: nextSPH,
+      a: nextA,
+      wd: nextWD,
+      ewh: nextEWH,
+      le: nextLE,
+      ale: nextALE,
+      l: nextL,
+      lateRateVal: nextLateRate,
+      advRec: nextAdvRec,
+      otherDeduct: nextOtherDeduct,
+      bonusVal: nextBonus,
+      reimbVal: nextReimb,
+      pwdVal: nextPWD,
+      pewhVal: nextPEWH,
+      debtVal: nextDebt,
+      creditVal: nextCredit,
+      fsVal: nextFS,
+    }, updatedOverrides);
+
+    if (!updatedOverrides.expectedWorkingDays) setExpectedWorkingDays(downstream.ewd);
+    if (!updatedOverrides.salaryPerDay) setSalaryPerDay(downstream.spd);
+    if (!updatedOverrides.salaryPerHour) setSalaryPerHour(downstream.sph);
+    if (!updatedOverrides.actualWorkingDays) setActualWorkingDays(downstream.wd);
+    if (!updatedOverrides.finalLateEntry) setFinalLateEntry(downstream.l);
+    if (!updatedOverrides.payoutWorkingDays) setPayoutWorkingDays(downstream.pwd);
+    if (!updatedOverrides.payoutExtraHours) setPayoutExtraHours(downstream.pewh);
+    if (!updatedOverrides.penaltyDebt) setPenaltyDebt(downstream.debt);
+    if (!updatedOverrides.bonusCreditReward) setBonusCreditReward(downstream.credit);
+    if (!updatedOverrides.finalSalary) setFinalSalary(downstream.fs);
+  };
+
+  // Reset a specific overridden field back to its authoritative formula
+  const resetFieldToFormula = (field: string) => {
+    const updatedOverrides = { ...customOverrides };
+    delete updatedOverrides[field];
+    setCustomOverrides(updatedOverrides);
+
+    const downstream = computeDownstream({
+      s: monthlySalary,
+      t: totalWorkingDays,
+      wo: weekOffs,
+      h: holidaysCount,
+      ewd: expectedWorkingDays,
+      spd: salaryPerDay,
+      sph: salaryPerHour,
+      a: leavesAbsent,
+      wd: actualWorkingDays,
+      ewh: extraWorkingHours,
+      le: lateEntry,
+      ale: amendmentsLateEntry,
+      l: finalLateEntry,
+      lateRateVal: lateRate,
+      advRec: advanceRecovery,
+      otherDeduct: otherDeductions,
+      bonusVal: bonus,
+      reimbVal: approvedReimbursements,
+      pwdVal: payoutWorkingDays,
+      pewhVal: payoutExtraHours,
+      debtVal: penaltyDebt,
+      creditVal: bonusCreditReward,
+      fsVal: finalSalary,
+    }, updatedOverrides);
+
+    if (field === "expectedWorkingDays") setExpectedWorkingDays(downstream.ewd);
+    if (field === "salaryPerDay") setSalaryPerDay(downstream.spd);
+    if (field === "salaryPerHour") setSalaryPerHour(downstream.sph);
+    if (field === "actualWorkingDays") setActualWorkingDays(downstream.wd);
+    if (field === "finalLateEntry") setFinalLateEntry(downstream.l);
+    if (field === "payoutWorkingDays") setPayoutWorkingDays(downstream.pwd);
+    if (field === "payoutExtraHours") setPayoutExtraHours(downstream.pewh);
+    if (field === "penaltyDebt") setPenaltyDebt(downstream.debt);
+    if (field === "bonusCreditReward") setBonusCreditReward(downstream.credit);
+    if (field === "finalSalary") setFinalSalary(downstream.fs);
+  };
 
   const handleSave = async () => {
     if (!selectedEmpId) {
@@ -349,9 +692,20 @@ function ManualPayrollModal({
         employee_id: selectedEmpId,
         month,
         year,
-        absent_rate: absentRate,
+        // Formula overrides sent to backend
+        working_days: expectedWorkingDays,
+        present_days: Math.round(actualWorkingDays),
+        absent_days: leavesAbsent,
+        payable_ot_hours: extraWorkingHours,
+        late_entries: finalLateEntry,
+        absent_rate: salaryPerDay,
         late_rate: lateRate,
-        ot_rate: otRate,
+        ot_rate: salaryPerHour,
+        salary_per_day: salaryPerDay,
+        salary_per_hour: salaryPerHour,
+        payout_working_days: payoutWorkingDays,
+        payout_extra_hours: payoutExtraHours,
+        final_salary: finalSalary,
         advance_recovery_mode: advanceMode,
         advance_recovery_amount: advanceRecovery,
         bonus,
@@ -376,12 +730,268 @@ function ManualPayrollModal({
     }
   };
 
+  // Define 18 Formula Sheet Rows metadata for clean rendering
+  const formulaRows = [
+    {
+      id: "monthlySalary",
+      num: 1,
+      label: "Monthly Salary (S)",
+      symbol: "S",
+      source: "Employee Master",
+      sourceColor: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+      value: monthlySalary,
+      prefix: "₹",
+      suffix: "",
+      formulaText: "Employee base salary",
+      isCalculated: false,
+      step: 100,
+    },
+    {
+      id: "totalWorkingDays",
+      num: 2,
+      label: "Total Working Days (Fetch From Calendar) (T)",
+      symbol: "T",
+      source: "Calendar",
+      sourceColor: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+      value: totalWorkingDays,
+      prefix: "",
+      suffix: "days",
+      formulaText: `Total days in ${MONTH_NAMES[month - 1]} ${year}`,
+      isCalculated: false,
+      step: 1,
+    },
+    {
+      id: "weekOffs",
+      num: 3,
+      label: "Week Off (Fetch From Calendar) (WO)",
+      symbol: "WO",
+      source: "Calendar (Sundays)",
+      sourceColor: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+      value: weekOffs,
+      prefix: "",
+      suffix: "days",
+      formulaText: "Count of Sundays in month",
+      isCalculated: false,
+      step: 1,
+    },
+    {
+      id: "holidaysCount",
+      num: 4,
+      label: "Holiday (Fetch From Holiday) (H)",
+      symbol: "H",
+      source: "Holiday Master",
+      sourceColor: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+      value: holidaysCount,
+      prefix: "",
+      suffix: "days",
+      formulaText: "Company holidays (excluding Sundays)",
+      isCalculated: false,
+      step: 1,
+    },
+    {
+      id: "expectedWorkingDays",
+      num: 5,
+      label: "Expected Working Days [(EWD) = (T - WO - H)]",
+      symbol: "EWD",
+      source: "Formula: T - WO - H",
+      sourceColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      value: expectedWorkingDays,
+      prefix: "",
+      suffix: "days",
+      formulaText: `${totalWorkingDays} − ${weekOffs} − ${holidaysCount} = ${expectedWorkingDays} days`,
+      isCalculated: true,
+      step: 1,
+    },
+    {
+      id: "salaryPerDay",
+      num: 6,
+      label: "Salary Per Day [(SPD) = (S / EWD)]",
+      symbol: "SPD",
+      source: "Formula: S / EWD",
+      sourceColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      value: salaryPerDay,
+      prefix: "₹",
+      suffix: "/day",
+      formulaText: `₹${monthlySalary.toLocaleString("en-IN")} / ${expectedWorkingDays}d = ₹${salaryPerDay.toLocaleString("en-IN")}`,
+      isCalculated: true,
+      step: 0.01,
+    },
+    {
+      id: "salaryPerHour",
+      num: 7,
+      label: "Salary Per Hour [(SPH) = (SPD / 8)]",
+      symbol: "SPH",
+      source: "Formula: SPD / 8",
+      sourceColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      value: salaryPerHour,
+      prefix: "₹",
+      suffix: "/hr",
+      formulaText: `₹${salaryPerDay.toLocaleString("en-IN")} / 8h shift = ₹${salaryPerHour.toLocaleString("en-IN")}/hr`,
+      isCalculated: true,
+      step: 0.01,
+    },
+    {
+      id: "leavesAbsent",
+      num: 8,
+      label: "Leaves / Absent (Fetch from Attendance Machine) (A)",
+      symbol: "A",
+      source: "Attendance Hardware",
+      sourceColor: "text-red-400 bg-red-500/10 border-red-500/20",
+      value: leavesAbsent,
+      prefix: "",
+      suffix: "days",
+      formulaText: "Recorded absent days from hardware & logs",
+      isCalculated: false,
+      step: 1,
+    },
+    {
+      id: "actualWorkingDays",
+      num: 9,
+      label: "Actual Working Days [(WD) = (T - WO - H - A)]",
+      symbol: "WD",
+      source: "Formula: EWD - A",
+      sourceColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      value: actualWorkingDays,
+      prefix: "",
+      suffix: "days",
+      formulaText: `${expectedWorkingDays} − ${leavesAbsent} = ${actualWorkingDays} days`,
+      isCalculated: true,
+      step: 1,
+    },
+    {
+      id: "extraWorkingHours",
+      num: 10,
+      label: "Extra Working Hours (Fetch from Attendance System) (EWH)",
+      symbol: "EWH",
+      source: "Attendance System",
+      sourceColor: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+      value: extraWorkingHours,
+      prefix: "",
+      suffix: "hrs",
+      formulaText: "Payable overtime (>1h excess, floored, 0 on Sun)",
+      isCalculated: false,
+      step: 0.5,
+    },
+    {
+      id: "lateEntry",
+      num: 11,
+      label: "Late Entry (LE)",
+      symbol: "LE",
+      source: "Attendance Machine",
+      sourceColor: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+      value: lateEntry,
+      prefix: "",
+      suffix: "entries",
+      formulaText: "Total late punch-ins for the month",
+      isCalculated: false,
+      step: 1,
+    },
+    {
+      id: "amendmentsLateEntry",
+      num: 12,
+      label: "Amendments for Late Entry (ALE)",
+      symbol: "ALE",
+      source: "Approved Disputes",
+      sourceColor: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+      value: amendmentsLateEntry,
+      prefix: "",
+      suffix: "entries",
+      formulaText: "Approved late arrival waivers/disputes",
+      isCalculated: false,
+      step: 1,
+    },
+    {
+      id: "finalLateEntry",
+      num: 13,
+      label: "Final Late Entry [(L) = (LE - ALE)]",
+      symbol: "L",
+      source: "Formula: LE - ALE",
+      sourceColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      value: finalLateEntry,
+      prefix: "",
+      suffix: "entries",
+      formulaText: `${lateEntry} − ${amendmentsLateEntry} = ${finalLateEntry} applicable late`,
+      isCalculated: true,
+      step: 1,
+    },
+    {
+      id: "payoutWorkingDays",
+      num: 14,
+      label: "Payout For Working Days [(PWD) = (WD * SPD)]",
+      symbol: "PWD",
+      source: "Formula: WD × SPD",
+      sourceColor: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+      value: payoutWorkingDays,
+      prefix: "₹",
+      suffix: "",
+      formulaText: `${actualWorkingDays}d × ₹${salaryPerDay.toLocaleString("en-IN")} = ₹${payoutWorkingDays.toLocaleString("en-IN")}`,
+      isCalculated: true,
+      step: 10,
+    },
+    {
+      id: "payoutExtraHours",
+      num: 15,
+      label: "Payout For Extra Working Hours [(PEWH) = (EWH * SPH)]",
+      symbol: "PEWH",
+      source: "Formula: EWH × SPH",
+      sourceColor: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+      value: payoutExtraHours,
+      prefix: "₹",
+      suffix: "",
+      formulaText: `${extraWorkingHours}h × ₹${salaryPerHour.toLocaleString("en-IN")}/hr = ₹${payoutExtraHours.toLocaleString("en-IN")}`,
+      isCalculated: true,
+      step: 10,
+    },
+    {
+      id: "penaltyDebt",
+      num: 16,
+      label: "Penalty / Debt (D) [Late + Advance + Deductions]",
+      symbol: "D",
+      source: "Formula: (L × Rate) + Adv + Other",
+      sourceColor: "text-red-400 bg-red-500/10 border-red-500/20",
+      value: penaltyDebt,
+      prefix: "₹",
+      suffix: "",
+      formulaText: `Late (₹${Math.round(finalLateEntry * lateRate)}) + Adv (₹${advanceRecovery}) + Other (₹${otherDeductions}) = ₹${penaltyDebt.toLocaleString("en-IN")}`,
+      isCalculated: true,
+      step: 10,
+    },
+    {
+      id: "bonusCreditReward",
+      num: 17,
+      label: "Bonus / Credit / Reward (C) [Bonus + Claims]",
+      symbol: "C",
+      source: "Formula: Bonus + Claims",
+      sourceColor: "text-green-400 bg-green-500/10 border-green-500/20",
+      value: bonusCreditReward,
+      prefix: "₹",
+      suffix: "",
+      formulaText: `Bonus (₹${bonus}) + Approved Claims (₹${approvedReimbursements}) = ₹${bonusCreditReward.toLocaleString("en-IN")}`,
+      isCalculated: true,
+      step: 10,
+    },
+    {
+      id: "finalSalary",
+      num: 18,
+      label: "Final Salary [(FS) = (PWD + PEWH - D + C)]",
+      symbol: "FS",
+      source: "Master Payout Formula",
+      sourceColor: "text-cyan-300 bg-cyan-500/20 border-cyan-400/40 font-bold",
+      value: finalSalary,
+      prefix: "₹",
+      suffix: "",
+      formulaText: `₹${payoutWorkingDays.toLocaleString("en-IN")} + ₹${payoutExtraHours.toLocaleString("en-IN")} − ₹${penaltyDebt.toLocaleString("en-IN")} + ₹${bonusCreditReward.toLocaleString("en-IN")} = ₹${finalSalary.toLocaleString("en-IN")}`,
+      isCalculated: true,
+      step: 10,
+    },
+  ];
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
       style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -390,7 +1000,7 @@ function ManualPayrollModal({
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
-        className="relative w-full max-w-4xl my-4 rounded-3xl overflow-hidden"
+        className="relative w-full max-w-5xl my-4 rounded-3xl overflow-hidden"
         style={{
           background: "rgba(10,15,30,0.99)",
           border: "1px solid rgba(0,245,255,0.25)",
@@ -402,14 +1012,14 @@ function ManualPayrollModal({
         {isLoadingPreview && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm">
             <Loader2 size={38} className="animate-spin text-cyan-400 mb-3" />
-            <p className="text-white text-sm font-semibold">Retrieving authoritative database records...</p>
-            <p className="text-white/40 text-xs mt-1">Fetching monthly attendance, overtime, advances and reimbursements</p>
+            <p className="text-white text-sm font-semibold">Retrieving authoritative database records & formula sheet...</p>
+            <p className="text-white/40 text-xs mt-1">Fetching monthly attendance, overtime, advance recovery, reimbursements & calendar</p>
           </div>
         )}
 
         {/* Header */}
         <div
-          className="px-6 py-5 flex items-center justify-between"
+          className="px-6 py-4 flex items-center justify-between"
           style={{
             background: "linear-gradient(135deg, rgba(0,245,255,0.12), rgba(124,58,237,0.12))",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
@@ -424,13 +1034,13 @@ function ManualPayrollModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-white font-black text-xl">Authoritative Payroll Calculator</h3>
+                <h3 className="text-white font-black text-xl">Authoritative Payroll Formula Sheet</h3>
                 <span className="text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                  Direct DB Integration
+                  Automated & Manual Mode
                 </span>
               </div>
               <p className="text-white/40 text-xs mt-0.5">
-                Exact deductions, daily floored overtime (&gt;1h threshold), advance recovery & reimbursements
+                Exact mathematical breakdown with full in-place manual editing, real-time formula recalculation & DB snapshot
               </p>
             </div>
           </div>
@@ -444,7 +1054,7 @@ function ManualPayrollModal({
         </div>
 
         {/* Body Content */}
-        <div className="p-6 max-h-[75vh] overflow-y-auto space-y-5">
+        <div className="p-5 max-h-[78vh] overflow-y-auto space-y-4">
           {/* Controls: Employee & Period Select */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -497,246 +1107,288 @@ function ManualPayrollModal({
             </div>
           </div>
 
-          {/* Database Attendance Snapshot Pill */}
-          {previewData && (
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-                <p className="text-white/40 text-[10px] uppercase font-semibold">Base Salary</p>
-                <p className="text-white font-bold text-sm mt-0.5">₹{basicSalary.toLocaleString("en-IN")}</p>
+          {/* Master 18-Row Formula Spreadsheet Table */}
+          <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.02]">
+            <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText size={15} className="text-cyan-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Authoritative Formula Sheet Breakdown (Rows 1 — 18)
+                </span>
               </div>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-                <p className="text-white/40 text-[10px] uppercase font-semibold">Working Days</p>
-                <p className="text-white font-bold text-sm mt-0.5">{previewData.working_days}d</p>
-              </div>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-                <p className="text-white/40 text-[10px] uppercase font-semibold">Present Days</p>
-                <p className="text-green-400 font-bold text-sm mt-0.5">{previewData.present_days}d</p>
-              </div>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-                <p className="text-white/40 text-[10px] uppercase font-semibold">Absent Days</p>
-                <p className="text-red-400 font-bold text-sm mt-0.5">{absentDays}d</p>
-              </div>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-                <p className="text-white/40 text-[10px] uppercase font-semibold">Payable OT</p>
-                <p className="text-purple-400 font-bold text-sm mt-0.5">{payableOtHours}h</p>
-              </div>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-center">
-                <p className="text-white/40 text-[10px] uppercase font-semibold">Late Entries</p>
-                <p className="text-amber-400 font-bold text-sm mt-0.5">{applicableLate}</p>
-              </div>
+              <span className="text-[11px] text-white/40">
+                Click any input to override manually • Formulas recompute automatically
+              </span>
             </div>
-          )}
 
-          {/* Form Sections Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Section 1: Simple Absent Day Deduction (Phase 7) */}
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                  <DollarSign size={15} className="text-red-400" />
-                  Absent Days Deduction
-                </h4>
-                <span className="text-[10px] font-mono text-white/40">Direct Rate × Days</span>
-              </div>
-              <p className="text-white/40 text-xs">
-                Formula: {absentDays} absent day{absentDays !== 1 ? "s" : ""} × ₹{absentRate} = <span className="text-red-400 font-semibold">₹{totalAbsentDeduction.toLocaleString("en-IN")}</span>
-              </p>
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-white/50 text-[11px] font-medium">Deduction Per Absent Day (₹)</label>
-                    {basicSalary > 0 && previewData?.working_days ? (
-                      <button
-                        type="button"
-                        onClick={() => setAbsentRate(Math.round(basicSalary / previewData.working_days))}
-                        className="text-[10px] text-cyan-400 hover:text-cyan-300 font-mono hover:underline"
-                        title="Auto-fill daily rate (Base Salary / Working Days)"
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="text-white/40 border-b border-white/10 bg-white/[0.02]">
+                    <th className="py-2.5 px-3 w-10 text-center font-mono">#</th>
+                    <th className="py-2.5 px-3">Metric Description & Symbol</th>
+                    <th className="py-2.5 px-3">Data Origin</th>
+                    <th className="py-2.5 px-3 w-48 text-right">Value / Manual Input</th>
+                    <th className="py-2.5 px-3 text-left">Mathematical Formula & Note</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {formulaRows.map((r) => {
+                    const isOverridden = Boolean(customOverrides[r.id]);
+                    const isFinalSalaryRow = r.num === 18;
+
+                    return (
+                      <tr
+                        key={r.id}
+                        className={`transition-colors ${
+                          isFinalSalaryRow
+                            ? "bg-cyan-500/[0.08] hover:bg-cyan-500/[0.12] border-t-2 border-cyan-400/30"
+                            : "hover:bg-white/[0.02]"
+                        }`}
                       >
-                        Auto (₹{Math.round(basicSalary / previewData.working_days)})
-                      </button>
-                    ) : null}
-                  </div>
-                  <input
-                    type="number"
-                    value={absentRate}
-                    onChange={(e) => setAbsentRate(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Total Absent Deduction</label>
-                  <div className="w-full px-3 py-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl font-mono font-bold">
-                    −₹{totalAbsentDeduction.toLocaleString("en-IN")}
-                  </div>
-                </div>
-              </div>
-            </div>
+                        {/* Row # */}
+                        <td className="py-2.5 px-3 text-center font-mono font-bold text-white/50">
+                          {r.num}
+                        </td>
 
-            {/* Section 2: Late Mark Deduction (Phase 8) */}
-            <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-amber-300 flex items-center gap-2">
-                  <AlertCircle size={15} className="text-amber-400" />
-                  Late Marks Deduction
-                </h4>
-                <span className="text-[10px] font-mono text-amber-400/80">Applicable: {applicableLate}</span>
-              </div>
-              <p className="text-white/40 text-xs">
-                Formula: {applicableLate} applicable late{applicableLate !== 1 ? "s" : ""} × ₹{lateRate} = <span className="text-amber-300 font-semibold">₹{totalLateDeduction.toLocaleString("en-IN")}</span>
-              </p>
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Rate Per Late Entry (₹)</label>
-                  <input
-                    type="number"
-                    value={lateRate}
-                    onChange={(e) => setLateRate(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 text-sm text-amber-300 bg-white/[0.04] border border-amber-500/30 rounded-xl outline-none focus:border-amber-400 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Total Late Penalty</label>
-                  <div className="w-full px-3 py-2 text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl font-mono font-bold">
-                    −₹{totalLateDeduction.toLocaleString("en-IN")}
-                  </div>
-                </div>
-              </div>
-            </div>
+                        {/* Metric Label */}
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-semibold ${isFinalSalaryRow ? "text-cyan-300 font-bold text-sm" : "text-white"}`}>
+                              {r.label}
+                            </span>
+                            {isOverridden && (
+                              <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30">
+                                Overridden
+                              </span>
+                            )}
+                          </div>
+                        </td>
 
-            {/* Section 3: Overtime Rules (>1hr threshold, floored, 0 on Sunday) (Phase 9) */}
-            <div className="p-5 rounded-2xl bg-purple-500/5 border border-purple-500/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-purple-300 flex items-center gap-2">
-                  <Clock size={15} className="text-purple-400" />
-                  Payable Overtime Hours
-                </h4>
-                <span className="text-[10px] font-mono text-purple-400/80">&gt; 1h Floor Rule</span>
-              </div>
-              <p className="text-white/40 text-xs">
-                Formula: {payableOtHours} payable hr{payableOtHours !== 1 ? "s" : ""} × ₹{otRate}/hr = <span className="text-green-400 font-semibold">+₹{totalOtPay.toLocaleString("en-IN")}</span>
-              </p>
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">OT Rate Per Hour (₹)</label>
-                  <input
-                    type="number"
-                    value={otRate}
-                    onChange={(e) => setOtRate(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 text-sm text-purple-300 bg-white/[0.04] border border-purple-500/30 rounded-xl outline-none focus:border-purple-400 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Total Overtime Pay</label>
-                  <div className="w-full px-3 py-2 text-sm text-green-400 bg-green-500/10 border border-green-500/20 rounded-xl font-mono font-bold">
-                    +₹{totalOtPay.toLocaleString("en-IN")}
-                  </div>
-                </div>
-              </div>
-            </div>
+                        {/* Source Tag */}
+                        <td className="py-2.5 px-3">
+                          <span className={`inline-block text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${r.sourceColor}`}>
+                            {r.source}
+                          </span>
+                        </td>
 
-            {/* Section 4: Advance Salary Recovery (Phase 10) */}
-            <div className="p-5 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-cyan-300 flex items-center gap-2">
-                  <CreditCard size={15} className="text-cyan-400" />
-                  Salary Advance Recovery
-                </h4>
-                <span className="text-[10px] font-mono text-cyan-400/80">Outstanding: ₹{advanceOutstanding.toLocaleString("en-IN")}</span>
-              </div>
-              <div className="flex items-center gap-2 pt-1">
-                {(["none", "partial", "full"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => {
-                      setAdvanceMode(mode);
-                      if (mode === "full") setAdvanceAmount(advanceOutstanding);
-                      if (mode === "none") setAdvanceAmount(0);
-                    }}
-                    className={`flex-1 py-1.5 text-xs font-semibold rounded-xl border transition-all uppercase ${
-                      advanceMode === mode
-                        ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
-                        : "border-white/10 text-white/50 hover:text-white"
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-              {advanceMode === "partial" && (
-                <div className="pt-1">
-                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Partial Recovery Amount (₹)</label>
-                  <input
-                    type="number"
-                    max={advanceOutstanding}
-                    value={advanceAmount}
-                    onChange={(e) => setAdvanceAmount(Math.min(advanceOutstanding, Math.max(0, Number(e.target.value) || 0)))}
-                    className="w-full px-3 py-2 text-sm text-cyan-300 bg-white/[0.04] border border-cyan-500/30 rounded-xl outline-none focus:border-cyan-400 font-mono font-bold"
-                  />
-                </div>
-              )}
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
-                <span className="text-white/40">Deduction: <strong className="text-red-400">−₹{advanceRecovery.toLocaleString("en-IN")}</strong></span>
-                <span className="text-white/40">Remaining: <strong className="text-cyan-300">₹{remainingAdvance.toLocaleString("en-IN")}</strong></span>
-              </div>
+                        {/* Value / Input Field */}
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isOverridden && r.isCalculated && (
+                              <button
+                                type="button"
+                                onClick={() => resetFieldToFormula(r.id)}
+                                title="Reset to authoritative formula"
+                                className="p-1 rounded text-amber-400 hover:text-white hover:bg-white/10 transition-all"
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                            )}
+
+                            <div className="relative inline-flex items-center">
+                              {r.prefix && (
+                                <span className="absolute left-2.5 text-white/40 font-mono text-xs pointer-events-none">
+                                  {r.prefix}
+                                </span>
+                              )}
+                              <input
+                                type="number"
+                                step={r.step}
+                                value={r.value}
+                                onChange={(e) => handleFieldChange(r.id, Math.max(0, Number(e.target.value) || 0), r.isCalculated)}
+                                className={`w-32 py-1 text-right font-mono font-bold text-xs rounded-lg outline-none border transition-all ${
+                                  r.prefix ? "pl-5" : "pl-2"
+                                } ${r.suffix ? "pr-8" : "pr-2"} ${
+                                  isFinalSalaryRow
+                                    ? "bg-cyan-500/15 border-cyan-400 text-cyan-300 text-sm py-1.5 font-black"
+                                    : isOverridden
+                                    ? "bg-amber-500/10 border-amber-400 text-amber-300"
+                                    : "bg-white/[0.04] border-white/10 text-white focus:border-cyan-400"
+                                }`}
+                              />
+                              {r.suffix && (
+                                <span className="absolute right-2 text-white/30 font-mono text-[10px] pointer-events-none">
+                                  {r.suffix}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Mathematical Note */}
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-white/60">
+                          {r.formulaText}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* Section 5: Reimbursements & Bonus / Adjustments */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Approved Reimbursements (Phase 11) */}
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
+          {/* Sub-parameters Fine Tuning: Debt (D) and Credit (C) Breakdown Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Debt (D) Components: Late Rate, Advance Recovery, Other Deductions */}
+            <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/20 space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Receipt size={15} className="text-green-400" />
-                  Approved Reimbursements
+                <h4 className="text-xs font-bold text-red-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <CreditCard size={14} className="text-red-400" />
+                  Penalty & Debt Components (D)
                 </h4>
-                <span className="text-[10px] font-mono text-green-400/80">Auto-Disbursed</span>
+                <span className="text-[10px] font-mono text-red-400">
+                  Total D: ₹{penaltyDebt.toLocaleString("en-IN")}
+                </span>
               </div>
-              <p className="text-white/40 text-xs">
-                Total approved claims for this employee eligible for payment in this payroll run:
-              </p>
-              <div className="w-full px-3 py-2.5 text-base text-green-400 bg-green-500/10 border border-green-500/20 rounded-xl font-mono font-bold flex items-center justify-between">
-                <span>Approved Claims Total:</span>
-                <span>+₹{approvedReimbursements.toLocaleString("en-IN")}</span>
-              </div>
-            </div>
 
-            {/* Adjustments & Remarks */}
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-3">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                <Sliders size={15} className="text-cyan-400" />
-                Bonus, Extra Deductions & Notes
-              </h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {/* Rate per Late Entry */}
                 <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Bonus (+) (₹)</label>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Late Penalty Rate (₹/mark)</label>
                   <input
                     type="number"
-                    value={bonus}
-                    onChange={(e) => setBonus(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 text-sm text-green-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-green-400 font-mono"
+                    value={lateRate}
+                    onChange={(e) => handleFieldChange("lateRate", Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-1.5 text-xs text-amber-300 bg-white/[0.04] border border-amber-500/30 rounded-xl outline-none font-mono font-bold"
                   />
+                  <span className="text-[10px] text-white/40 mt-0.5 block">
+                    {finalLateEntry} late × ₹{lateRate} = ₹{Math.round(finalLateEntry * lateRate)}
+                  </span>
                 </div>
+
+                {/* Other Deductions */}
                 <div>
-                  <label className="text-white/40 text-[11px] font-medium mb-1 block">Other Deductions (-) (₹)</label>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Other Deductions (₹)</label>
                   <input
                     type="number"
                     value={otherDeductions}
-                    onChange={(e) => setOtherDeductions(Math.max(0, Number(e.target.value) || 0))}
-                    className="w-full px-3 py-2 text-sm text-red-400 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-red-400 font-mono"
+                    onChange={(e) => handleFieldChange("otherDeductions", Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-1.5 text-xs text-red-400 bg-white/[0.04] border border-red-500/30 rounded-xl outline-none font-mono font-bold"
                   />
+                  <span className="text-[10px] text-white/40 mt-0.5 block">TDS, insurance or penalties</span>
                 </div>
               </div>
-              <div>
-                <label className="text-white/40 text-[11px] font-medium mb-1 block">Audit Remarks</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Authoritative payroll finalized with verified attendance"
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  className="w-full px-3 py-2 text-xs text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400"
-                />
+
+              {/* Advance Recovery Option */}
+              <div className="pt-2 border-t border-white/5 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50">Salary Advance Recovery</span>
+                  <span className="font-mono text-[11px] text-cyan-300">
+                    Outstanding: ₹{advanceOutstanding.toLocaleString("en-IN")}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {(["none", "partial", "full"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setAdvanceMode(mode);
+                        let rec = 0;
+                        if (mode === "full") rec = advanceOutstanding;
+                        if (mode === "none") rec = 0;
+                        if (mode === "partial") rec = advanceAmount;
+                        setAdvanceAmount(rec);
+
+                        // Trigger recompute with new advance recovery
+                        const debt = customOverrides.penaltyDebt
+                          ? penaltyDebt
+                          : Math.round(((finalLateEntry * lateRate) + rec + otherDeductions) * 100) / 100;
+                        setPenaltyDebt(debt);
+                        if (!customOverrides.finalSalary) {
+                          setFinalSalary(Math.max(0, Math.round((payoutWorkingDays + payoutExtraHours - debt + bonusCreditReward) * 100) / 100));
+                        }
+                      }}
+                      className={`flex-1 py-1 text-xs font-semibold rounded-lg border transition-all uppercase ${
+                        advanceMode === mode
+                          ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                          : "border-white/10 text-white/40 hover:text-white"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+
+                {advanceMode === "partial" && (
+                  <div className="pt-1">
+                    <input
+                      type="number"
+                      max={advanceOutstanding}
+                      value={advanceAmount}
+                      onChange={(e) => {
+                        const rec = Math.min(advanceOutstanding, Math.max(0, Number(e.target.value) || 0));
+                        setAdvanceAmount(rec);
+                        const debt = customOverrides.penaltyDebt
+                          ? penaltyDebt
+                          : Math.round(((finalLateEntry * lateRate) + rec + otherDeductions) * 100) / 100;
+                        setPenaltyDebt(debt);
+                        if (!customOverrides.finalSalary) {
+                          setFinalSalary(Math.max(0, Math.round((payoutWorkingDays + payoutExtraHours - debt + bonusCreditReward) * 100) / 100));
+                        }
+                      }}
+                      placeholder="Partial recovery amount"
+                      className="w-full px-3 py-1.5 text-xs text-cyan-300 bg-white/[0.04] border border-cyan-500/30 rounded-xl outline-none font-mono"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <span className="text-white/40">Recovered: <strong className="text-red-400">−₹{advanceRecovery.toLocaleString("en-IN")}</strong></span>
+                  <span className="text-white/40">Remaining: <strong className="text-cyan-300">₹{remainingAdvance.toLocaleString("en-IN")}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Credit (C) Components: Incentive Bonus, Approved Reimbursements */}
+            <div className="p-4 rounded-2xl bg-green-500/5 border border-green-500/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-green-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Receipt size={14} className="text-green-400" />
+                  Bonus & Reward Components (C)
+                </h4>
+                <span className="text-[10px] font-mono text-green-400">
+                  Total C: ₹{bonusCreditReward.toLocaleString("en-IN")}
+                </span>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {/* Incentive Bonus */}
+                <div>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Incentive / Bonus (+) (₹)</label>
+                  <input
+                    type="number"
+                    value={bonus}
+                    onChange={(e) => handleFieldChange("bonus", Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full px-3 py-1.5 text-xs text-green-400 bg-white/[0.04] border border-green-500/30 rounded-xl outline-none font-mono font-bold"
+                  />
+                  <span className="text-[10px] text-white/40 mt-0.5 block">Performance rewards or festive bonus</span>
+                </div>
+
+                {/* Approved Reimbursements */}
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60 text-[11px]">Approved Expense Reimbursements:</span>
+                    <span className="font-mono font-bold text-green-400">+₹{approvedReimbursements.toLocaleString("en-IN")}</span>
+                  </div>
+                  <p className="text-white/40 text-[10px]">
+                    Auto-fetched from verified employee claims. Excludes unapproved or pending claims.
+                  </p>
+                </div>
+
+                {/* Audit Remarks */}
+                <div>
+                  <label className="text-white/50 text-[11px] font-medium mb-1 block">Calculation Remarks & Audit Note</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Calculated with authoritative formula sheet and attendance logs"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs text-white bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-cyan-400"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -776,43 +1428,30 @@ function ManualPayrollModal({
             </div>
           )}
 
-          {/* Final Payable Calculation Breakdown Card */}
+          {/* Final Payable Highlight Card */}
           <div
-            className="p-6 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-6"
+            className="p-5 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4"
             style={{
-              background: "linear-gradient(135deg, rgba(0,245,255,0.06), rgba(124,58,237,0.06))",
-              borderColor: "rgba(0,245,255,0.25)",
+              background: "linear-gradient(135deg, rgba(0,245,255,0.08), rgba(124,58,237,0.08))",
+              borderColor: "rgba(0,245,255,0.3)",
             }}
           >
-            <div className="space-y-2 text-center md:text-left">
+            <div className="space-y-1 text-center md:text-left">
               <span className="text-white/50 text-xs font-semibold uppercase tracking-wider block">
-                Authoritative Calculation Breakdown
+                Authoritative Master Payout (Row 18)
               </span>
-              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-                <span className="px-2 py-1 rounded bg-white/5 text-white/70">Base: ₹{basicSalary.toLocaleString("en-IN")}</span>
-                <span className="px-2 py-1 rounded bg-green-500/10 text-green-400">+OT: ₹{totalOtPay.toLocaleString("en-IN")} ({payableOtHours}h)</span>
-                {approvedReimbursements > 0 && (
-                  <span className="px-2 py-1 rounded bg-green-500/10 text-green-400">+Claims: ₹{approvedReimbursements.toLocaleString("en-IN")}</span>
-                )}
-                {bonus > 0 && (
-                  <span className="px-2 py-1 rounded bg-green-500/10 text-green-400">+Bonus: ₹{bonus.toLocaleString("en-IN")}</span>
-                )}
-                <span className="px-2 py-1 rounded bg-red-500/10 text-red-400">−Absent: ₹{totalAbsentDeduction.toLocaleString("en-IN")} ({absentDays}d)</span>
-                <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-300">−Late: ₹{totalLateDeduction.toLocaleString("en-IN")} ({applicableLate})</span>
-                {advanceRecovery > 0 && (
-                  <span className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-300">−Advance: ₹{advanceRecovery.toLocaleString("en-IN")}</span>
-                )}
-                {otherDeductions > 0 && (
-                  <span className="px-2 py-1 rounded bg-red-500/10 text-red-400">−Other: ₹{otherDeductions.toLocaleString("en-IN")}</span>
-                )}
-              </div>
-              <p className="text-white/40 text-[11px]">
-                Total Additions: ₹{totalAdditions.toLocaleString("en-IN")} | Total Deductions: ₹{totalDeductions.toLocaleString("en-IN")}
+              <p className="text-white/70 text-xs font-mono">
+                PWD (₹{payoutWorkingDays.toLocaleString("en-IN")}) + PEWH (₹{payoutExtraHours.toLocaleString("en-IN")}) − D (₹{penaltyDebt.toLocaleString("en-IN")}) + C (₹{bonusCreditReward.toLocaleString("en-IN")})
               </p>
+              {Object.keys(customOverrides).length > 0 && (
+                <p className="text-amber-400 text-[11px] font-semibold flex items-center gap-1 justify-center md:justify-start">
+                  <AlertCircle size={12} /> {Object.keys(customOverrides).length} custom override(s) applied and will be preserved in snapshot
+                </p>
+              )}
             </div>
 
             <div className="text-center md:text-right shrink-0">
-              <p className="text-white/50 text-xs mb-0.5">Final Payable Salary</p>
+              <p className="text-white/50 text-xs mb-0.5">Final Net Payable Salary</p>
               <p className="text-3xl font-black font-mono text-cyan-400">
                 ₹{finalSalary.toLocaleString("en-IN")}
               </p>
@@ -831,7 +1470,7 @@ function ManualPayrollModal({
               onClick={() => selectedEmpId && loadPreview(selectedEmpId, month, year)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all"
             >
-              <RefreshCw size={13} /> Refresh From DB
+              <RefreshCw size={13} /> Reset to DB Values
             </button>
             <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer">
               <input

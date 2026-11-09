@@ -153,8 +153,24 @@ async def get_employee_monthly_metrics(
     holidays = hol_res.scalars().all()
     holiday_dates = set(h.date for h in holidays)
 
-    # 2. Total working days in month (excluding Sundays and Company Holidays)
-    working_days = get_working_days_in_month(year, month, include_saturday=True, holiday_dates=holiday_dates)
+    # 2. Total calendar days (T), Week Offs / Sundays (WO), and Non-Sunday Holidays (H)
+    import calendar
+    _, total_month_days = calendar.monthrange(year, month)
+    week_offs = sum(1 for d in range(1, total_month_days + 1) if date(year, month, d).weekday() == 6)
+    holidays_count = len([h for h in holidays if h.date.weekday() != 6])
+
+    # Expected working days [(EWD) = (T - WO - H)]
+    expected_working_days = max(1, total_month_days - week_offs - holidays_count)
+    working_days = expected_working_days
+
+    # Base monthly salary (S)
+    base_salary = Decimal(str(employee.salary or "0.00"))
+
+    # Salary Per Day [(SPD) = (S / EWD)]
+    spd = round(base_salary / Decimal(str(expected_working_days)), 2) if expected_working_days > 0 else Decimal("0.00")
+
+    # Salary Per Hour [(SPH) = (SPD / 8)]
+    sph = round(spd / Decimal("8.0"), 2) if spd > Decimal("0.00") else Decimal("0.00")
 
     # 3. Fetch attendance records
     att_stmt = select(Attendance).where(
@@ -192,12 +208,15 @@ async def get_employee_monthly_metrics(
     # Excludes Sundays and company holidays automatically
     absent_days = max(Decimal("0.00"), Decimal(str(working_days)) - effective_present - Decimal(str(leave_days_count)))
 
-    # Applicable late entries: status is LATE, on standard working day, not amended
-    applicable_late_records = [
-        r for r in standard_records
-        if r.status == AttendanceStatus.LATE and r.attendance_id not in exempted_attendance_ids
-    ]
-    applicable_late_entries = len(applicable_late_records)
+    # Actual Working Days [(WD) = (T - WO - H - A)]
+    actual_working_days = max(Decimal("0.00"), Decimal(str(expected_working_days)) - absent_days)
+
+    # Late Entry records (LE), Approved Amendments (ALE), Final Late Entry [(L) = (LE - ALE)]
+    raw_late_records = [r for r in standard_records if r.status == AttendanceStatus.LATE]
+    late_entries_total = len(raw_late_records)
+    late_amendments_count = len([r for r in raw_late_records if r.attendance_id in exempted_attendance_ids])
+    final_late_entries = max(0, late_entries_total - late_amendments_count)
+    applicable_late_entries = final_late_entries
 
     # 5. Daily Overtime Calculation (Phase 9)
     # Strictly calculated per day. Sundays produce 0 payable overtime!
@@ -233,6 +252,12 @@ async def get_employee_monthly_metrics(
                 "payable_ot_hours": 0
             })
 
+    # Payout For Working Days [(PWD) = (WD * SPD)]
+    payout_working_days = round(actual_working_days * spd, 2)
+
+    # Payout For Extra Working Hours [(PEWH) = (EWH * SPH)]
+    payout_extra_hours = round(Decimal(str(total_payable_ot_hours)) * sph, 2)
+
     # 6. Reimbursements
     reimbursement_amount, approved_claims = await get_approved_reimbursements_for_employee(
         employee.employee_id, db, payroll_id=existing_payroll_id
@@ -249,22 +274,50 @@ async def get_employee_monthly_metrics(
         "name": employee.name,
         "department": employee.department,
         "designation": employee.designation,
-        "base_salary": Decimal(str(employee.salary or "0.00")),
-        "basic_salary": Decimal(str(employee.salary or "0.00")),
-        "salary": Decimal(str(employee.salary or "0.00")),
+        "base_salary": base_salary,
+        "basic_salary": base_salary,
+        "salary": base_salary,
+        "monthly_salary": base_salary,
         "is_billable": getattr(employee, "is_billable", True),
         "month": month,
         "year": year,
-        "working_days": working_days,
+        # Formula Sheet Parameters
+        "total_working_days": total_month_days,
+        "total_month_days": total_month_days,
+        "calendar_days": total_month_days,
+        "week_off": week_offs,
+        "week_offs": week_offs,
+        "holiday": holidays_count,
+        "holidays_count": holidays_count,
+        "expected_working_days": expected_working_days,
+        "working_days": expected_working_days,
+        "salary_per_day": spd,
+        "spd": spd,
+        "salary_per_hour": sph,
+        "sph": sph,
+        "daily_working_hours": 8,
+        "leaves_absent": int(absent_days),
+        "absent_days": int(absent_days),
+        "actual_working_days": float(actual_working_days),
         "present_days": float(effective_present),
         "present_days_full": present_days_count,
         "half_days_count": half_days_count,
-        "absent_days": int(absent_days),
         "leave_days": leave_days_count,
-        "applicable_late_entries": applicable_late_entries,
+        "extra_working_hours": total_payable_ot_hours,
+        "payable_ot_hours": total_payable_ot_hours,
+        "late_entry": late_entries_total,
+        "late_entries": late_entries_total,
+        "amendments_for_late_entry": late_amendments_count,
+        "amendments_late_entries": late_amendments_count,
+        "final_late_entry": final_late_entries,
+        "final_late_entries": final_late_entries,
+        "applicable_late_entries": final_late_entries,
+        "payout_for_working_days": payout_working_days,
+        "payout_working_days": payout_working_days,
+        "payout_for_extra_working_hours": payout_extra_hours,
+        "payout_extra_hours": payout_extra_hours,
         "total_actual_ot_minutes": total_actual_ot_minutes,
         "total_actual_ot_hours": round(total_actual_ot_minutes / 60.0, 2),
-        "payable_ot_hours": total_payable_ot_hours,
         "daily_ot_breakdown": daily_ot_breakdown,
         "daily_overtime_records": daily_ot_breakdown,
         "sunday_records_count": len(sunday_records),
@@ -275,17 +328,16 @@ async def get_employee_monthly_metrics(
         "outstanding_advance": outstanding_advance,
         "advance_balance_outstanding": outstanding_advance,
         "outstanding_advance_balance": outstanding_advance,
-        "holidays_count": len(holidays),
-        "default_absent_rate": Decimal("0.00"),
+        "default_absent_rate": spd,
         "default_late_rate": Decimal(str(employee.late_deduction_rate or "0.00")),
-        "default_ot_rate": Decimal(str(employee.overtime_rate or "0.00")),
+        "default_ot_rate": sph,
     }
 
 
 def compute_authoritative_payroll(
     base_salary: Decimal,
     absent_days: int,
-    absent_rate: Decimal,
+    absent_rate: Optional[Decimal] = None,
     late_entries: Optional[int] = None,
     late_rate: Decimal = Decimal("0.00"),
     payable_ot_hours: int = 0,
@@ -299,39 +351,101 @@ def compute_authoritative_payroll(
     applicable_late_entries: Optional[int] = None,
     approved_reimbursements: Optional[Decimal] = None,
     advance_balance_outstanding: Optional[Decimal] = None,
-    advance_recovery_mode: Optional[str] = None
+    advance_recovery_mode: Optional[str] = None,
+    # Formula Sheet Parameters
+    total_month_days: Optional[int] = None,
+    week_offs: Optional[int] = None,
+    holidays_count: Optional[int] = None,
+    expected_working_days: Optional[int] = None,
+    actual_working_days: Optional[Decimal] = None,
+    salary_per_day: Optional[Decimal] = None,
+    salary_per_hour: Optional[Decimal] = None,
+    raw_late_entries: Optional[int] = None,
+    amendments_late_entries: Optional[int] = None,
+    payout_working_days: Optional[Decimal] = None,
+    payout_extra_hours: Optional[Decimal] = None,
+    final_salary_override: Optional[Decimal] = None,
 ) -> Dict[str, Any]:
     """
-    Central Authoritative Payroll Calculation Engine (Phases 7, 8, 9, 10, 13).
-    Formula:
-    ABSENT_DEDUCTION = ABSENT_DAYS * ABSENT_RATE
-    LATE_DEDUCTION = APPLICABLE_LATE_ENTRIES * LATE_RATE
-    OVERTIME_ADDITION = PAYABLE_OT_HOURS * OT_RATE
-    SALARY_BEFORE_ADVANCE = BASE_SALARY - ABSENT_DEDUCTION - LATE_DEDUCTION + OVERTIME_ADDITION + REIMBURSEMENT + BONUS - OTHER_DEDUCTIONS
-    ADVANCE_RECOVERY = Selected by Admin, validated to not exceed outstanding or create negative pay
-    FINAL_PAYABLE_SALARY = SALARY_BEFORE_ADVANCE - ADVANCE_RECOVERY
+    Central Authoritative Payroll Calculation Engine (Phases 7, 8, 9, 10, 13 + Formula Sheet).
+    Formula Breakdown:
+    - Monthly Salary (S)
+    - Total Working Days in Month (T)
+    - Week Off / Sundays (WO)
+    - Company Holidays (H)
+    - Expected Working Days: (EWD) = (T - WO - H)
+    - Salary Per Day: (SPD) = (S / EWD)
+    - Salary Per Hour: (SPH) = (SPD / 8)
+    - Leaves / Absent Days (A)
+    - Actual Working Days: (WD) = (T - WO - H - A)
+    - Extra Working Hours (EWH = payable_ot_hours)
+    - Late Entry (LE)
+    - Amendments for Late Entry (ALE)
+    - Final Late Entry: (L) = (LE - ALE)
+    - Payout For Working Days: (PWD) = (WD * SPD)
+    - Payout For Extra Working Hours: (PEWH) = (EWH * SPH)
+    - Penalty / Debt: (D) = (L * LateRate) + AdvanceRecovery + OtherDeductions
+    - Bonus / Credit / Reward: (C) = Bonus + ApprovedReimbursements
+    - Final Salary: (FS) = (PWD + PEWH - D + C)
     """
+    # Resolve calendar & formula variables
+    T = total_month_days or 30
+    WO = week_offs or 4
+    H = holidays_count or 0
+    EWD = expected_working_days if (expected_working_days is not None and expected_working_days > 0) else max(1, T - WO - H)
+
+    # Salary per day (SPD) and Salary per hour (SPH)
+    SPD = salary_per_day if (salary_per_day is not None and salary_per_day > Decimal("0.00")) else (
+        round(base_salary / Decimal(str(EWD)), 2) if EWD > 0 else Decimal("0.00")
+    )
+    SPH = salary_per_hour if (salary_per_hour is not None and salary_per_hour > Decimal("0.00")) else (
+        round(SPD / Decimal("8.0"), 2) if SPD > Decimal("0.00") else Decimal("0.00")
+    )
+
+    # Rates: default absent_rate to SPD and ot_rate to SPH if not explicitly given
+    effective_absent_rate = absent_rate if (absent_rate is not None and absent_rate > Decimal("0.00")) else SPD
+    effective_ot_rate = ot_rate if (ot_rate is not None and ot_rate > Decimal("0.00")) else SPH
+
     # Resolve aliases
     actual_late_entries = applicable_late_entries if applicable_late_entries is not None else (late_entries or 0)
     actual_reimbursement = approved_reimbursements if approved_reimbursements is not None else (reimbursement_amount or Decimal("0.00"))
     actual_outstanding = advance_balance_outstanding if advance_balance_outstanding is not None else (outstanding_advance or Decimal("0.00"))
     actual_mode = advance_recovery_mode if advance_recovery_mode is not None else (advance_recovery_choice or "none")
 
+    # Actual Working Days [(WD) = (T - WO - H - A)]
+    WD = actual_working_days if actual_working_days is not None else max(Decimal("0.00"), Decimal(str(EWD)) - Decimal(str(absent_days)))
+
     # 1. Absent deduction
-    absent_deduction = round(Decimal(str(absent_days)) * absent_rate, 2)
+    absent_deduction = round(Decimal(str(absent_days)) * effective_absent_rate, 2)
     salary_after_absence = base_salary - absent_deduction
+
+    # Payout For Working Days [(PWD) = (WD * SPD)]
+    if payout_working_days is not None and payout_working_days > Decimal("0.00"):
+        PWD = payout_working_days
+    elif actual_working_days is not None and salary_per_day is not None:
+        PWD = round(WD * SPD, 2)
+    else:
+        PWD = round(base_salary - absent_deduction, 2)
+
+    # Payout For Extra Working Hours [(PEWH) = (EWH * SPH)]
+    if payout_extra_hours is not None and payout_extra_hours > Decimal("0.00"):
+        PEWH = payout_extra_hours
+    elif payable_ot_hours > 0 and effective_ot_rate > Decimal("0.00"):
+        PEWH = round(Decimal(str(payable_ot_hours)) * effective_ot_rate, 2)
+    else:
+        PEWH = Decimal("0.00")
 
     # 2. Late deduction
     late_deduction = round(Decimal(str(actual_late_entries)) * late_rate, 2)
 
     # 3. Overtime addition
-    overtime_addition = round(Decimal(str(payable_ot_hours)) * ot_rate, 2)
+    overtime_addition = PEWH
 
     # Total additions
-    total_additions = round(overtime_addition + actual_reimbursement + bonus, 2)
+    total_additions = round(PEWH + actual_reimbursement + bonus, 2)
 
     # Pre-advance calculated salary
-    pre_advance_salary = base_salary - absent_deduction - late_deduction + overtime_addition + actual_reimbursement + bonus - other_deductions
+    pre_advance_salary = PWD + PEWH - late_deduction + actual_reimbursement + bonus - other_deductions
     pre_advance_salary = max(Decimal("0.00"), pre_advance_salary)
 
     # 4. Advance recovery
@@ -348,12 +462,42 @@ def compute_authoritative_payroll(
     chosen_recovery = round(chosen_recovery, 2)
     remaining_advance_balance = round(max(Decimal("0.00"), actual_outstanding - chosen_recovery), 2)
 
+    # Penalty / Debt (D) = Late penalty + Advance recovery + Other deductions
+    total_debt_d = round(late_deduction + chosen_recovery + other_deductions, 2)
+
+    # Bonus / Credit / Reward (C) = Bonus + Approved reimbursements
+    total_credit_c = round(actual_reimbursement + bonus, 2)
+
     # Total deductions
     total_deductions = round(absent_deduction + late_deduction + chosen_recovery + other_deductions, 2)
 
-    # Final payable salary
-    final_salary = base_salary + total_additions - total_deductions
+    # Final payable salary [(FS) = (PWD + PEWH - D + C)]
+    if final_salary_override is not None:
+        final_salary = final_salary_override
+    else:
+        final_salary = PWD + PEWH - total_debt_d + total_credit_c
     final_salary = max(Decimal("0.00"), round(final_salary, 2))
+
+    formula_sheet = {
+        "monthly_salary": float(base_salary),
+        "total_working_days": int(T),
+        "week_off": int(WO),
+        "holiday": int(H),
+        "expected_working_days": int(EWD),
+        "salary_per_day": float(SPD),
+        "salary_per_hour": float(SPH),
+        "leaves_absent": int(absent_days),
+        "actual_working_days": float(WD),
+        "extra_working_hours": float(payable_ot_hours),
+        "late_entry": int(raw_late_entries if raw_late_entries is not None else actual_late_entries),
+        "ammendments_for_late_entry": int(amendments_late_entries or 0),
+        "final_late_entry": int(actual_late_entries),
+        "payout_for_working_days": float(PWD),
+        "payout_for_extra_working_hours": float(PEWH),
+        "penalty_debt": float(total_debt_d),
+        "bonus_credit_reward": float(total_credit_c),
+        "final_salary": float(final_salary),
+    }
 
     return {
         "base_salary": base_salary,
@@ -394,6 +538,17 @@ def compute_authoritative_payroll(
         "final_payable_salary": final_salary,
         "final_salary": final_salary,
         "net_salary": final_salary,
+        "formula_sheet": formula_sheet,
+        "salary_per_day": SPD,
+        "spd": SPD,
+        "salary_per_hour": SPH,
+        "sph": SPH,
+        "expected_working_days": EWD,
+        "actual_working_days": WD,
+        "payout_for_working_days": PWD,
+        "payout_working_days": PWD,
+        "payout_for_extra_working_hours": PEWH,
+        "payout_extra_hours": PEWH,
     }
 
 
@@ -448,7 +603,18 @@ async def preview_individual_payroll(
         advance_recovery_choice=advance_recovery_choice,
         advance_recovery_amount=advance_recovery_amount,
         bonus=eff_bonus,
-        other_deductions=eff_other_ded
+        other_deductions=eff_other_ded,
+        total_month_days=metrics.get("total_month_days"),
+        week_offs=metrics.get("week_offs"),
+        holidays_count=metrics.get("holidays_count"),
+        expected_working_days=metrics.get("expected_working_days"),
+        actual_working_days=Decimal(str(metrics.get("actual_working_days", 0))),
+        salary_per_day=metrics.get("salary_per_day"),
+        salary_per_hour=metrics.get("salary_per_hour"),
+        raw_late_entries=metrics.get("late_entries"),
+        amendments_late_entries=metrics.get("amendments_late_entries"),
+        payout_working_days=metrics.get("payout_working_days"),
+        payout_extra_hours=metrics.get("payout_extra_hours"),
     )
 
     sal = metrics.get("basic_salary") or metrics.get("base_salary") or Decimal(str(employee.salary or "0.00"))
@@ -486,11 +652,21 @@ async def save_finalized_payroll(
     remarks: Optional[str],
     is_paid: bool,
     admin: Employee,
-    db: AsyncSession
+    db: AsyncSession,
+    working_days: Optional[int] = None,
+    present_days: Optional[int] = None,
+    absent_days: Optional[int] = None,
+    payable_ot_hours: Optional[Decimal] = None,
+    salary_per_day: Optional[Decimal] = None,
+    salary_per_hour: Optional[Decimal] = None,
+    payout_working_days: Optional[Decimal] = None,
+    payout_extra_hours: Optional[Decimal] = None,
+    final_salary: Optional[Decimal] = None,
 ) -> Payroll:
     """
     Saves and finalizes payroll calculation with an immutable JSON snapshot.
     Handles advance recoveries and links approved reimbursements atomically.
+    Supports manual overrides from formula sheet.
     """
     emp_stmt = select(Employee).where(Employee.employee_id == employee_id)
     emp_res = await db.execute(emp_stmt)
@@ -516,18 +692,30 @@ async def save_finalized_payroll(
     # Authoritative calculation
     calc = compute_authoritative_payroll(
         base_salary=metrics["base_salary"],
-        absent_days=metrics["absent_days"],
+        absent_days=absent_days if absent_days is not None else metrics["absent_days"],
         absent_rate=absent_rate,
         late_entries=metrics["applicable_late_entries"],
         late_rate=late_rate,
-        payable_ot_hours=metrics["payable_ot_hours"],
+        payable_ot_hours=int(round(payable_ot_hours)) if payable_ot_hours is not None else metrics["payable_ot_hours"],
         ot_rate=ot_rate,
         reimbursement_amount=metrics["reimbursement_amount"],
         outstanding_advance=metrics["outstanding_advance"],
         advance_recovery_choice=advance_recovery_choice,
         advance_recovery_amount=advance_recovery_amount,
         bonus=bonus,
-        other_deductions=other_deductions
+        other_deductions=other_deductions,
+        total_month_days=metrics.get("total_month_days"),
+        week_offs=metrics.get("week_offs"),
+        holidays_count=metrics.get("holidays_count"),
+        expected_working_days=working_days if working_days is not None else metrics.get("expected_working_days"),
+        actual_working_days=Decimal(str(present_days)) if present_days is not None else Decimal(str(metrics.get("actual_working_days", 0))),
+        salary_per_day=salary_per_day if salary_per_day is not None else metrics.get("salary_per_day"),
+        salary_per_hour=salary_per_hour if salary_per_hour is not None else metrics.get("salary_per_hour"),
+        raw_late_entries=metrics.get("late_entries"),
+        amendments_late_entries=metrics.get("amendments_late_entries"),
+        payout_working_days=payout_working_days,
+        payout_extra_hours=payout_extra_hours,
+        final_salary_override=final_salary
     )
 
     now = datetime.utcnow()
@@ -649,9 +837,9 @@ async def calculate_employee_payroll(employee: Employee, year: int, month: int, 
     """
     preview = await preview_individual_payroll(
         employee, year, month, db,
-        absent_rate=Decimal("0.00"),
+        absent_rate=None,
         late_rate=Decimal(str(employee.late_deduction_rate or "0.00")),
-        ot_rate=Decimal(str(employee.overtime_rate or "0.00")),
+        ot_rate=None,
         advance_recovery_choice="none"
     )
 
@@ -660,21 +848,26 @@ async def calculate_employee_payroll(employee: Employee, year: int, month: int, 
     admin_res = await db.execute(admin_stmt)
     admin = admin_res.scalar_one_or_none() or employee
 
+    eff_spd = preview.get("salary_per_day") or preview.get("spd") or Decimal("0.00")
+    eff_sph = preview.get("salary_per_hour") or preview.get("sph") or Decimal("0.00")
+
     return await save_finalized_payroll(
         employee_id=employee.employee_id,
         year=year,
         month=month,
-        absent_rate=Decimal("0.00"),
+        absent_rate=eff_spd,
         late_rate=Decimal(str(employee.late_deduction_rate or "0.00")),
-        ot_rate=Decimal(str(employee.overtime_rate or "0.00")),
+        ot_rate=eff_sph,
         advance_recovery_choice="none",
         advance_recovery_amount=Decimal("0.00"),
         bonus=Decimal("0.00"),
         other_deductions=Decimal("0.00"),
-        remarks="Automated batch generation",
+        remarks="Automated batch generation (Formula sheet)",
         is_paid=False,
         admin=admin,
-        db=db
+        db=db,
+        salary_per_day=eff_spd,
+        salary_per_hour=eff_sph
     )
 
 

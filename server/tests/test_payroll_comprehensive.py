@@ -495,4 +495,68 @@ def test_reimbursement_edit_resets_approval_and_payroll_inclusion():
     assert payroll_reapproved["final_salary"] == Decimal("53200.00")
 
 
+def test_user_formula_sheet_calculation_exact_match():
+    """
+    Verifies the user's authoritative formula sheet matching the exact reference spreadsheet:
+    Monthly Salary (S) = 17000
+    Total Working Days (T) = 31
+    Week Off (WO) = 4
+    Holiday (H) = 2
+    Expected Working Days [(EWD) = (T - WO - H)] = 25
+    Salary Per Day [(SPD) = (S / EWD)] = 680
+    Salary Per Hour [(SPH) = (SPD / 8)] = 85
+    Leaves / Absent (A) = 5
+    Actual Working Days [(WD) = (T - WO - H - A)] = 20
+    Extra Working Hours (EWH) = 8
+    Late Entry (LE) = 4
+    Amendments for Late Entry (ALE) = 4
+    Final Late Entry [(L) = (LE - ALE)] = 0
+    Payout For Working Days [(PWD) = (WD * SPD)] = 13600
+    Payout For Extra Working Hours [(PEWH) = (EWH * SPH)] = 680
+    Penalty / Debt (D) = 0
+    Bonus / Credit / Reward (C) = 0
+    Final Salary [(FS) = (PWD + PEWH - D + C)] = 14280
+    """
+    res = compute_authoritative_payroll(
+        base_salary=Decimal("17000.00"),
+        absent_days=5,
+        total_month_days=31,
+        week_offs=4,
+        holidays_count=2,
+        expected_working_days=25,
+        salary_per_day=Decimal("680.00"),
+        salary_per_hour=Decimal("85.00"),
+        actual_working_days=Decimal("20"),
+        payable_ot_hours=8,
+        raw_late_entries=4,
+        amendments_late_entries=4,
+        applicable_late_entries=0,
+        late_rate=Decimal("0.00"),
+        bonus=Decimal("0.00"),
+        other_deductions=Decimal("0.00"),
+    )
+
+    sheet = res["formula_sheet"]
+    assert sheet["monthly_salary"] == 17000.0
+    assert sheet["total_working_days"] == 31
+    assert sheet["week_off"] == 4
+    assert sheet["holiday"] == 2
+    assert sheet["expected_working_days"] == 25
+    assert sheet["salary_per_day"] == 680.0
+    assert sheet["salary_per_hour"] == 85.0
+    assert sheet["leaves_absent"] == 5
+    assert sheet["actual_working_days"] == 20.0
+    assert sheet["extra_working_hours"] == 8.0
+    assert sheet["late_entry"] == 4
+    assert sheet["ammendments_for_late_entry"] == 4
+    assert sheet["final_late_entry"] == 0
+    assert sheet["payout_for_working_days"] == 13600.0
+    assert sheet["payout_for_extra_working_hours"] == 680.0
+    assert sheet["penalty_debt"] == 0.0
+    assert sheet["bonus_credit_reward"] == 0.0
+    assert sheet["final_salary"] == 14280.0
+    assert res["final_salary"] == Decimal("14280.00")
+
+
+
 
