@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from server.database.connection import get_db
 from server.dependencies.auth import get_current_user, require_admin
 from server.models import Reimbursement, ReimbursementStatus, Employee
-from server.schemas.reimbursement import ReimbursementOut, ReimbursementReview
+from server.schemas.reimbursement import ReimbursementOut, ReimbursementReview, ReimbursementReviewAction
 from server.utils.logger import log_info, log_warning
 
 router = APIRouter(prefix="/reimbursements", tags=["Reimbursements"])
@@ -141,6 +141,9 @@ async def create_reimbursement(
         description=claim.description,
         receipt_filename=claim.receipt_filename,
         receipt_mimetype=claim.receipt_mimetype,
+        document_filename=claim.receipt_filename,
+        document_mimetype=claim.receipt_mimetype,
+        document_path=f"/api/reimbursements/{claim.reimbursement_id}/document",
         status=claim.status,
         payroll_id=claim.payroll_id,
         reviewer_comments=claim.reviewer_comments,
@@ -175,6 +178,9 @@ async def my_reimbursements(
             description=r.description,
             receipt_filename=r.receipt_filename,
             receipt_mimetype=r.receipt_mimetype,
+            document_filename=r.receipt_filename,
+            document_mimetype=r.receipt_mimetype,
+            document_path=f"/api/reimbursements/{r.reimbursement_id}/document",
             status=r.status,
             payroll_id=r.payroll_id,
             reviewer_comments=r.reviewer_comments,
@@ -217,6 +223,9 @@ async def list_reimbursements(
             description=r.description,
             receipt_filename=r.receipt_filename,
             receipt_mimetype=r.receipt_mimetype,
+            document_filename=r.receipt_filename,
+            document_mimetype=r.receipt_mimetype,
+            document_path=f"/api/reimbursements/{r.reimbursement_id}/document",
             status=r.status,
             payroll_id=r.payroll_id,
             reviewer_comments=r.reviewer_comments,
@@ -226,6 +235,79 @@ async def list_reimbursements(
         )
         for r in records
     ]
+
+
+@router.put("/{reimbursement_id}/review", response_model=ReimbursementOut)
+async def review_reimbursement(
+    reimbursement_id: int,
+    payload: ReimbursementReviewAction,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """Reviews (approves or rejects) a reimbursement claim (Admin only)."""
+    stmt = (
+        select(Reimbursement)
+        .options(joinedload(Reimbursement.employee))
+        .where(Reimbursement.reimbursement_id == reimbursement_id)
+    )
+    res = await db.execute(stmt)
+    claim = res.scalar_one_or_none()
+    if not claim:
+        raise HTTPException(status_code=404, detail="Reimbursement not found")
+
+    if claim.status == ReimbursementStatus.PAID:
+        raise HTTPException(status_code=400, detail="Cannot alter an already paid reimbursement.")
+
+    notes = payload.review_notes or payload.reviewer_comments
+
+    if payload.status == "approved":
+        claim.status = ReimbursementStatus.APPROVED
+        claim.reviewed_by = admin.employee_id
+        claim.reviewer_comments = notes
+        claim.reviewed_at = datetime.utcnow()
+        log_msg = f"Reimbursement #{claim.reimbursement_id} (Rs. {float(claim.amount):,.2f}) approved by {admin.name}."
+        action_name = "CLAIM_APPROVED"
+    elif payload.status == "rejected":
+        claim.status = ReimbursementStatus.REJECTED
+        claim.reviewed_by = admin.employee_id
+        claim.reviewer_comments = notes or "Rejected by administrator."
+        claim.reviewed_at = datetime.utcnow()
+        log_msg = f"Reimbursement #{claim.reimbursement_id} rejected by {admin.name}. Reason: {claim.reviewer_comments}"
+        action_name = "CLAIM_REJECTED"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid review status. Must be 'approved' or 'rejected'.")
+
+    await db.commit()
+    await db.refresh(claim)
+
+    log_info(
+        "REIMBURSEMENT",
+        action_name,
+        log_msg,
+        claim_id=claim.reimbursement_id,
+        amount=str(claim.amount),
+        admin_id=admin.employee_code or str(admin.employee_id)
+    )
+
+    return ReimbursementOut(
+        reimbursement_id=claim.reimbursement_id,
+        employee_id=claim.employee_id,
+        employee_name=claim.employee.name if claim.employee else "Unknown",
+        amount=claim.amount,
+        category=claim.category,
+        description=claim.description,
+        receipt_filename=claim.receipt_filename,
+        receipt_mimetype=claim.receipt_mimetype,
+        document_filename=claim.receipt_filename,
+        document_mimetype=claim.receipt_mimetype,
+        document_path=f"/api/reimbursements/{claim.reimbursement_id}/document",
+        status=claim.status,
+        payroll_id=claim.payroll_id,
+        reviewer_comments=claim.reviewer_comments,
+        reviewed_by_name=admin.name,
+        created_at=claim.created_at,
+        reviewed_at=claim.reviewed_at
+    )
 
 
 @router.put("/{reimbursement_id}/approve", response_model=ReimbursementOut)
@@ -275,6 +357,9 @@ async def approve_reimbursement(
         description=claim.description,
         receipt_filename=claim.receipt_filename,
         receipt_mimetype=claim.receipt_mimetype,
+        document_filename=claim.receipt_filename,
+        document_mimetype=claim.receipt_mimetype,
+        document_path=f"/api/reimbursements/{claim.reimbursement_id}/document",
         status=claim.status,
         payroll_id=claim.payroll_id,
         reviewer_comments=claim.reviewer_comments,
@@ -330,6 +415,9 @@ async def reject_reimbursement(
         description=claim.description,
         receipt_filename=claim.receipt_filename,
         receipt_mimetype=claim.receipt_mimetype,
+        document_filename=claim.receipt_filename,
+        document_mimetype=claim.receipt_mimetype,
+        document_path=f"/api/reimbursements/{claim.reimbursement_id}/document",
         status=claim.status,
         payroll_id=claim.payroll_id,
         reviewer_comments=claim.reviewer_comments,

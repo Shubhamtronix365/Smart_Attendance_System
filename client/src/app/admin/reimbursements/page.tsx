@@ -22,6 +22,8 @@ interface Reimbursement {
   document_path?: string;
   document_filename?: string;
   document_mimetype?: string;
+  receipt_filename?: string;
+  receipt_mimetype?: string;
   review_notes?: string;
   reviewed_at?: string;
   created_at: string;
@@ -104,7 +106,8 @@ export default function AdminReimbursementsPage() {
     setIsLoadingDoc(true);
     try {
       const res = await reimbursementApi.getDocument(c.reimbursement_id);
-      const blob = new Blob([res.data], { type: c.document_mimetype || "application/pdf" });
+      const mimeType = c.document_mimetype || c.receipt_mimetype || "application/pdf";
+      const blob = new Blob([res.data], { type: mimeType });
       const url = window.URL.createObjectURL(blob);
       setDocBlobUrl(url);
     } catch (err) {
@@ -265,10 +268,10 @@ export default function AdminReimbursementsPage() {
                             ₹{Number(c.amount).toLocaleString("en-IN")}
                           </td>
                           <td className="px-4 py-4">
-                            {c.document_path ? (
+                            {c.document_path || c.receipt_filename || c.document_filename ? (
                               <button
                                 onClick={() => handleViewDoc(c)}
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all"
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all cursor-pointer"
                               >
                                 <Eye size={12} /> View Receipt
                               </button>
@@ -355,6 +358,18 @@ export default function AdminReimbursementsPage() {
                   Category: {reviewingClaim.category} · Employee: {reviewingClaim.employee_name}
                 </p>
 
+                {(reviewingClaim.document_path || reviewingClaim.receipt_filename || reviewingClaim.document_filename) && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleViewDoc(reviewingClaim)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all cursor-pointer"
+                    >
+                      <Eye size={13} /> View Attached Receipt ({reviewingClaim.receipt_filename || reviewingClaim.document_filename || "Document"})
+                    </button>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
                     Review Remarks / Justification
@@ -414,7 +429,7 @@ export default function AdminReimbursementsPage() {
             >
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/[0.02]">
                 <div>
-                  <h4 className="text-white font-bold text-sm">Receipt Attachment: {viewingDocClaim.document_filename}</h4>
+                  <h4 className="text-white font-bold text-sm">Receipt Attachment: {viewingDocClaim.document_filename || viewingDocClaim.receipt_filename || "Receipt Document"}</h4>
                   <p className="text-white/40 text-xs">Claim #{viewingDocClaim.reimbursement_id} · {viewingDocClaim.employee_name}</p>
                 </div>
                 <button onClick={closeDocModal} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10">
@@ -429,7 +444,7 @@ export default function AdminReimbursementsPage() {
                     <p className="text-white/50 text-xs">Streaming secure receipt...</p>
                   </div>
                 ) : docBlobUrl ? (
-                  viewingDocClaim.document_mimetype?.includes("image") ? (
+                  (viewingDocClaim.document_mimetype || viewingDocClaim.receipt_mimetype || "").includes("image") ? (
                     <img
                       src={docBlobUrl}
                       alt="Receipt Document"

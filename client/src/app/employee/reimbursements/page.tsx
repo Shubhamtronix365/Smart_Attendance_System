@@ -20,6 +20,7 @@ const CATEGORIES = [
   "Medical & Healthcare",
   "Client Meeting",
   "Miscellaneous",
+  "Custom",
 ];
 
 export default function EmployeeReimbursementsPage() {
@@ -31,6 +32,7 @@ export default function EmployeeReimbursementsPage() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [amount, setAmount] = useState<number>(0);
   const [category, setCategory] = useState(CATEGORIES[0]);
+  const [customCategory, setCustomCategory] = useState("");
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split("T")[0]);
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -72,22 +74,35 @@ export default function EmployeeReimbursementsPage() {
       return;
     }
 
+    if (category === "Custom" && !customCategory.trim()) {
+      error("Please enter your custom expense category name.");
+      return;
+    }
+
+    if (!file) {
+      error("Please upload a supporting receipt or bill document (PDF, JPG, PNG).");
+      return;
+    }
+
+    const effectiveCategory = category === "Custom" ? customCategory.trim() : category;
+
     setIsSubmitting(true);
     try {
       const formData = new FormData();
       formData.append("amount", String(amount));
-      formData.append("category", category);
+      formData.append("category", effectiveCategory);
       formData.append("expense_date", expenseDate);
       formData.append("description", description.trim());
-      if (file) {
-        formData.append("receipt", file);
-        formData.append("document", file);
-      }
+      formData.append("receipt", file);
+      formData.append("document", file);
+      formData.append("file", file);
 
       await reimbursementApi.create(formData);
       success("Reimbursement claim submitted successfully for manager approval.");
       setShowSubmitModal(false);
       setAmount(0);
+      setCategory(CATEGORIES[0]);
+      setCustomCategory("");
       setDescription("");
       setFile(null);
       fetchMyClaims();
@@ -193,9 +208,9 @@ export default function EmployeeReimbursementsPage() {
                         </td>
                         <td className="px-4 py-4 text-xs text-white/70 max-w-xs truncate">{c.description}</td>
                         <td className="px-4 py-4 text-xs text-white/40">
-                          {c.document_filename ? (
+                          {c.document_filename || c.receipt_filename ? (
                             <span className="text-cyan-300 font-mono flex items-center gap-1">
-                              <FileText size={12} /> {c.document_filename}
+                              <FileText size={12} /> {c.document_filename || c.receipt_filename}
                             </span>
                           ) : (
                             "—"
@@ -296,6 +311,22 @@ export default function EmployeeReimbursementsPage() {
                     />
                   </div>
                 </div>
+
+                {category === "Custom" && (
+                  <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/25">
+                    <label className="text-xs font-semibold text-cyan-300 uppercase tracking-wider block mb-1">
+                      Custom Category Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Software Subscription, Client Gift, Toll Tax"
+                      value={customCategory}
+                      onChange={(e) => setCustomCategory(e.target.value)}
+                      className="w-full px-3 py-2 text-xs text-white bg-[#0a0f1e] border border-cyan-500/40 rounded-xl outline-none focus:border-cyan-400 placeholder:text-white/20"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">

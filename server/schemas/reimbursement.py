@@ -15,12 +15,20 @@ class ReimbursementCreate(ReimbursementBase):
 class ReimbursementReview(BaseModel):
     reviewer_comments: Optional[str] = None
 
+class ReimbursementReviewAction(BaseModel):
+    status: str = Field(..., pattern="^(approved|rejected)$")
+    review_notes: Optional[str] = None
+    reviewer_comments: Optional[str] = None
+
 class ReimbursementOut(ReimbursementBase):
     reimbursement_id: int
     employee_id: int
     employee_name: Optional[str] = None
     receipt_filename: str
     receipt_mimetype: str
+    document_filename: Optional[str] = None
+    document_mimetype: Optional[str] = None
+    document_path: Optional[str] = None
     status: ReimbursementStatus
     payroll_id: Optional[int] = None
     reviewer_comments: Optional[str] = None
