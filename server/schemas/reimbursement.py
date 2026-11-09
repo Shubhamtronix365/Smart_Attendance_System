@@ -16,7 +16,12 @@ class ReimbursementReview(BaseModel):
     reviewer_comments: Optional[str] = None
 
 class ReimbursementReviewAction(BaseModel):
-    status: str = Field(..., pattern="^(approved|rejected)$")
+    status: str = Field(..., pattern="^(approved|rejected|pending|paid)$")
+    review_notes: Optional[str] = None
+    reviewer_comments: Optional[str] = None
+
+class ReimbursementStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(approved|rejected|pending|paid)$")
     review_notes: Optional[str] = None
     reviewer_comments: Optional[str] = None
 

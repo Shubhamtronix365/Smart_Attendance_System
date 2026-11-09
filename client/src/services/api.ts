@@ -162,8 +162,10 @@ export const reimbursementApi = {
     api.post("/api/reimbursements", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
-  review: (id: number, data: { status: "approved" | "rejected"; review_notes?: string }) =>
+  review: (id: number, data: { status: "approved" | "rejected" | "pending" | "paid"; review_notes?: string; reviewer_comments?: string }) =>
     api.put(`/api/reimbursements/${id}/review`, data),
+  updateStatus: (id: number, data: { status: "approved" | "rejected" | "pending" | "paid"; review_notes?: string; reviewer_comments?: string }) =>
+    api.put(`/api/reimbursements/${id}/status`, data),
   update: (id: number, formData: FormData) =>
     api.put(`/api/reimbursements/${id}`, formData, {
       headers: { "Content-Type": "multipart/form-data" },

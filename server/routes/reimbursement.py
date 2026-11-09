@@ -244,7 +244,11 @@ async def review_reimbursement(
     db: AsyncSession = Depends(get_db),
     admin: Employee = Depends(require_admin)
 ):
-    """Reviews (approves or rejects) a reimbursement claim (Admin only)."""
+    """
+    Reviews or updates status of a reimbursement claim (Admin only).
+    Supports transitioning between 'pending', 'approved', 'rejected', and 'paid'
+    even if the claim was previously marked paid.
+    """
     stmt = (
         select(Reimbursement)
         .options(joinedload(Reimbursement.employee))
@@ -255,16 +259,14 @@ async def review_reimbursement(
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement not found")
 
-    if claim.status == ReimbursementStatus.PAID:
-        raise HTTPException(status_code=400, detail="Cannot alter an already paid reimbursement.")
-
     notes = payload.review_notes or payload.reviewer_comments
 
     if payload.status == "approved":
         claim.status = ReimbursementStatus.APPROVED
         claim.reviewed_by = admin.employee_id
-        claim.reviewer_comments = notes
+        claim.reviewer_comments = notes or "Approved by administrator."
         claim.reviewed_at = datetime.utcnow()
+        claim.payroll_id = None
         log_msg = f"Reimbursement #{claim.reimbursement_id} (Rs. {float(claim.amount):,.2f}) approved by {admin.name}."
         action_name = "CLAIM_APPROVED"
     elif payload.status == "rejected":
@@ -272,10 +274,26 @@ async def review_reimbursement(
         claim.reviewed_by = admin.employee_id
         claim.reviewer_comments = notes or "Rejected by administrator."
         claim.reviewed_at = datetime.utcnow()
+        claim.payroll_id = None
         log_msg = f"Reimbursement #{claim.reimbursement_id} rejected by {admin.name}. Reason: {claim.reviewer_comments}"
         action_name = "CLAIM_REJECTED"
+    elif payload.status == "pending":
+        claim.status = ReimbursementStatus.PENDING
+        claim.reviewed_by = admin.employee_id
+        claim.reviewer_comments = notes or "Status reverted to pending by administrator."
+        claim.reviewed_at = datetime.utcnow()
+        claim.payroll_id = None
+        log_msg = f"Reimbursement #{claim.reimbursement_id} reverted to pending by {admin.name}."
+        action_name = "CLAIM_REVERTED_PENDING"
+    elif payload.status == "paid":
+        claim.status = ReimbursementStatus.PAID
+        claim.reviewed_by = admin.employee_id
+        claim.reviewer_comments = notes or "Marked as paid/disbursed by administrator."
+        claim.reviewed_at = datetime.utcnow()
+        log_msg = f"Reimbursement #{claim.reimbursement_id} marked as paid by {admin.name}."
+        action_name = "CLAIM_MARKED_PAID"
     else:
-        raise HTTPException(status_code=400, detail="Invalid review status. Must be 'approved' or 'rejected'.")
+        raise HTTPException(status_code=400, detail="Invalid review status. Must be 'approved', 'rejected', 'pending', or 'paid'.")
 
     await db.commit()
     await db.refresh(claim)
@@ -310,6 +328,17 @@ async def review_reimbursement(
     )
 
 
+@router.put("/{reimbursement_id}/status", response_model=ReimbursementOut)
+async def update_reimbursement_status(
+    reimbursement_id: int,
+    payload: ReimbursementReviewAction,
+    db: AsyncSession = Depends(get_db),
+    admin: Employee = Depends(require_admin)
+):
+    """Dedicated endpoint to update the status of any reimbursement claim (Admin only)."""
+    return await review_reimbursement(reimbursement_id, payload, db, admin)
+
+
 @router.put("/{reimbursement_id}/approve", response_model=ReimbursementOut)
 async def approve_reimbursement(
     reimbursement_id: int,
@@ -328,13 +357,11 @@ async def approve_reimbursement(
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement not found")
 
-    if claim.status not in (ReimbursementStatus.PENDING, ReimbursementStatus.REJECTED):
-        raise HTTPException(status_code=400, detail="Cannot alter an already processed or paid reimbursement.")
-
     claim.status = ReimbursementStatus.APPROVED
     claim.reviewed_by = admin.employee_id
-    claim.reviewer_comments = payload.reviewer_comments
+    claim.reviewer_comments = payload.reviewer_comments or "Approved by administrator."
     claim.reviewed_at = datetime.utcnow()
+    claim.payroll_id = None
 
     await db.commit()
     await db.refresh(claim)
@@ -387,8 +414,42 @@ async def reject_reimbursement(
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement not found")
 
-    if claim.status == ReimbursementStatus.PAID:
-        raise HTTPException(status_code=400, detail="Cannot reject an already paid reimbursement.")
+    claim.status = ReimbursementStatus.REJECTED
+    claim.reviewed_by = admin.employee_id
+    claim.reviewer_comments = payload.reviewer_comments or "Rejected by administrator."
+    claim.reviewed_at = datetime.utcnow()
+    claim.payroll_id = None
+
+    await db.commit()
+    await db.refresh(claim)
+
+    log_info(
+        "REIMBURSEMENT",
+        "CLAIM_REJECTED",
+        f"Reimbursement #{claim.reimbursement_id} rejected by {admin.name}. Reason: {claim.reviewer_comments}",
+        claim_id=claim.reimbursement_id,
+        admin_id=admin.employee_code or str(admin.employee_id)
+    )
+
+    return ReimbursementOut(
+        reimbursement_id=claim.reimbursement_id,
+        employee_id=claim.employee_id,
+        employee_name=claim.employee.name if claim.employee else "Unknown",
+        amount=claim.amount,
+        category=claim.category,
+        description=claim.description,
+        receipt_filename=claim.receipt_filename,
+        receipt_mimetype=claim.receipt_mimetype,
+        document_filename=claim.receipt_filename,
+        document_mimetype=claim.receipt_mimetype,
+        document_path=f"/api/reimbursements/{claim.reimbursement_id}/document",
+        status=claim.status,
+        payroll_id=claim.payroll_id,
+        reviewer_comments=claim.reviewer_comments,
+        reviewed_by_name=admin.name,
+        created_at=claim.created_at,
+        reviewed_at=claim.reviewed_at
+    )
 
     claim.status = ReimbursementStatus.REJECTED
     claim.reviewed_by = admin.employee_id
@@ -455,12 +516,6 @@ async def update_reimbursement(
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement record not found")
 
-    if claim.status == ReimbursementStatus.PAID:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot edit an already finalized and paid reimbursement claim."
-        )
-
     if current_user.role != "admin":
         if claim.employee_id != current_user.employee_id:
             raise HTTPException(status_code=403, detail="Cannot edit another employee's reimbursement claim")
@@ -499,7 +554,9 @@ async def update_reimbursement(
         claim.reviewed_by = None
         claim.reviewed_at = None
         claim.payroll_id = None
-        if prev_status == ReimbursementStatus.APPROVED:
+        if prev_status == ReimbursementStatus.PAID:
+            claim.reviewer_comments = "Modified by employee after being marked paid. Requires administrative re-approval before payroll inclusion."
+        elif prev_status == ReimbursementStatus.APPROVED:
             claim.reviewer_comments = "Modified by employee after approval. Requires re-approval before payroll inclusion."
         elif prev_status == ReimbursementStatus.REJECTED:
             claim.reviewer_comments = "Resubmitted with modifications by employee for re-evaluation."
@@ -558,12 +615,6 @@ async def delete_reimbursement(
     claim = res.scalar_one_or_none()
     if not claim:
         raise HTTPException(status_code=404, detail="Reimbursement record not found")
-
-    if claim.status == ReimbursementStatus.PAID:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete an already finalized and paid reimbursement claim."
-        )
 
     if current_user.role != "admin":
         if claim.employee_id != current_user.employee_id:

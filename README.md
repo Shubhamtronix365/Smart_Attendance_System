@@ -346,7 +346,9 @@ Smart_Attendance_System/
 - `GET /api/reimbursements` — List reimbursement claims (filter by `status`, `employee_id`, `from_date`, `to_date`).
 - `POST /api/reimbursements` — Submit a new reimbursement request with `amount`, `category`, `description`, and `document` attachment (PDF, JPG, PNG <= 5MB).
 - `GET /api/reimbursements/{id}` — Retrieve reimbursement claim details.
-- `PUT /api/reimbursements/{id}/status` — Review and update claim status (`approved` or `rejected`) with `admin_comments` (Admin only).
+- `PUT /api/reimbursements/{id}/review` & `PUT /api/reimbursements/{id}/status` — Review and transition claim status between `pending`, `approved`, `rejected`, and `paid` (Admin only; unbinds payroll if reverted from paid).
+- `PUT /api/reimbursements/{id}` — Edit an existing reimbursement claim (amount, category, description, receipt). Employees editing an approved or paid claim automatically reset status to `pending` requiring administrative re-approval before payroll inclusion.
+- `DELETE /api/reimbursements/{id}` — Delete / withdraw reimbursement claim (supported for admins and employee owners across all statuses, including paid claims).
 - `GET /api/reimbursements/{id}/document` — Securely stream receipt file attachment with token-based access control (no unrestricted public URLs).
 
 ### Advance Salary Management (Admin & Employee)

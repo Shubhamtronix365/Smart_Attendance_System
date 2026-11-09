@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Receipt, CheckCircle2, XCircle, Clock, Eye, Download,
   Filter, Search, AlertCircle, FileText, X, Check, Loader2, DollarSign,
-  Edit2, Trash2, Upload
+  Edit2, Trash2, Upload, RotateCcw, Sliders
 } from "lucide-react";
 import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
@@ -43,9 +43,9 @@ export default function AdminReimbursementsPage() {
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
   const [search, setSearch] = useState("");
 
-  // Review Modal
+  // Review / Status Change Modal
   const [reviewingClaim, setReviewingClaim] = useState<Reimbursement | null>(null);
-  const [reviewAction, setReviewAction] = useState<"approved" | "rejected">("approved");
+  const [reviewAction, setReviewAction] = useState<"approved" | "rejected" | "pending" | "paid">("approved");
   const [reviewNotes, setReviewNotes] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
@@ -97,7 +97,7 @@ export default function AdminReimbursementsPage() {
       });
   }, [fetchClaims]);
 
-  const handleOpenReview = (c: Reimbursement, action: "approved" | "rejected") => {
+  const handleOpenReview = (c: Reimbursement, action: "approved" | "rejected" | "pending" | "paid") => {
     setReviewingClaim(c);
     setReviewAction(action);
     setReviewNotes("");
@@ -111,12 +111,20 @@ export default function AdminReimbursementsPage() {
         status: reviewAction,
         review_notes: reviewNotes.trim(),
       });
-      success(`Claim #${reviewingClaim.reimbursement_id} has been ${reviewAction}.`);
+      const statusLabel =
+        reviewAction === "approved"
+          ? "approved"
+          : reviewAction === "rejected"
+          ? "rejected"
+          : reviewAction === "paid"
+          ? "marked as paid"
+          : "reverted to pending";
+      success(`Claim #${reviewingClaim.reimbursement_id} has been ${statusLabel}.`);
       setReviewingClaim(null);
       fetchClaims();
     } catch (err: any) {
       console.error("Error reviewing claim", err);
-      error(err.response?.data?.detail || "Failed to submit review.");
+      error(err.response?.data?.detail || "Failed to update claim status.");
     } finally {
       setIsSubmittingReview(false);
     }
@@ -370,7 +378,7 @@ export default function AdminReimbursementsPage() {
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              {isPending && (
+                              {c.status === "pending" && (
                                 <>
                                   <button
                                     onClick={() => handleOpenReview(c, "approved")}
@@ -387,26 +395,81 @@ export default function AdminReimbursementsPage() {
                                 </>
                               )}
 
-                              {c.status !== "paid" ? (
+                              {c.status === "approved" && (
                                 <>
                                   <button
-                                    onClick={() => handleOpenEdit(c)}
-                                    title="Edit Reimbursement"
-                                    className="p-1.5 rounded-lg text-white/50 hover:text-cyan-300 bg-white/5 hover:bg-cyan-500/15 border border-white/10 hover:border-cyan-500/30 transition-all cursor-pointer"
+                                    onClick={() => handleOpenReview(c, "paid")}
+                                    title="Mark claim as Paid"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 hover:bg-cyan-500/25 transition-all cursor-pointer"
                                   >
-                                    <Edit2 size={13} />
+                                    <DollarSign size={12} /> Mark Paid
                                   </button>
                                   <button
-                                    onClick={() => setDeleteClaim(c)}
-                                    title="Delete Reimbursement"
-                                    className="p-1.5 rounded-lg text-white/50 hover:text-red-400 bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-500/30 transition-all cursor-pointer"
+                                    onClick={() => handleOpenReview(c, "pending")}
+                                    title="Revert claim to Pending"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-all cursor-pointer"
                                   >
-                                    <Trash2 size={13} />
+                                    <RotateCcw size={12} /> Revert
                                   </button>
                                 </>
-                              ) : (
-                                <span className="text-white/20 text-xs">Paid</span>
                               )}
+
+                              {c.status === "paid" && (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenReview(c, "pending")}
+                                    title="Revert Paid claim back to Pending"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 transition-all cursor-pointer"
+                                  >
+                                    <RotateCcw size={12} /> Revert to Pending
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenReview(c, "approved")}
+                                    title="Set status back to Approved"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-green-300 bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 transition-all cursor-pointer"
+                                  >
+                                    <Check size={12} /> Approved
+                                  </button>
+                                </>
+                              )}
+
+                              {c.status === "rejected" && (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenReview(c, "pending")}
+                                    title="Re-open claim to Pending"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 transition-all cursor-pointer"
+                                  >
+                                    <RotateCcw size={12} /> Re-open
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenReview(c, "approved")}
+                                    title="Approve claim"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-green-300 bg-green-500/10 border border-green-500/20 hover:bg-green-500/20 transition-all cursor-pointer"
+                                  >
+                                    <Check size={12} /> Approve
+                                  </button>
+                                </>
+                              )}
+
+                              <button
+                                onClick={() => handleOpenEdit(c)}
+                                title={c.status === "paid" ? "Edit Paid Reimbursement" : "Edit Reimbursement"}
+                                className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                  c.status === "paid"
+                                    ? "text-cyan-300 hover:text-white bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30"
+                                    : "text-white/50 hover:text-cyan-300 bg-white/5 hover:bg-cyan-500/15 border-white/10 hover:border-cyan-500/30"
+                                }`}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                onClick={() => setDeleteClaim(c)}
+                                title={c.status === "paid" ? "Delete Paid Reimbursement" : "Delete Reimbursement"}
+                                className="p-1.5 rounded-lg text-white/50 hover:text-red-400 bg-white/5 hover:bg-red-500/15 border border-white/10 hover:border-red-500/30 transition-all cursor-pointer"
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -437,7 +500,13 @@ export default function AdminReimbursementsPage() {
             >
               <div className="flex items-center justify-between pb-3 border-b border-white/10">
                 <h3 className="text-white font-bold text-lg">
-                  {reviewAction === "approved" ? "Approve Reimbursement" : "Reject Reimbursement"}
+                  {reviewAction === "approved"
+                    ? "Approve Reimbursement"
+                    : reviewAction === "paid"
+                    ? "Mark Reimbursement as Paid"
+                    : reviewAction === "rejected"
+                    ? "Reject Reimbursement"
+                    : "Revert Reimbursement to Pending"}
                 </h3>
                 <button onClick={() => setReviewingClaim(null)} className="text-white/40 hover:text-white">
                   <X size={16} />
@@ -449,8 +518,36 @@ export default function AdminReimbursementsPage() {
                   Claim ID: <strong>#{reviewingClaim.reimbursement_id}</strong> | Amount: <strong className="text-green-400">₹{Number(reviewingClaim.amount).toLocaleString("en-IN")}</strong>
                 </p>
                 <p className="text-white/50 text-xs">
-                  Category: {reviewingClaim.category} · Employee: {reviewingClaim.employee_name}
+                  Category: {reviewingClaim.category} · Employee: {reviewingClaim.employee_name} · Current Status: <strong className="uppercase text-cyan-300">{reviewingClaim.status}</strong>
                 </p>
+
+                {/* Target Status Selector */}
+                <div>
+                  <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1.5">
+                    Select Target Status
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: "pending", label: "Pending", color: "border-amber-500/40 text-amber-300 bg-amber-500/15" },
+                      { id: "approved", label: "Approved", color: "border-green-500/40 text-green-300 bg-green-500/15" },
+                      { id: "paid", label: "Paid", color: "border-cyan-500/40 text-cyan-300 bg-cyan-500/15" },
+                      { id: "rejected", label: "Rejected", color: "border-red-500/40 text-red-300 bg-red-500/15" },
+                    ].map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        onClick={() => setReviewAction(st.id as any)}
+                        className={`py-1.5 text-xs font-semibold rounded-xl border transition-all ${
+                          reviewAction === st.id
+                            ? `${st.color} font-bold ring-1 ring-white/20`
+                            : "border-white/10 text-white/40 hover:text-white"
+                        }`}
+                      >
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {(reviewingClaim.document_path || reviewingClaim.receipt_filename || reviewingClaim.document_filename) && (
                   <div className="pt-1">
@@ -493,10 +590,22 @@ export default function AdminReimbursementsPage() {
                   className={`flex-1 py-2 rounded-xl text-sm font-bold text-black transition-all ${
                     reviewAction === "approved"
                       ? "bg-green-400 hover:bg-green-300"
+                      : reviewAction === "paid"
+                      ? "bg-cyan-400 hover:bg-cyan-300"
+                      : reviewAction === "pending"
+                      ? "bg-amber-400 hover:bg-amber-300"
                       : "bg-red-400 hover:bg-red-300 text-white"
                   }`}
                 >
-                  {isSubmittingReview ? "Submitting..." : reviewAction === "approved" ? "Confirm Approval" : "Confirm Rejection"}
+                  {isSubmittingReview
+                    ? "Submitting..."
+                    : reviewAction === "approved"
+                    ? "Confirm Approval"
+                    : reviewAction === "paid"
+                    ? "Confirm Mark Paid"
+                    : reviewAction === "pending"
+                    ? "Confirm Revert to Pending"
+                    : "Confirm Rejection"}
                 </button>
               </div>
             </motion.div>
@@ -530,6 +639,14 @@ export default function AdminReimbursementsPage() {
               </div>
 
               <form onSubmit={submitEdit} className="py-4 space-y-3.5">
+                {editingClaim.status === "paid" && (
+                  <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 text-xs flex items-start gap-2">
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    <span>
+                      Notice: This claim is currently marked as <strong>Paid</strong>. Editing will update the recorded details and attachment in the system.
+                    </span>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
                     Amount (₹) *
@@ -625,6 +742,14 @@ export default function AdminReimbursementsPage() {
             <div className="w-full max-w-sm rounded-3xl bg-[#0a0f1e] border border-red-500/30 p-6 text-center shadow-2xl">
               <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
               <h4 className="text-lg font-bold text-white mb-2">Delete Claim #{deleteClaim.reimbursement_id}?</h4>
+              {deleteClaim.status === "paid" && (
+                <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs mb-3 text-left flex items-start gap-2">
+                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                  <span>
+                    Warning: This claim is currently marked as <strong>Paid</strong>. Deleting it will permanently remove it from employee reimbursement records and audit logs.
+                  </span>
+                </div>
+              )}
               <p className="text-white/50 text-xs mb-6">
                 Are you sure you want to permanently delete this reimbursement request of <strong>₹{Number(deleteClaim.amount).toLocaleString("en-IN")}</strong> for {deleteClaim.employee_name}?
               </p>
@@ -730,6 +855,14 @@ export default function AdminReimbursementsPage() {
               </div>
 
               <form onSubmit={submitEdit} className="py-4 space-y-3.5">
+                {editingClaim.status === "paid" && (
+                  <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 text-xs flex items-start gap-2">
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    <span>
+                      Notice: This claim is currently marked as <strong>Paid</strong>. Editing will update the recorded details and attachment in the system.
+                    </span>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-semibold text-white/50 uppercase tracking-wider block mb-1">
                     Amount (₹) *
@@ -825,6 +958,14 @@ export default function AdminReimbursementsPage() {
             <div className="w-full max-w-sm rounded-3xl bg-[#0a0f1e] border border-red-500/30 p-6 text-center shadow-2xl">
               <AlertCircle size={32} className="text-red-400 mx-auto mb-3" />
               <h4 className="text-lg font-bold text-white mb-2">Delete Claim #{deleteClaim.reimbursement_id}?</h4>
+              {deleteClaim.status === "paid" && (
+                <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs mb-3 text-left flex items-start gap-2">
+                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                  <span>
+                    Warning: This claim is currently marked as <strong>Paid</strong>. Deleting it will permanently remove it from employee reimbursement records and audit logs.
+                  </span>
+                </div>
+              )}
               <p className="text-white/50 text-xs mb-6">
                 Are you sure you want to permanently delete this reimbursement request of <strong>₹{Number(deleteClaim.amount).toLocaleString("en-IN")}</strong> for {deleteClaim.employee_name}?
               </p>
