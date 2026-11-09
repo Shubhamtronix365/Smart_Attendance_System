@@ -106,6 +106,8 @@ class AttendanceOut(AttendanceBase):
     created_at: datetime
     employee_name: Optional[str] = None  # for display convenience
     employee_dept: Optional[str] = None
+    is_late_waived: Optional[bool] = False
+    dispute_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

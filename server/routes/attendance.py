@@ -47,7 +47,7 @@ async def my_attendance(
     from sqlalchemy import extract
     stmt = (
         select(Attendance)
-        .options(joinedload(Attendance.employee))
+        .options(joinedload(Attendance.employee), joinedload(Attendance.amendments))
         .where(
             and_(
                 Attendance.employee_id == current_user.employee_id,
@@ -61,8 +61,23 @@ async def my_attendance(
     records = res.scalars().all()
 
     from server.services.attendance_service import calculate_late_minutes
-    return [
-        AttendanceOut(
+    out_items = []
+    for r in records:
+        is_waived = False
+        dispute_stat = None
+        if hasattr(r, "amendments") and r.amendments:
+            for a in r.amendments:
+                a_stat = str(a.status).lower()
+                if "approved" in a_stat:
+                    is_waived = True
+                    dispute_stat = "approved"
+                    break
+                elif "pending" in a_stat:
+                    dispute_stat = "pending"
+                elif "rejected" in a_stat and not dispute_stat:
+                    dispute_stat = "rejected"
+
+        out_items.append(AttendanceOut(
             attendance_id=r.attendance_id,
             employee_id=r.employee_id,
             date=r.date,
@@ -70,17 +85,18 @@ async def my_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
-            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time(), r.date) if (r.check_in and r.status == AttendanceStatus.LATE and r.date.weekday() != 6) else 0),
+            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else (calculate_late_minutes(r.check_in.time(), r.date) if (r.check_in and r.status == AttendanceStatus.LATE and r.date.weekday() != 6 and not is_waived) else 0),
             status=r.status,
             source=r.source,
             checkout_count=getattr(r, "checkout_count", 0) or 0,
             punches=getattr(r, "punches", "[]") or "[]",
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
-            employee_dept=r.employee.department if r.employee else "N/A"
-        )
-        for r in records
-    ]
+            employee_dept=r.employee.department if r.employee else "N/A",
+            is_late_waived=is_waived,
+            dispute_status=dispute_stat
+        ))
+    return out_items
 
 @router.get("/my-stats")
 async def my_attendance_stats(
@@ -171,7 +187,7 @@ async def list_attendance(
     if current_user.role != "admin":
         employee_id = current_user.employee_id
 
-    stmt = select(Attendance).options(joinedload(Attendance.employee))
+    stmt = select(Attendance).options(joinedload(Attendance.employee), joinedload(Attendance.amendments))
     
     # If month and year are specified without explicit dates, calculate full month range
     if month and year and not attendance_date and not start_date:
@@ -219,6 +235,20 @@ async def list_attendance(
     # Map to schema output (include employee name, dept, and late_minutes)
     out_records = []
     for r in records:
+        is_waived = False
+        dispute_stat = None
+        if hasattr(r, "amendments") and r.amendments:
+            for a in r.amendments:
+                a_stat = str(a.status).lower()
+                if "approved" in a_stat:
+                    is_waived = True
+                    dispute_stat = "approved"
+                    break
+                elif "pending" in a_stat:
+                    dispute_stat = "pending"
+                elif "rejected" in a_stat and not dispute_stat:
+                    dispute_stat = "rejected"
+
         out_records.append(AttendanceOut(
             attendance_id=r.attendance_id,
             employee_id=r.employee_id,
@@ -227,14 +257,16 @@ async def list_attendance(
             check_out=r.check_out,
             working_hours=r.working_hours,
             overtime_hours=r.overtime_hours,
-            late_minutes=r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0,
+            late_minutes=0 if is_waived else (r.late_minutes if hasattr(r, "late_minutes") and r.late_minutes else 0),
             status=r.status,
             source=r.source,
             checkout_count=getattr(r, "checkout_count", 0) or 0,
             punches=getattr(r, "punches", "[]") or "[]",
             created_at=r.created_at,
             employee_name=r.employee.name if r.employee else "Unknown",
-            employee_dept=r.employee.department if r.employee else "N/A"
+            employee_dept=r.employee.department if r.employee else "N/A",
+            is_late_waived=is_waived,
+            dispute_status=dispute_stat
         ))
     return out_records
 

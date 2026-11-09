@@ -240,7 +240,9 @@ export default function EmployeeAttendancePage() {
                     const punchDate = new Date(r.date + "T00:00:00");
                     const dayName = punchDate.toLocaleDateString("en-IN", { weekday: "short" });
                     const isSunday = punchDate.getDay() === 0;
-                    const isLate = (r.late_minutes && Number(r.late_minutes) > 0) || r.status?.toLowerCase() === "late";
+                    const isWaived = Boolean(r.is_late_waived || r.dispute_status === "approved");
+                    const isPendingDispute = r.dispute_status === "pending";
+                    const isLate = ((r.late_minutes && Number(r.late_minutes) > 0) || r.status?.toLowerCase() === "late") && !isWaived;
 
                     return (
                       <tr key={r.attendance_id} className="hover:bg-white/[0.02] transition-colors">
@@ -258,7 +260,17 @@ export default function EmployeeAttendancePage() {
                         <td className="py-4 px-6 font-mono text-cyan-300">
                           <div>
                             <span>{r.check_in ? formatTime(r.check_in) : "--:--"}</span>
-                            {isLate && (
+                            {isWaived && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 mt-0.5">
+                                ✓ Late Waived (Approved)
+                              </span>
+                            )}
+                            {isPendingDispute && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 mt-0.5">
+                                ⏳ Dispute Under Review
+                              </span>
+                            )}
+                            {isLate && !isPendingDispute && (
                               <div>
                                 <span className="block text-[10px] text-amber-400 font-sans font-medium mt-0.5">
                                   Late by {r.late_minutes ? (Number(r.late_minutes) >= 60 ? `${Math.floor(Number(r.late_minutes) / 60)}h ${Number(r.late_minutes) % 60}m` : `${r.late_minutes}m`) : "—"}
@@ -269,7 +281,7 @@ export default function EmployeeAttendancePage() {
                                     setDisputeRecord(r);
                                     setDisputeReason("");
                                   }}
-                                  className="text-[10px] text-amber-300 hover:text-amber-200 underline font-sans flex items-center gap-1 mt-0.5"
+                                  className="text-[10px] text-amber-300 hover:text-amber-200 underline font-sans flex items-center gap-1 mt-0.5 cursor-pointer"
                                 >
                                   <MessageSquare size={10} /> Explain Late Mark
                                 </button>

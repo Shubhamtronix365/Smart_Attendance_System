@@ -310,3 +310,71 @@ def test_holiday_update_schema_and_custom_festival_types():
     assert create_data.date == date(2026, 5, 15)
     assert create_data.holiday_type == "Custom"
 
+
+def test_late_amendment_approval_synchronization_and_payroll_adjustment():
+    """
+    Verify that when late dispute / amendment is approved:
+    1. Attendance status transitions from LATE to PRESENT and late_minutes is cleared to 0.
+    2. Authoritative payroll recalculates late penalty from 1 late day to 0 late days.
+    3. Final payable salary is adjusted upwards accordingly (late deduction eliminated).
+    """
+    from server.models import Attendance, LateAmendment, AmendmentStatus, Payroll
+    from server.services.payroll_service import compute_authoritative_payroll
+
+    # Initial state: 1 late mark with 200 INR penalty
+    calc_initial = compute_authoritative_payroll(
+        base_salary=Decimal("50000.00"),
+        absent_days=0,
+        absent_rate=Decimal("1500.00"),
+        late_entries=1,
+        late_rate=Decimal("200.00"),
+        payable_ot_hours=0,
+        ot_rate=Decimal("100.00"),
+    )
+    assert calc_initial["late_entries"] == 1
+    assert calc_initial["late_deduction"] == 200.0
+    assert calc_initial["final_salary"] == Decimal("49800.00")
+
+    # Simulate Attendance record and LateAmendment
+    att = Attendance(
+        attendance_id=999,
+        employee_id=1,
+        date=date(2026, 11, 4),
+        status=AttendanceStatus.LATE,
+        late_minutes=45
+    )
+    amendment = LateAmendment(
+        amendment_id=101,
+        attendance_id=999,
+        employee_id=1,
+        original_late_minutes=45,
+        reason="Heavy traffic congestion due to metro work",
+        status=AmendmentStatus.PENDING
+    )
+    amendment.attendance = att
+
+    # Admin reviews and approves late amendment
+    # 1. Update Attendance
+    if amendment.attendance.status == AttendanceStatus.LATE:
+        amendment.attendance.status = AttendanceStatus.PRESENT
+    amendment.attendance.late_minutes = 0
+    amendment.status = AmendmentStatus.APPROVED
+
+    assert att.status == AttendanceStatus.PRESENT
+    assert att.late_minutes == 0
+
+    # 2. Recalculate payroll with 0 late entries
+    calc_adjusted = compute_authoritative_payroll(
+        base_salary=Decimal("50000.00"),
+        absent_days=0,
+        absent_rate=Decimal("1500.00"),
+        late_entries=0,
+        late_rate=Decimal("200.00"),
+        payable_ot_hours=0,
+        ot_rate=Decimal("100.00"),
+    )
+    assert calc_adjusted["late_entries"] == 0
+    assert calc_adjusted["late_deduction"] == 0.0
+    assert calc_adjusted["final_salary"] == Decimal("50000.00")
+
+

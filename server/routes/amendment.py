@@ -1,4 +1,6 @@
 from datetime import datetime
+import json
+from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, and_
@@ -7,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.database.connection import get_db
 from server.dependencies.auth import get_current_user, require_admin
-from server.models import LateAmendment, LeaveAmendment, AmendmentStatus, Attendance, Leave, Employee
+from server.models import LateAmendment, LeaveAmendment, AmendmentStatus, Attendance, Leave, Employee, AttendanceStatus, Payroll
+from server.services.payroll_service import get_employee_monthly_metrics, compute_authoritative_payroll
 from server.schemas.amendment import (
     LateAmendmentCreate,
     LateAmendmentReview,
@@ -200,6 +203,75 @@ async def review_late_amendment(
     amendment.reviewer_comments = payload.reviewer_comments
     amendment.reviewed_by = admin.employee_id
     amendment.reviewed_at = datetime.utcnow()
+
+    # 1. Synchronize Attendance record directly
+    is_approved = str(payload.status).lower() in ("approved", AmendmentStatus.APPROVED.value.lower())
+    is_rejected = str(payload.status).lower() in ("rejected", AmendmentStatus.REJECTED.value.lower())
+
+    if is_approved and amendment.attendance:
+        # Waive late mark: convert status to PRESENT and zero out late_minutes
+        if amendment.attendance.status == AttendanceStatus.LATE:
+            amendment.attendance.status = AttendanceStatus.PRESENT
+        amendment.attendance.late_minutes = 0
+    elif is_rejected and amendment.attendance:
+        # Revert back to late if previously modified
+        if amendment.original_late_minutes and amendment.original_late_minutes > 0:
+            amendment.attendance.status = AttendanceStatus.LATE
+            amendment.attendance.late_minutes = amendment.original_late_minutes
+
+    # 2. Recalculate existing unpaid payroll for this employee in that month
+    if amendment.attendance and amendment.attendance.date:
+        p_year = amendment.attendance.date.year
+        p_month = amendment.attendance.date.month
+        pay_stmt = select(Payroll).where(
+            and_(
+                Payroll.employee_id == amendment.employee_id,
+                Payroll.year == p_year,
+                Payroll.month == p_month
+            )
+        )
+        pay_res = await db.execute(pay_stmt)
+        existing_payroll = pay_res.scalar_one_or_none()
+        if existing_payroll and not existing_payroll.is_paid:
+            emp_obj = amendment.employee or await db.get(Employee, amendment.employee_id)
+            if emp_obj:
+                try:
+                    metrics = await get_employee_monthly_metrics(
+                        emp_obj, p_year, p_month, db, existing_payroll_id=existing_payroll.payroll_id
+                    )
+                    calc = compute_authoritative_payroll(
+                        base_salary=metrics["base_salary"],
+                        absent_days=metrics["absent_days"],
+                        absent_rate=existing_payroll.absent_rate or Decimal("0.00"),
+                        late_entries=metrics["applicable_late_entries"],
+                        late_rate=existing_payroll.late_rate or Decimal("0.00"),
+                        payable_ot_hours=metrics["payable_ot_hours"],
+                        ot_rate=existing_payroll.ot_rate or Decimal("0.00"),
+                        reimbursement_amount=metrics["reimbursement_amount"],
+                        outstanding_advance=metrics["outstanding_advance"],
+                        advance_recovery_choice="none",
+                        advance_recovery_amount=existing_payroll.advance_recovered or Decimal("0.00"),
+                        bonus=existing_payroll.bonus or Decimal("0.00"),
+                        other_deductions=Decimal("0.00")
+                    )
+                    existing_payroll.working_days = metrics["working_days"]
+                    existing_payroll.present_days = int(round(metrics["present_days"]))
+                    existing_payroll.absent_days = metrics["absent_days"]
+                    existing_payroll.late_days = metrics["applicable_late_entries"]
+                    existing_payroll.late_deduction = Decimal(str(calc["late_deduction"]))
+                    existing_payroll.deductions = Decimal(str(calc["total_deductions"]))
+                    existing_payroll.final_salary = Decimal(str(calc["final_payable_salary"]))
+                    if existing_payroll.calculation_snapshot:
+                        try:
+                            snap = json.loads(existing_payroll.calculation_snapshot)
+                            snap.update(metrics)
+                            snap.update(calc)
+                            snap["updated_due_to_amendment_id"] = amendment.amendment_id
+                            existing_payroll.calculation_snapshot = json.dumps(snap, default=str)
+                        except Exception:
+                            pass
+                except Exception as ex:
+                    log_warning("AMENDMENT", f"Failed auto-recalculating payroll for emp #{amendment.employee_id}: {ex}")
 
     await db.commit()
     await db.refresh(amendment)

@@ -36,6 +36,8 @@ interface AttendanceRecord {
   lateMinutes?: number;
   checkoutCount?: number;
   punches?: Array<{ session: number; in: string; out?: string; hours?: number }>;
+  isLateWaived?: boolean;
+  disputeStatus?: string;
 }
 
 
@@ -488,6 +490,8 @@ export default function AttendancePage() {
           lateMinutes: r.late_minutes ? Number(r.late_minutes) : 0,
           checkoutCount: r.checkout_count || (parsedPunches.filter((s: any) => s.out).length) || 0,
           punches: parsedPunches,
+          isLateWaived: Boolean(r.is_late_waived || r.dispute_status === "approved"),
+          disputeStatus: r.dispute_status,
         };
       });
       setRecords(mapped);
@@ -869,7 +873,17 @@ export default function AttendancePage() {
                       <td className="px-4 py-3.5 text-white/70 text-sm font-mono">
                         <div>
                           <span>{r.checkIn}</span>
-                          {((r.lateMinutes && r.lateMinutes > 0) || r.status === "late") && (
+                          {r.isLateWaived && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 mt-0.5">
+                              ✓ Late Waived (Approved)
+                            </span>
+                          )}
+                          {r.disputeStatus === "pending" && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 mt-0.5">
+                              ⏳ Dispute Pending
+                            </span>
+                          )}
+                          {((r.lateMinutes && r.lateMinutes > 0) || r.status === "late") && !r.isLateWaived && (
                             <span className="block text-[11px] text-amber-400 font-sans font-medium mt-0.5">
                               Late by {r.lateMinutes ? (r.lateMinutes >= 60 ? `${Math.floor(r.lateMinutes / 60)}h ${r.lateMinutes % 60}m` : `${r.lateMinutes}m`) : "—"}
                             </span>
