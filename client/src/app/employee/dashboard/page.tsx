@@ -96,6 +96,11 @@ export default function EmployeeDashboardPage() {
   const [payrollHistory, setPayrollHistory] = useState<any[]>([]);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [oneTimeApprovalAlert, setOneTimeApprovalAlert] = useState<any | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
@@ -428,36 +433,42 @@ export default function EmployeeDashboardPage() {
           </div>
 
           <div className="h-60 w-full min-w-0" style={{ minWidth: 0, minHeight: 240 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00f5ff" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0.0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="day" stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 10 }} />
-                <YAxis stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 10 }} unit="h" />
-                <Tooltip
-                  contentStyle={{
-                    background: "#0d1424",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "12px",
-                    fontSize: "12px",
-                  }}
-                  formatter={(val: any) => [`${val} hrs`, "Working Hours"]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="hours"
-                  stroke="#00f5ff"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#hoursGrad)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {isMounted ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#00f5ff" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#7c3aed" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis dataKey="day" stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 10 }} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 10 }} unit="h" />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0d1424",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(val: any) => [`${val} hrs`, "Working Hours"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="hours"
+                    stroke="#00f5ff"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#hoursGrad)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full min-h-[240px] flex items-center justify-center text-white/20 text-xs">
+                Loading analytics...
+              </div>
+            )}
           </div>
         </div>
 

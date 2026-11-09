@@ -66,7 +66,7 @@ function WeeklyAttendanceChart({ data }: { data: WeeklyItem[] }) {
           </span>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={200}>
         <AreaChart data={data} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="cyanGrad" x1="0" y1="0" x2="0" y2="1">
@@ -137,7 +137,7 @@ function DepartmentRadarChart({ data }: { data: DeptItem[] }) {
         <p className="text-white font-bold text-base">Dept. Attendance</p>
         <p className="text-white/40 text-xs">Present % across active teams today</p>
       </div>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={220} minWidth={0} minHeight={220}>
         <RadarChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
           <defs>
             <linearGradient id="radarGrad" x1="0" y1="0" x2="1" y2="1">
@@ -193,7 +193,7 @@ function MonthlyPayrollChart({ data }: { data: PayrollTrendItem[] }) {
           <p className="text-white/40 text-xs">Last 6 months company disbursements (₹)</p>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={200}>
         <BarChart data={data} margin={{ top: 5, right: 8, left: -10, bottom: 0 }} barCategoryGap="30%">
           <defs>
             {BAR_COLORS.map((color, i) => (
@@ -247,6 +247,11 @@ export default function ChartsSection() {
   const [departments, setDepartments] = useState<DeptItem[]>([]);
   const [payrollTrend, setPayrollTrend] = useState<PayrollTrendItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     async function loadAnalytics() {
@@ -265,6 +270,16 @@ export default function ChartsSection() {
     }
     loadAnalytics();
   }, []);
+
+  if (!isMounted) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 neo-card p-6 h-[280px] animate-pulse bg-white/[0.02]" />
+        <div className="neo-card p-6 h-[280px] animate-pulse bg-white/[0.02]" />
+        <div className="lg:col-span-3 neo-card p-6 h-[280px] animate-pulse bg-white/[0.02]" />
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

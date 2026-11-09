@@ -58,7 +58,7 @@ async def my_attendance(
         .order_by(Attendance.date.desc())
     )
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
 
     from server.services.attendance_service import calculate_late_minutes
     out_items = []
@@ -121,7 +121,7 @@ async def my_attendance_stats(
         )
     )
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
 
     standard_records = [r for r in records if r.date.weekday() != 6]
     on_time_days = sum(1 for r in standard_records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.WFH))
@@ -230,7 +230,7 @@ async def list_attendance(
     stmt = stmt.offset(offset).limit(size)
     
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
     
     # Map to schema output (include employee name, dept, and late_minutes)
     out_records = []
@@ -320,7 +320,7 @@ async def export_attendance(
     stmt = stmt.order_by(Attendance.date.desc(), Attendance.check_in.desc(), Attendance.employee_id.asc())
 
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
 
     mapped_records = []
     for r in records:
@@ -390,7 +390,7 @@ async def today_attendance(
     today = get_current_local_date()
     stmt = select(Attendance).options(joinedload(Attendance.employee)).where(Attendance.date == today)
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
     
     from server.services.attendance_service import calculate_late_minutes
     return [
@@ -427,7 +427,7 @@ async def live_attendance(
     ).order_by(Attendance.created_at.desc()).limit(20)
     
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
     
     # If no records exist today yet (e.g. before office hours), show recent activity from previous days
     if not records:
@@ -1125,7 +1125,7 @@ async def get_history(
     ).order_by(Attendance.date.desc())
     
     res = await db.execute(stmt)
-    records = res.scalars().all()
+    records = res.unique().scalars().all()
     
     from server.services.attendance_service import calculate_late_minutes
     return [
