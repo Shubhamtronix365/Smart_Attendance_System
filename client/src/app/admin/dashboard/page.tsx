@@ -14,6 +14,7 @@ import LiveAttendanceFeed from "@/components/LiveAttendanceFeed";
 import ChartsSection from "@/components/ChartsSection";
 import { attendanceApi, leaveApi, payrollApi, employeesApi } from "@/services/api";
 import { formatTime } from "@/utils/formatters";
+import { getWsUrl } from "@/utils/config";
 import { useAuth } from "@/context/AuthContext";
 
 // ─── Status Configuration ─────────────────────────────────────────────────────
@@ -170,9 +171,7 @@ export default function AdminDashboard() {
     let ws: WebSocket | null = null;
     const WS_EVENTS = ["attendance_updated", "live_attendance", "employee_created", "employee_deleted", "all_employees_cleared"];
     try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
-      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(getWsUrl());
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

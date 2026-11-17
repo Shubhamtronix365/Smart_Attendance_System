@@ -1,8 +1,9 @@
 import axios from "axios";
+import { API_BASE_URL } from "@/utils/config";
 
 // ─── Base Instance ─────────────────────────────────────────────────────────────
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
@@ -16,8 +17,14 @@ function getCookie(name: string): string | undefined {
     ?.split("=")[1];
 }
 
-// ─── Request Interceptor — Attach JWT ────────────────────────────────────────
+// ─── Request Interceptor — Attach JWT & Normalize Backend URL ───────────────
 api.interceptors.request.use((config) => {
+  if (config.baseURL && config.baseURL.includes("smart-attendance-system-x6wv.onrender.com")) {
+    config.baseURL = config.baseURL.replace("smart-attendance-system-x6wv.onrender.com", "smart-attendance-backend-tzp4.onrender.com");
+  }
+  if (config.url && config.url.includes("smart-attendance-system-x6wv.onrender.com")) {
+    config.url = config.url.replace("smart-attendance-system-x6wv.onrender.com", "smart-attendance-backend-tzp4.onrender.com");
+  }
   let token: string | null = null;
   if (typeof window !== "undefined") {
     token = localStorage.getItem("access_token");

@@ -14,6 +14,7 @@ import { useToast } from "@/components/ToastProvider";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import { attendanceApi, employeesApi } from "@/services/api";
 import { formatTime, getLocalDateString } from "@/utils/formatters";
+import { getWsUrl } from "@/utils/config";
 import CheckoutHistoryModal from "@/components/CheckoutHistoryModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -509,16 +510,7 @@ export default function AttendancePage() {
     let ws: WebSocket | null = null;
     try {
       if (typeof window !== "undefined") {
-        let wsUrl = "";
-        if (process.env.NEXT_PUBLIC_API_URL) {
-          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
-          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-        } else {
-          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-          const host = window.location.hostname || "localhost";
-          wsUrl = `${protocol}//${host}:8000/ws/client`;
-        }
-        ws = new WebSocket(wsUrl);
+        ws = new WebSocket(getWsUrl());
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);

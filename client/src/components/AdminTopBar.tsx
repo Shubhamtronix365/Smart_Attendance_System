@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 
 import { attendanceApi } from "@/services/api";
 import { formatTime } from "@/utils/formatters";
+import { getWsUrl } from "@/utils/config";
 
 // Live clock hook (SSR-safe to avoid hydration mismatches)
 function useLiveClock() {
@@ -113,18 +114,7 @@ export default function AdminTopBar({
     try {
       let wsUrl = "";
       if (typeof window !== "undefined") {
-        if (process.env.NEXT_PUBLIC_WS_URL) {
-          wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-        } else if (process.env.NEXT_PUBLIC_API_URL) {
-          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
-          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-        } else {
-          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-          const host = window.location.hostname || "localhost";
-          const port = window.location.protocol === "https:" ? "" : ":8000";
-          wsUrl = `${protocol}//${host}${port}/ws/client`;
-        }
-        ws = new WebSocket(wsUrl);
+        ws = new WebSocket(getWsUrl());
 
         ws.onmessage = (event) => {
           try {

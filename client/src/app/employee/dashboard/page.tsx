@@ -26,6 +26,7 @@ import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import { useCountUp } from "@/hooks/useCountUp";
 import { useAuth } from "@/context/AuthContext";
+import { getWsUrl } from "@/utils/config";
 import { employeeSelfApi, payrollApi, leaveApi } from "@/services/api";
 import { formatTime, formatDate, formatCurrency } from "@/utils/formatters";
 
@@ -156,9 +157,7 @@ export default function EmployeeDashboardPage() {
 
     let ws: WebSocket | null = null;
     try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
-      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(getWsUrl());
 
       ws.onmessage = (event) => {
         try {

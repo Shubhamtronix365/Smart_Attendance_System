@@ -23,6 +23,7 @@ import AdminTopBar from "@/components/AdminTopBar";
 import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/ToastProvider";
 import { reportsApi, employeesApi } from "@/services/api";
+import { getWsUrl } from "@/utils/config";
 import { formatTime, formatLateDuration } from "@/utils/formatters";
 import CheckoutHistoryModal from "@/components/CheckoutHistoryModal";
 
@@ -680,9 +681,7 @@ export default function ReportsPage() {
     // WebSocket for real-time attendance updates
     let ws: WebSocket | null = null;
     try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
-      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(getWsUrl());
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

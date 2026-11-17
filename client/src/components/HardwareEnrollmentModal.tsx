@@ -24,6 +24,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { deviceApi } from "@/services/api";
+import { getWsUrl } from "@/utils/config";
 import { useToast } from "@/components/ToastProvider";
 
 interface HardwareEnrollmentModalProps {
@@ -102,17 +103,7 @@ export default function HardwareEnrollmentModal({
     }).catch(() => {});
 
     try {
-      let wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-      if (!wsUrl) {
-        if (process.env.NEXT_PUBLIC_API_URL) {
-          const apiBase = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
-          wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-        } else {
-          const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
-          const host = typeof window !== "undefined" ? window.location.hostname || "localhost" : "localhost";
-          wsUrl = `${protocol}//${host}:8000/ws/client`;
-        }
-      }
+      const wsUrl = getWsUrl();
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 

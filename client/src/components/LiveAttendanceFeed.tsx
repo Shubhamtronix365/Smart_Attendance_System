@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { attendanceApi } from "@/services/api";
 import { formatTime } from "@/utils/formatters";
+import { getWsUrl } from "@/utils/config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AttendanceEntry {
@@ -159,9 +160,7 @@ export default function LiveAttendanceFeed() {
     if (!isLive) return;
     let ws: WebSocket | null = null;
     try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
-      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(getWsUrl());
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

@@ -23,6 +23,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ToastProvider";
 import { leaveApi, employeeSelfApi, holidayApi } from "@/services/api";
 import { formatDate } from "@/utils/formatters";
+import { getWsUrl } from "@/utils/config";
 
 const LEAVE_TYPES = [
   { value: "casual", label: "Casual Leave", quota: 12, color: "#00f5ff" },
@@ -95,9 +96,7 @@ export default function EmployeeLeavePage() {
 
     let ws: WebSocket | null = null;
     try {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/^http/, "ws");
-      const wsUrl = `${apiBase.replace(/\/api\/?$/, "")}/ws/client`;
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(getWsUrl());
 
       ws.onmessage = (event) => {
         try {

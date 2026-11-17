@@ -10,6 +10,7 @@ import AdminSidebar from "@/components/AdminSidebar";
 import AdminTopBar from "@/components/AdminTopBar";
 import { useToast } from "@/components/ToastProvider";
 import { settingsApi, authApi } from "@/services/api";
+import { API_BASE_URL } from "@/utils/config";
 
 export default function SettingsPage() {
   const { success, error } = useToast();
@@ -31,7 +32,7 @@ export default function SettingsPage() {
   const [adminCurrentPassword, setAdminCurrentPassword] = useState("");
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [isChangingCredentials, setIsChangingCredentials] = useState(false);
-  const backendHost = (process.env.NEXT_PUBLIC_API_URL || "https://smart-attendance-backend-tzp4.onrender.com")
+  const backendHost = API_BASE_URL
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
 

@@ -241,10 +241,14 @@ export default function LoginPage() {
         router.push("/employee/dashboard");
       }
     } catch (err: unknown) {
-      const message =
-        axios.isAxiosError(err)
-          ? err.response?.data?.detail || "Invalid credentials. Please try again."
-          : "Something went wrong. Please try again.";
+      let message = "Something went wrong. Please try again.";
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          message = "Unable to connect to server. Please check your internet or backend status.";
+        } else {
+          message = err.response.data?.detail || "Invalid credentials. Please try again.";
+        }
+      }
       setError(message);
     } finally {
       setIsLoading(false);
