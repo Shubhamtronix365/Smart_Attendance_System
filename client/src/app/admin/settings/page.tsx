@@ -31,7 +31,7 @@ export default function SettingsPage() {
   const [adminCurrentPassword, setAdminCurrentPassword] = useState("");
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [isChangingCredentials, setIsChangingCredentials] = useState(false);
-  const backendHost = (process.env.NEXT_PUBLIC_API_URL || "https://smart-attendance-system-x6wv.onrender.com")
+  const backendHost = (process.env.NEXT_PUBLIC_API_URL || "https://smart-attendance-backend-tzp4.onrender.com")
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
 

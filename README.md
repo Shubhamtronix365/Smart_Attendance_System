@@ -612,8 +612,8 @@ This application is built for high-performance production hosting across:
      - **Build command:** `npm run build`
      - **Build output directory:** `out`
 3. Under **Environment variables**, add:
-   - `NEXT_PUBLIC_API_URL`: `https://smart-attendance-system-x6wv.onrender.com`
-   - `NEXT_PUBLIC_WS_URL`: `wss://smart-attendance-system-x6wv.onrender.com/ws/client`
+   - `NEXT_PUBLIC_API_URL`: `https://smart-attendance-backend-tzp4.onrender.com`
+   - `NEXT_PUBLIC_WS_URL`: `wss://smart-attendance-backend-tzp4.onrender.com/ws/client`
 4. Deploy! Your web application will be live across Cloudflare's global edge network.
 
 ### 4. ESP32 Tronix Firmware Configuration
@@ -625,7 +625,7 @@ Open [`firmware/attendace_device_tronix_ws.ino`](file:///c:/Users/Hi/Desktop/Sma
    ```
 2. Set the Render host under Option 2:
    ```cpp
-   const char* WS_HOST       = "your-backend.onrender.com"; // Your Render domain (no https://)
+   const char* WS_HOST       = "smart-attendance-backend-tzp4.onrender.com"; // Your Render domain (no https://)
    const int   WS_PORT       = 443;                         // Render SSL port
    const char* WS_PATH       = "/ws/device?device_id=ESP32_TRONIX_01&api_key=esp32_device_secret_key";
    const bool  USE_SSL       = true;                        // Enables wss:// secure encryption
